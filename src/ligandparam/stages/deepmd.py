@@ -19,6 +19,19 @@ from ligandparam.interfaces import Gaussian, Antechamber
 from ligandparam.log import get_logger
 
 
+try:
+    from tblite.ase import TBLite
+    _HAS_TBLITE = True
+except ImportError:
+    _HAS_TBLITE = False
+
+try:
+    from deepmd.infer import DeepPot
+    _HAS_DEEPMD = True
+except ImportError:
+    _HAS_DEEPMD = False
+
+
 class DPMinimize(AbstractStage):
     """
     Minimize the ligand structure using DeepMD.
@@ -251,10 +264,10 @@ class DPModel(object):
     
     """
     def __init__(self,fname):
-        
-        from deepmd.infer import DeepPot
+    
         #from deepmd.env import reset_default_tf_session_config
-
+        if not _HAS_DEEPMD:
+            raise ImportError("DeepMD is not installed. Please install it to use DPModel.")
         #try:
         self.dp = DeepPot(fname)
         #except:
@@ -370,7 +383,9 @@ class QDpi2Calculator(Calculator):
     nolabel=True
     
     def __init__(self,dpmodel,charge,**kwargs):
-        from tblite.ase import TBLite
+        if not _HAS_TBLITE:
+            raise ImportError("TBLite is not installed. Please install it to use this stage.")
+        
         self.dpmodel = dpmodel
         self.charge = charge
         #self.xtbcalc = XTBCalculator(charge=charge,method="GFN2-xTB")
