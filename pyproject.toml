@@ -23,7 +23,8 @@ dependencies = [
   "requests",
   "MDAnalysis>2.7.0",
   "pathlib",
-  "parmed"
+  "parmed",
+  "ase"
 ]
 
 urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
@@ -31,7 +32,6 @@ urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
 [project.optional-dependencies]
 
 ml = [
-  "ase",
   "deepmd-kit",
   "tensorflow",
   "tblite"
