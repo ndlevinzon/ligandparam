@@ -24,7 +24,8 @@ dependencies = [
   "MDAnalysis>2.7.0",
   "pathlib",
   "parmed",
-  "ase"
+  "ase",
+  "openff-toolkit"
 ]
 
 urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
@@ -56,6 +57,7 @@ all = [
 lighfix = "ligandparam.cli.cli_lighfix:lighfix"
 lig-getparam = "ligandparam.cli.ligandparam_getparam:main"
 smiles-to-pdb = "ligandparam.cli.smiles_to_pdb:main"
+lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
 
 
 [tool.ruff]
