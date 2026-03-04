@@ -60,10 +60,10 @@ smiles-to-pdb = "ligandparam.cli.smiles_to_pdb:main"
 lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
 
 
+
 [tool.ruff]
 line-length = 120
 indent-width = 4
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
-
