@@ -10,8 +10,6 @@ from rdkit import Chem
 from ligandparam.stages import AbstractStage, set_atom_pdb_info
 
 
-
-
 class SDFToPDB(AbstractStage):
     """
     Converts a molecule from SDF format to PDB or mol2 format.
@@ -39,7 +37,9 @@ class SDFToPDB(AbstractStage):
     """
 
     @override
-    def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
+    def __init__(
+        self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs
+    ) -> None:
         """
         Initialize the SDFToPDB stage.
 
@@ -124,8 +124,7 @@ class SDFToPDB(AbstractStage):
         try:
             Chem.MolToPDBFile(mol, str(self.out_pdb), flavor=flavor)
         except Exception as e:
-            self.logger.error(
-                f"Failed to write to  {self.out_pdb}. Got exception: {e}")
+            self.logger.error(f"Failed to write to  {self.out_pdb}. Got exception: {e}")
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """
@@ -150,8 +149,8 @@ class SDFToPDB(AbstractStage):
         raise NotImplementedError
 
 
-
 # noinspection DuplicatedCode
+
 
 class SDFToPDBBatch(AbstractStage):
     """
@@ -182,9 +181,11 @@ class SDFToPDBBatch(AbstractStage):
     resname_read_field : str, optional
         Field to read for residue names (default is '_Name').
     """
-    
+
     @override
-    def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
+    def __init__(
+        self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs
+    ) -> None:
         """
         Initialize the SDFToPDBBatch stage.
 
@@ -207,7 +208,8 @@ class SDFToPDBBatch(AbstractStage):
         self.removeHs = kwargs.get("removeHs", False)
         self.add_conect = kwargs.get("add_conect", True)
 
-        self.out_pdb_template = kwargs.get("out_pdb_template", None)
+        out_pdb_template = kwargs.get("out_pdb_template", None)
+        self.out_pdb_template = Path(out_pdb_template) if out_pdb_template is not None else None
         self.out_pdbs = kwargs.get("out_pdbs", None)
         self.out_pdb_read_field = kwargs.get("out_pdb_read_field", "_Name")
 
@@ -249,7 +251,7 @@ class SDFToPDBBatch(AbstractStage):
                 self.resnames = [self.resname for _ in mols]
         if self.out_pdbs is None:
             if self.out_pdb_template is None:
-                filenames = [f'{mol.GetProp(self.out_pdb_read_field)}.pdb' for mol in mols]
+                filenames = [f"{mol.GetProp(self.out_pdb_read_field)}.pdb" for mol in mols]
                 counts = Counter(filenames)
                 if np.all(np.array(list(counts.values())) == 1):
                     self.out_pdbs = [self.cwd / fn for fn in filenames]
@@ -271,14 +273,13 @@ class SDFToPDBBatch(AbstractStage):
         flavor = 0 if self.add_conect else 2
         for mol, pdb, resname in zip(mols, self.out_pdbs, self.resnames):
             # Set metadata and write away
-            mol = set_atom_pdb_info(mol, self.resname)
+            mol = set_atom_pdb_info(mol, resname)
             self.logger.info(f"Writing {self.in_sdf} to {pdb}")
 
             try:
                 Chem.MolToPDBFile(mol, str(pdb), flavor=flavor)
             except Exception as e:
-                self.logger.error(
-                    f"Failed to write to  {pdb}. Got exception: {e}")
+                self.logger.error(f"Failed to write to  {pdb}. Got exception: {e}")
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """
@@ -301,7 +302,6 @@ class SDFToPDBBatch(AbstractStage):
         Not implemented. Cleans up after stage execution.
         """
         raise NotImplementedError
-
 
 
 ############
