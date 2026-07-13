@@ -13,7 +13,11 @@ sdf_to_pdb = SDFToPDBBatch("sdf2pdb", sdf, cwd)
 sdf_to_pdb.execute()
 
 # This will trigger an error, as there are multiple molecules with the same name
-sdf_to_pdb = SDFToPDBBatch("sdf2pdb", bad_sdf, cwd)
+# sdf_to_pdb = SDFToPDBBatch("sdf2pdb", bad_sdf, cwd)
+# sdf_to_pdb.execute()
+
+# Fixed version:
+sdf_to_pdb = SDFToPDBBatch("sdf2pdb", bad_sdf, cwd, out_pdb_template="bad")
 sdf_to_pdb.execute()
 
 """
