@@ -3,6 +3,16 @@ from typing import Optional, Union
 
 from ligandparam.stages.abstractstage import AbstractStage
 
+try:
+    from openff.interchange import Interchange
+    from openff.toolkit import ForceField, Molecule
+    from openff.units import unit
+except ImportError:
+    Interchange = None
+    ForceField = None
+    Molecule = None
+    unit = None
+
 
 class StageSageCreate(AbstractStage):
     """ Converts the final resulting mol2 to the SAGE forcefield.
@@ -41,6 +51,12 @@ class StageSageCreate(AbstractStage):
 
     """
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
+        if Interchange is None or ForceField is None or Molecule is None or unit is None:
+            raise ImportError(
+                "StageSageCreate requires the optional 'openff-toolkit' dependency, which is not installed. "
+                "Install it with `pip install ligandparam[sage]` (or `pip install openff-toolkit`)."
+            )
+
         super().__init__(stage_name, main_input, cwd, *args, **kwargs)
         self.in_mol2 = Path(main_input)
         self.out_parm = Path(kwargs["out_parm"])
@@ -153,9 +169,6 @@ class StageSageCreate(AbstractStage):
             parm.parm_data["RESIDUE_LABEL"] = [cleaned for _ in parm.parm_data["RESIDUE_LABEL"]]
     
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> None:
-        from openff.interchange import Interchange
-        from openff.toolkit import ForceField, Molecule
-        from openff.units import unit
         from rdkit import Chem
 
         atom_names, atom_charges, atom_resnames = self._read_mol2_atom_records(self.in_mol2)

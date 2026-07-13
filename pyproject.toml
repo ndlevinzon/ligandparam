@@ -23,8 +23,8 @@ dependencies = [
   "requests",
   "MDAnalysis>2.7.0",
   "parmed",
-  "ase",
-  "openff-toolkit"
+  "rdkit",
+  "ase"
 ]
 
 urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
@@ -41,6 +41,10 @@ misc = [
   "openbabel",
 ]
 
+sage = [
+  "openff-toolkit",
+]
+
 docs = [
   "sphinx",
   "sphinx_rtd_theme",
@@ -49,6 +53,7 @@ docs = [
 all = [
   "ligandparam[ml]",
   "ligandparam[misc]",
+  "ligandparam[sage]",
   "ligandparam[docs]",
 ]
 
