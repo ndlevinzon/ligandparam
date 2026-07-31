@@ -82,11 +82,13 @@ def modify_gaussian_com(filepath: Path, nproc: int, mem: int):
     bool
         True if the file was successfully modified, False otherwise.
     """
-    config_line_regex = re.compile(b"%NPROC=\d+, %MEM=\d+GB")
+    # Match either the legacy one-line form or the one-directive-per-line form that
+    # Gaussian documents (and that G16 Rev. C.01 requires), but always write the latter.
+    config_line_regex = re.compile(rb"%NPROC=\d+(?:, |\r?\n)%MEM=\d+GB")
     nproc_bytes = str(nproc).encode()
     mem_bytes = str(mem).encode()
     new_line_prefix = b"%NPROC="
-    new_line_sep = b", %MEM="
+    new_line_sep = b"\n%MEM="
     new_line_suffix = b"GB"
     new_line = new_line_prefix + nproc_bytes + new_line_sep + mem_bytes + new_line_suffix
 
