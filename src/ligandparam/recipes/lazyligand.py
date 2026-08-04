@@ -3,7 +3,7 @@ from typing import Optional, Union, Any
 
 from typing_extensions import override
 
-from ligandparam.parametrization import Recipe
+from ligandparam.parametrization import Recipe, apply_option_defaults
 from ligandparam.stages import (
     StageInitialize,
     StageDisplaceMol,
@@ -127,17 +127,12 @@ class LazyLigand(Recipe):
                 del kwargs[opt]
             except KeyError:
                 raise KeyError(f"Missing {opt}")
-        # required options with defaults
-        # TODO: defaults should be a global singleton dict
-        for opt, default_val in zip(
-                ("theory", "leaprc", "force_gaussian_rerun", "nproc", "mem"),
-                ({"low": "HF/6-31G*", "high": "PBE1PBE/6-31G*"}, ["leaprc.gaff2"], False, 1, 1),
-        ):
-            try:
-                setattr(self, opt, kwargs[opt])
-                del kwargs[opt]
-            except KeyError:
-                setattr(self, opt, default_val)
+        # required options with defaults (mutable defaults are created fresh)
+        apply_option_defaults(
+            self,
+            kwargs,
+            ("theory", "leaprc", "force_gaussian_rerun", "nproc", "mem"),
+        )
 
         # optional options, without defaults
         for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):

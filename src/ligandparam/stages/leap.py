@@ -75,7 +75,10 @@ class StageLeap(AbstractStage):
         self.add_required(self.in_frcmod)
         self.out_lib = Path(kwargs["out_lib"])
         self.molname = kwargs.get("molname", "MOL")
-        self.leaprc = kwargs.get("leaprc", ["leaprc.gaff2"])
+        if "leaprc" in kwargs:
+            self.leaprc = list(kwargs["leaprc"])
+        else:
+            self.leaprc = ["leaprc.gaff2"]
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """
