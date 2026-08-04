@@ -16,7 +16,7 @@
 ## Features
 
 - **Recipe-based workflows** for common parameterization paths (BCC, single-orientation RESP, multi-orientation RESP, DeepMD-assisted minimization)
-- **Composable stages** — add, remove, or reorder steps without forking the package
+- **Composable stages** to add, remove, or reorder steps without forking the package
 - **Gaussian integration** for geometry optimization and ESP / RESP charge fitting
 - **Amber tooling** via Antechamber, `parmchk2`, and LEaP (`mol2` / `frcmod` / `lib`)
 - **CLI utilities** for batch parameterization, SMILES -> PDB, and related prep tasks
