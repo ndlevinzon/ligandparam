@@ -18,6 +18,43 @@ from ligandparam.log import get_logger
 #
 logger = logging.getLogger("ligandparam.gaussian")
 
+# Use Opt(CalcFC) below this atom count; plain Opt at or above it.
+_CALCFC_MAX_ATOMS = 50
+
+
+def _gaussian_opt_keyword(n_atoms: int) -> str:
+    """Choose ``Opt(CalcFC)`` or ``Opt`` from ligand size.
+
+    Opt=CalcFC computes the full force-constant matrix (Hessian) at the
+    initial geometry. Plain Opt starts from an inexpensive approximate
+    Hessian and updates it using gradients from later optimization steps.
+
+    The additional cost of CalcFC is roughly one frequency calculation at
+    the same method and basis set:
+
+        T_Opt ≈ n_steps * T_gradient
+        T_Opt(CalcFC) ≈ T_Hessian + n_steps' * T_gradient
+
+    CalcFC is worthwhile only when the better starting Hessian saves enough
+    optimization steps to offset T_Hessian.
+
+    Scaling (M basis functions, N atoms):
+
+    - The Cartesian Hessian has (3N)^2 elements → storage scales as O(N^2).
+    - For HF and many DFT methods, Gaussian has analytical second
+      derivatives. Formal scaling is broadly similar to the gradient, but
+      with a much larger prefactor, memory, and disk footprint.
+    - Without analytical seconds, a numerical Hessian may need up to ~6N
+      gradient calculations and becomes prohibitive quickly.
+    - Post-HF Hessians (MP2 and higher) get expensive at much smaller
+      sizes than ordinary DFT Hessians.
+
+    Policy here: ``Opt(CalcFC)`` when ``N < 50``, otherwise ``Opt``.
+    """
+    if n_atoms < _CALCFC_MAX_ATOMS:
+        return "Opt(CalcFC)"
+    return "Opt"
+
 
 class GaussianMinimizeRESP(AbstractStage):
     """
@@ -155,9 +192,15 @@ class GaussianMinimizeRESP(AbstractStage):
         # so this part can be set up before the Gaussian calculations are run.
         gau = GaussianWriter(self.in_com)
         if self.minimize:
+            n_atoms = len(self.coord_object.get_elements())
+            opt_keyword = _gaussian_opt_keyword(n_atoms)
+            self.logger.info(
+                f"Gaussian optimization keyword: {opt_keyword} "
+                f"({n_atoms} atoms; CalcFC if N < {_CALCFC_MAX_ATOMS})"
+            )
             gau.add_block(
                 GaussianInput(
-                    command=f"#P {self.opt_theory} Opt",
+                    command=f"#P {self.opt_theory} {opt_keyword}",
                     initial_coordinates=self.coord_object.get_coordinates(),
                     elements=self.coord_object.get_elements(),
                     charge=self.net_charge,
