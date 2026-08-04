@@ -6,7 +6,7 @@
 
 **Amber ligand parameterization made modular.**
 
-`ligandparam` is a Python toolkit for generating force-field parameters for nonstandard ligands and residues. It wraps familiar Amber / Gaussian tools behind a stage-based pipeline so you can run a full RESP workflow—or swap individual steps—without rewriting shell scripts.
+`ligandparam` is a Python toolkit for generating force-field parameters for nonstandard ligands and residues. It wraps familiar Amber / Gaussian tools behind a stage-based pipeline so you can run a full RESP workflow (or swap individual steps) without rewriting shell scripts.
 
 **Docs:** [ligandparam.readthedocs.io](https://ligandparam.readthedocs.io/en/latest/)  
 **Repo:** [github.com/piskulichz/ligandparam](https://github.com/piskulichz/ligandparam)
@@ -19,7 +19,7 @@
 - **Composable stages** — add, remove, or reorder steps without forking the package
 - **Gaussian integration** for geometry optimization and ESP / RESP charge fitting
 - **Amber tooling** via Antechamber, `parmchk2`, and LEaP (`mol2` / `frcmod` / `lib`)
-- **CLI utilities** for batch parameterization, SMILES → PDB, and related prep tasks
+- **CLI utilities** for batch parameterization, SMILES -> PDB, and related prep tasks
 - **Optional extras** for DeepMD / SQM minimization and OpenFF Sage conversion
 
 ---
@@ -165,7 +165,7 @@ Runnable examples live under [`examples/`](examples/):
 | `01_LazyLigand` | Single-orientation RESP |
 | `02_FreeLigand` | Multi-orientation RESP |
 | `03_ModifySteps` | Editing the stage pipeline |
-| `04_FromSmiles` | SMILES → PDB prep |
+| `04_FromSmiles` | SMILES -> PDB prep |
 | `05_FromSDF` | Working from SDF libraries |
 
 More walkthroughs are in the [documentation examples](https://ligandparam.readthedocs.io/en/latest/).
