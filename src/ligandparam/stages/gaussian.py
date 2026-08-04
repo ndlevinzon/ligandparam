@@ -547,7 +547,7 @@ class StageGaussianRotation(AbstractStage):
             Always returns False (rotation calculations are not pre-completed).
         """
         self.header = [f"%NPROC={self.nproc}",
-                       "%MEM={self.mem}GB"]
+                       f"%MEM={self.mem}GB"]
 
         # __init__ tries to set up the coordinates object, but it may not have been available at init time.
         if not getattr(self, "coord_object", None):
@@ -785,7 +785,7 @@ class StageGaussiantoMol2(AbstractStage):
         self.add_required(self.in_log)
 
         self.header = [f"%NPROC={self.nproc}",
-                       "%MEM={self.mem}GB"]
+                       f"%MEM={self.mem}GB"]
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """Execute the Gaussian to mol2 conversion.
