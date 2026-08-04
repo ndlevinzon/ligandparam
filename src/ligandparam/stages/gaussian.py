@@ -140,7 +140,9 @@ class GaussianMinimizeRESP(AbstractStage):
             self.coord_object = Coordinates(self.in_mol2, filetype="pdb")
         self.gaussian_cwd.mkdir(exist_ok=True)
 
-        stageheader = [f"%NPROC={self.nproc}", f"%MEM={self.mem}GB"]
+        stageheader = [f"%NPROC={self.nproc}"]
+        
+        stageheader.append(f"%MEM={self.mem}GB")
 
         stageheader.append(f"%chk={self.in_mol2.stem}.antechamber.chk")
 
@@ -150,7 +152,7 @@ class GaussianMinimizeRESP(AbstractStage):
         if self.minimize:
             gau.add_block(
                 GaussianInput(
-                    command=f"#P {self.opt_theory} OPT(CalcFC)",
+                    command=f"#P {self.opt_theory} Opt",
                     initial_coordinates=self.coord_object.get_coordinates(),
                     elements=self.coord_object.get_elements(),
                     charge=self.net_charge,
@@ -342,7 +344,9 @@ class GaussianRESP(AbstractStage):
             self.coord_object = Coordinates(self.in_mol2, filetype="pdb")
         self.gaussian_cwd.mkdir(exist_ok=True)
 
-        stageheader = [f"%NPROC={self.nproc}", f"%MEM={self.mem}GB"]
+        stageheader = [f"%NPROC={self.nproc}"]
+        
+        stageheader.append(f"%MEM={self.mem}GB")
 
         stageheader.append(f"%chk={self.in_mol2.stem}.antechamber.chk")
 
@@ -542,7 +546,8 @@ class StageGaussianRotation(AbstractStage):
         bool
             Always returns False (rotation calculations are not pre-completed).
         """
-        self.header = [f"%NPROC={self.nproc}", f"%MEM={self.mem}GB"]
+        self.header = [f"%NPROC={self.nproc}",
+                       "%MEM={self.mem}GB"]
 
         # __init__ tries to set up the coordinates object, but it may not have been available at init time.
         if not getattr(self, "coord_object", None):
@@ -779,7 +784,8 @@ class StageGaussiantoMol2(AbstractStage):
         """
         self.add_required(self.in_log)
 
-        self.header = [f"%NPROC={self.nproc}", f"%MEM={self.mem}GB"]
+        self.header = [f"%NPROC={self.nproc}",
+                       "%MEM={self.mem}GB"]
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """Execute the Gaussian to mol2 conversion.
