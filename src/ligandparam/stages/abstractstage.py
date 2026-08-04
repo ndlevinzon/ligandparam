@@ -139,6 +139,9 @@ class AbstractStage(metaclass=ABCMeta):
         """
         Execute the stage.
 
+        Subclasses should override this method. The base implementation is a
+        placeholder and should not be called directly.
+
         Parameters
         ----------
         dry_run : bool, optional

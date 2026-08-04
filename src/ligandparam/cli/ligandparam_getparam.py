@@ -1,3 +1,5 @@
+"""CLI entry point for batch ligand parameterization."""
+
 import logging
 import sys, shutil
 from concurrent.futures import ProcessPoolExecutor
@@ -46,46 +48,48 @@ def set_file_logger(
     return logger
 
 def worker(recipe_name: str, mol: str, resname: str, cwd: Path, net_charge: float, atom_type: str = "gaff2", charge_model: str = "bcc", model: str = None, sqm: str = True, data_cwd: str = "param", nprocs: int = 1, mem: int = 1, reference_pdb: str = None) -> Path:
+    """Execute a ligand parameterization recipe for one ligand.
+
+    Parameters
+    ----------
+    recipe_name : str
+        Recipe name for ligand parameterization.
+    mol : str
+        Input PDB file containing the ligand.
+    resname : str
+        Residue name for the ligand.
+    cwd : Path
+        Working directory for outputs.
+    net_charge : float
+        Net charge of the ligand.
+    atom_type : str, optional
+        Atom type (default ``"gaff2"``).
+    charge_model : str, optional
+        Charge model (default ``"bcc"``); ``"bcc"`` or ``"abcg2"``.
+    model : str, optional
+        Path to a DeepMD model file.
+    sqm : bool, optional
+        If True, use SQM for geometry optimization.
+    data_cwd : str, optional
+        Subdirectory for output files (default ``"param"``).
+    nprocs : int, optional
+        Number of processes (default 1).
+    mem : int, optional
+        Memory in GB (default 1).
+    reference_pdb : str, optional
+        Reference PDB for name fixing.
+
+    Returns
+    -------
+    Path
+        Output directory for this ligand.
+    """
     binder_dir = cwd / data_cwd / resname
     binder_dir.mkdir(parents=True, exist_ok=True)
     binder_pdb = cwd / mol
     logger = set_file_logger(
         binder_dir / f"{resname}.log", filemode="w"
     )
-    """ Worker function to execute the ligand parameterization recipe.
-    
-    Parameters
-    ----------
-    recipe_name : str
-        The name of the recipe to be used for ligand parameterization.
-    mol : str
-        The input PDB file containing the ligand.
-    resname : str
-        The residue name for the ligand.
-    cwd : Path
-        The current working directory where the output files will be stored.
-    net_charge : float
-        The net charge of the ligand.
-    atom_type : str, optional
-        The atom type for the ligand (default is "gaff2").
-    charge_model : str, optional
-        The charge model for the ligand (default is "bcc"). Options are "bcc" or
-        "abcg2".
-    model : str, optional
-        The path to the DeepMD model file (optional).
-    sqm : bool, optional
-        Whether to use SQM calculations for geometry optimization (default is True).
-    data_cwd : str, optional
-        The directory to store output files (default is "param").
-    nprocs : int, optional
-        The number of processes to use for parallel execution (default is 1).
-    mem : int, optional
-        The amount of memory in GB to allocate for the process (default is 1GB).
-    
-    Returns
-    -------
-    None
-    """
 
     print("Working on ligand:", resname)
     if not binder_pdb.is_file():
@@ -137,6 +141,7 @@ def worker(recipe_name: str, mol: str, resname: str, cwd: Path, net_charge: floa
     recipe.setup()
     recipe.execute()
     logger.info("Recipe execution complete.")
+    return binder_dir
 
 def recipe_selector(recipe_name: str, **kwargs):
     """ Selects and returns the appropriate recipe class based on the recipe name.

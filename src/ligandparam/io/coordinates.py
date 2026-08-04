@@ -10,25 +10,24 @@ from MDAnalysis.topology.guessers import guess_atom_element, guess_masses
 
 
 class Coordinates:
+    """Thin MDAnalysis wrapper for reading and transforming structure coordinates."""
 
     def __init__(self, filename: Union[Path, str], filetype: str = 'pdb'):
-        """   A class to handle the coordinates of a structure. 
-        
-        This class is a wrapper around the MDAnalysis Universe class, and provides a simple interface to 
-        manipulate the coordinates of a structure.
-            
+        """
+        Load a structure and sanitize masses for center-of-mass operations.
+
         Parameters
         ----------
         filename : Union[Path, str]
-            The filename of the structure to read in
+            Path to the structure file to read.
         filetype : str, optional
-            The filetype of the structure to read in
+            File type hint (default: ``'pdb'``).
         """
         self.filename = Path(filename)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.u = mda.Universe(filename)
-        self.original_coords = self.get_coordinates()
+        self.original_coords = np.array(self.get_coordinates(), dtype=float, copy=True)
 
         # If the mol2 comes from antechaamber, then the atom names are weird and both rdkit and mda will have trouble
         if np.any(np.isclose(self.u.atoms.masses, 0, atol=0.1)):
@@ -40,30 +39,22 @@ class Coordinates:
         return
 
     def get_coordinates(self):
-        """ Grabs the coordinates
-        
-        Parameters
-        ----------
-        None
+        """Return the current atomic coordinates.
 
         Returns
         -------
-        coords : np.array
-            The coordinates of the atoms in the structure
+        np.ndarray
+            Coordinates of the atoms in the structure.
         """
         return self.u.atoms.positions
 
     def get_elements(self):
-        """ Grabs the elements
-
-        Parameters
-        ----------
-        None
+        """Return atomic element symbols.
 
         Returns
         -------
-        elements : list
-            The elements of the atoms in the structure
+        list
+            Element symbols for each atom.
         """
         try:
             return [atom.element for atom in self.u.atoms]
@@ -71,34 +62,28 @@ class Coordinates:
             return self._get_elements_from_topology()
 
     def _get_elements_from_topology(self):
-        """ Grabs the elements from the topology
-        
-        Parameters
-        ----------
-        None
+        """Guess element symbols from atom names in the topology.
 
         Returns
         -------
-        elements : list
-            The elements of the atoms in the structure
+        list
+            Guessed element symbols for each atom.
         """
         from MDAnalysis.topology.guessers import guess_types
         elements = guess_types(self.u.atoms.names)
         return elements
 
     def update_coordinates(self, coords, original=False):
-        """ Updates the coordinates
+        """Replace the current atomic coordinates.
 
         Parameters
         ----------
-        coords : np.array
-            The new coordinates to update the structure with
-
-        Returns
-        -------
-        None
+        coords : np.ndarray
+            New coordinates with the same shape as the current positions.
+        original : bool, optional
+            If True, also update the stored original coordinates used by
+            :meth:`rotate`.
         """
-
         assert np.shape(coords) == np.shape(self.get_coordinates()), "Coordinate dimensions do not match"
         self.u.atoms.positions = coords
         if original:
@@ -106,54 +91,61 @@ class Coordinates:
         return
 
     def rotate(self, alpha=0.0, beta=0.0, gamma=0.0):
-        """ Rotate the coordinates around specific axes around the center of mass.
+        """Rotate coordinates about the center of mass using Euler angles.
 
-        The rotation is done in the order alpha, beta, gamma, and the rotation is done around the center of mass.
-        
+        Rotations are applied in order alpha (x), beta (y), gamma (z), matching
+        the previous MDAnalysis ``rotateby`` sequence. Angles are in degrees.
+
         Parameters
         ----------
         alpha : float
-            The angle to rotate the structure in the alpha direction (degrees)
+            Rotation about the x-axis (degrees).
         beta : float
-            The angle to rotate the structure in the beta direction (degrees)
-        use_original : bool, optional
-            If True, the rotation will be applied to the new coordinates
+            Rotation about the y-axis (degrees).
+        gamma : float
+            Rotation about the z-axis (degrees).
+
+        Returns
+        -------
+        np.ndarray
+            Rotated coordinates with shape ``(n_atoms, 3)``.
         """
-        import warnings
-        warnings.filterwarnings(
-            "ignore")  # There is a deprecation warning that will eventually break this code, but this is something that is broken in MDAnalysis
-        import MDAnalysis.transformations
+        coords = np.asarray(self.original_coords, dtype=float)
+        # COM from original geometry (masses already sanitized in __init__)
+        masses = self.u.atoms.masses
+        com = np.average(coords, axis=0, weights=masses)
 
-        x, y, z = [1, 0, 0], [0, 1, 0], [0, 0, 1]
-        ts = self.u.trajectory.ts
+        a, b, g = np.deg2rad([alpha, beta, gamma])
+        ca, sa = np.cos(a), np.sin(a)
+        cb, sb = np.cos(b), np.sin(b)
+        cg, sg = np.cos(g), np.sin(g)
 
-        self.u.atoms.positions = self.original_coords
-        com = self.u.atoms.center_of_mass()
+        # Intrinsic/extrinsic composition matching sequential Rx, Ry, Rz on positions
+        rx = np.array([[1.0, 0.0, 0.0],
+                       [0.0, ca, -sa],
+                       [0.0, sa, ca]])
+        ry = np.array([[cb, 0.0, sb],
+                       [0.0, 1.0, 0.0],
+                       [-sb, 0.0, cb]])
+        rz = np.array([[cg, -sg, 0.0],
+                       [sg, cg, 0.0],
+                       [0.0, 0.0, 1.0]])
+        rotation = rz @ ry @ rx
 
-        # Apply rotation around the x axis
-        rotated = mda.transformations.rotate.rotateby(angle=alpha, direction=x, point=com)(ts)
+        rotated = (coords - com) @ rotation.T + com
         self.u.atoms.positions = rotated
-
-        # Apply rotation around the y axis
-        rotated = mda.transformations.rotate.rotateby(angle=beta, direction=y, point=com)(ts)
-        self.u.atoms.positions = rotated
-
-        # Apply rotation around the z axis
-        rotated = mda.transformations.rotate.rotateby(angle=gamma, direction=z, point=com)(ts)
-        self.u.atoms.positions = rotated
-
-        return self.get_coordinates()
+        return rotated
 
 
 def SimpleXYZ(file_obj, coordinates):
-    """ Write a simple XYZ file with the coordinates. 
-    
+    """Write coordinates to a simple XYZ trajectory frame.
+
     Parameters
     ----------
     file_obj : file object
-        The file object to write to
-    coordinates : np.array
-        The coordinates to write to the file
+        Open file handle to write to.
+    coordinates : np.ndarray
+        Coordinates to write.
     """
     file_obj.write(f"{len(coordinates)}\n")
     file_obj.write("Generated by ligand_param\n")
@@ -163,15 +155,18 @@ def SimpleXYZ(file_obj, coordinates):
 
 
 class Mol2Writer:
+    """Write an MDAnalysis Universe selection to a mol2 file."""
+
     def __init__(self, u, filename=None, selection="all"):
-        """ A class to write a mol2 file.
-        
+        """
         Parameters
         ----------
-        u : MDAnalysis Universe
-            The universe to write to a mol2 file
-        filename : str
-            The filename to write to
+        u : MDAnalysis.Universe
+            Universe to write.
+        filename : str, optional
+            Output mol2 path.
+        selection : str, optional
+            Atom selection string (default: ``'all'``).
         """
         self.u = u
         self.filename = Path(filename)
@@ -179,22 +174,17 @@ class Mol2Writer:
         return
 
     def _write(self):
-        """ Uses MDAnalysis to write the mol2 file. """
+        """Write the selected atoms to mol2 via MDAnalysis."""
         ag = self.u.select_atoms(self.selection)
         ag.write(self.filename)
 
     def _remove_blank_lines(self):
-        """ Remove blank lines from a file.
-        
-        Parameters
-        ----------
-        file_path : str
-            The path to the file to remove blank lines from
-        
-        Returns
-        -------
-        None
-        
+        """Remove blank lines from the written mol2 file.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the output file does not exist.
         """
         if Path(self.filename).exists():
             # Read the file and filter out blank lines
@@ -209,35 +199,23 @@ class Mol2Writer:
             raise FileNotFoundError(f"File {self.filename} not found.")
 
     def write(self):
-        """ Write the mol2 file. 
-        
-        This uses the _write method to write the mol2 file, and then removes any blank lines from the file.
-        
-        Parameters
-        ----------
-        None
-        
-        """
+        """Write the mol2 file and strip blank lines that confuse antechamber."""
         self._write()
         self._remove_blank_lines()
         return
 
 
 def Remove_PDB_CONECT(filename: Union[Path, str], backup: bool = False):
-    """ Removes CONECT lines from a PDB file.
+    """Remove CONECT records from a PDB file in place.
 
-    This script (1) copies the pdb file to a new file (with input added to the filename)
-    and (2) removes the CONECT records from the original file.
-    
+    Optionally copies the original to ``input_<filename>`` before editing.
+
     Parameters
     ----------
-    filename : str
-        The name of the file to check
-        
-    Returns
-    -------
-    None
-
+    filename : Union[Path, str]
+        PDB file to clean.
+    backup : bool, optional
+        If True, save a copy before removing CONECT lines.
     """
     fn = Path(filename)
     if backup:

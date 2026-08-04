@@ -22,101 +22,43 @@ from ligandparam.stages import (
 
 
 class DPFreeLigand(Recipe):
-    """This is a ligand parameterization recipe that uses Gaussian for RESP fitting.
+    """Parameterize a ligand with DeepMD minimization and multi-orientation RESP.
 
-    This script is a recipe for parameterizing a ligand using the RESP method with Gaussian. This script is designed to do the main steps of the RESP fitting process, including:
-    Initializing from a pdb file, assigning atom types, running gaussian optimization, and calculating RESP charges, and then generating the final mol2/lib/frcmod files
-    with RESP charges.
+    Combines DeepMD geometry relaxation with FreeLigand-style multi-orientation
+    Gaussian ESP sampling, multi-RESP fitting, and Leap outputs.
 
-    Attributes:
-    -----------
-    in_filename : Union[Path, str]
-        The input file containing the ligand structure, typically in PDB format.
-    cwd : Union[Path, str]
-        The current working directory where the output files will be saved.
+    Parameters
+    ----------
+    in_filename : path-like
+        Input ligand structure (typically PDB).
+    cwd : path-like
+        Working directory for intermediate and output files.
     net_charge : int
-        The net charge of the ligand.
-    theory : dict
-        A dictionary containing the low and high theory levels for Gaussian calculations.
-    leaprc : list
-        A list of leaprc files to be used in the Leap stage.
-    force_gaussian_rerun : bool
-        A flag indicating whether to force Gaussian reruns.
-    nproc : int
-        The number of processors to use for Gaussian calculations.
-    mem : int
-        The amount of memory (in GB) to allocate for Gaussian calculations.
-    gaussian_root : Optional[Union[Path, str]]
-        The root directory for Gaussian, if not set, will use the environment variable.
-    gauss_exedir : Optional[Union[Path, str]]
-        The directory containing the Gaussian executables, if not set, will use the environment variable.
-    gaussian_binary : Optional[Union[Path, str]]
-        The path to the Gaussian binary, if not set, will use the environment variable.
-    gaussian_scratch : Optional[Union[Path, str]]
-        The directory for Gaussian scratch files, if not set, will use the environment variable.
-    kwargs : dict
-        Additional keyword arguments that can be passed to the stages.
-    
-    Parameters:
-    -----------
-    in_filename : Union[Path, str]
-        The input file containing the ligand structure, typically in PDB format.
-    cwd : Union[Path, str]
-        The current working directory where the output files will be saved.
-    net_charge : int
-        The net charge of the ligand.
+        Net molecular charge.
     theory : dict, optional
-        A dictionary containing the low and high theory levels for Gaussian calculations.
-    leaprc : list, optional
-        A list of leaprc files to be used in the Leap stage. Defaults to ["leaprc.gaff2"].
+        Mapping with ``low`` and ``high`` Gaussian theory levels.
+    leaprc : list of str, optional
+        Leaprc files for the Leap stage. Default ``["leaprc.gaff2"]``.
     force_gaussian_rerun : bool, optional
-        A flag indicating whether to force Gaussian reruns. Defaults to False.
-    nproc : int, optional
-        The number of processors to use for Gaussian calculations. Defaults to 1.
-    mem : int, optional
-        The amount of memory (in GB) to allocate for Gaussian calculations. Defaults to 1.
-    gaussian_root : Optional[Union[Path, str]], optional
-        The root directory for Gaussian, if not set, will use the environment variable.
-    gauss_exedir : Optional[Union[Path, str]], optional
-        The directory containing the Gaussian executables, if not set, will use the environment variable.
-    gaussian_binary : Optional[Union[Path, str]], optional
-        The path to the Gaussian binary, if not set, will use the environment variable.
-    gaussian_scratch : Optional[Union[Path, str]], optional
-        The directory for Gaussian scratch files, if not set, will use the environment variable.
-    kwargs : dict, optional
-        Additional keyword arguments that can be passed to the stages.
+        Rerun Gaussian even if output logs already exist.
+    nproc, mem : int, optional
+        Gaussian processor count and memory in GB.
+    gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
+        Gaussian environment overrides; otherwise environment variables are used.
+    **kwargs
+        Extra options forwarded to stages (for example ``logger``).
 
-    Raises:
-    -------
+    Raises
+    ------
     KeyError
-        If a required option is missing from the keyword arguments.
-    ValueError
-        If an unknown charge model is specified in the keyword arguments.
-    TypeError
-        If the `theory` parameter is not a dictionary with 'low' and 'high' keys.
-    AttributeError
-        If a required attribute is not set during initialization.
-    
-    Example:
-    --------
-    >>> from ligandparam.recipes import LazyLigand
-    >>> from pathlib import Path
-    >>> recipe = LazyLigand(
-        in_filename=Path("ligand.pdb"),
-        cwd=Path("output_directory"),
-        net_charge=0,
-        theory={"low": "HF/6-31G*", "high": "PBE1PBE/6-31G*"},
-        leaprc=["leaprc.gaff2"],
-        force_gaussian_rerun=False,
-        nproc=4,
-        mem=8,
-        gaussian_root=None,
-        gauss_exedir=None,
-        gaussian_binary=None,
-        gaussian_scratch=None,
-        logger="stream"
-    )
+        If ``net_charge`` is not provided.
 
+    Examples
+    --------
+    >>> from ligandparam.recipes import DPFreeLigand
+    >>> recipe = DPFreeLigand(
+    ...     "ligand.pdb", "output", net_charge=0, nproc=4, mem=8, logger="stream"
+    ... )
     """
 
     @override
@@ -146,21 +88,10 @@ class DPFreeLigand(Recipe):
         self.kwargs = kwargs
 
     def setup(self):
-        """ Sets up the stages for the LazyLigand recipe.
-        
-        This method initializes the stages required for the LazyLigand recipe, including:
-        - Initializing the ligand from a PDB file
-        - Normalizing the charge of the ligand
-        - Centering the ligand
-        - Running Gaussian minimization for low theory
-        - Running LazyResp for low theory
-        - Running Gaussian minimization for high theory
-        - Running LazyResp for high theory
-        - Normalizing the charge of the ligand after high theory minimization
-        - Updating the names and charges of the ligand
-        - Generating the final mol2 file with RESP charges
-        - Generating the frcmod and lib files for the ligand
-        
+        """Build the ordered DPFreeLigand stage list on ``self.stages``.
+
+        Stages cover DeepMD minimization, Gaussian RESP, multi-orientation ESP
+        sampling, multi-RESP fitting, charge/name updates, and Leap.
         """
         initial_mol2 = self.cwd / f"{self.label}.initial.mol2"
         centered_mol2 = self.cwd / f"{self.label}.centered.mol2"
@@ -175,7 +106,7 @@ class DPFreeLigand(Recipe):
         lib = self.cwd / f"{self.label}.lib"
         rotation_label = self.cwd / f"{self.label}.rotation.label"
         out_respfit = self.cwd / f"{self.label}.respfit"
-        print(f"Setting up LazyLigand recipe with label {self.label}")
+        print(f"Setting up DPFreeLigand recipe with label {self.label}")
 
         self.stages = [
             StageInitialize(
@@ -270,7 +201,7 @@ class DPFreeLigand(Recipe):
                 logger=self.logger,
                 **self.kwargs,
             ),
-            # We know that the gaussian stages work in a "gaussianCalcs" directory. Quite hacky.
+            # Gaussian stages write under cwd/gaussianCalcs
             StageMultiRespFit(
                 "MultiRespFit",
                 main_input=resp_mol2_high,
@@ -336,23 +267,17 @@ class DPFreeLigand(Recipe):
 
     @override
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        """ Execute the LazyLigand recipe.
-        
-        This method executes the LazyLigand recipe, which includes running all the stages defined in the setup method.
-        
-        Parameters:
+        """Run all stages defined by :meth:`setup`.
+
+        Parameters
         ----------
         dry_run : bool, optional
-            If True, the stages will not be executed, but the commands that would be run will be printed.
-        nproc : Optional[int], optional
-            The number of processors to use for the calculations. If None, will use the value set in the recipe.
-        mem : Optional[int], optional
-            The amount of memory (in GB) to allocate for the calculations. If None, will use the value set in the recipe.
-        
-        Returns:
-        -------
-        None
+            If True, log planned commands without running external programs.
+        nproc : int, optional
+            Override the recipe processor count for this run.
+        mem : int, optional
+            Override the recipe memory allocation in GB for this run.
         """
-        self.logger.info(f"Starting the LazyLigand recipe at {self.cwd}")
+        self.logger.info(f"Starting the DPFreeLigand recipe at {self.cwd}")
         super().execute(dry_run=dry_run, nproc=nproc, mem=mem)
-        self.logger.info("Done with the LazyLigand recipe")
+        self.logger.info("Done with the DPFreeLigand recipe")

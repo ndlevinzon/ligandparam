@@ -48,22 +48,20 @@ class ResidueResp(object):
         self.multifit=False
 
     def add_state(self,prefix,parmfile,rstfiles,qmmask=None):
-        """ Add a state to the residue resp object 
+        """Add a state to the residue resp object.
 
-        TODO: Confirm meaning with TIM
-        
         Parameters
         ----------
         prefix : str
-            The prefix of the state (e.g. the residue name)
+            The prefix of the state (e.g. the residue name).
         parmfile : str
-            The name of the file (either parm or mol2)
+            The name of the file (either parm or mol2).
         rstfiles : list of str
-            A list of files (could be rst or gaussian log files)
+            A list of files (could be rst or Gaussian log files).
         qmmask : str, optional
-            The quantum mask. Default is None
+            The quantum mask.
         """
-        # Add state to the residue resp object
+        # TODO: Confirm meaning of prefix/parmfile/rstfiles with TIM
         self.states.append( EndState( parmfile, rstfiles, self.comp, self.ires, qmmask=qmmask,
                                       theory=self.theory,basis=self.basis,maxgrad=self.maxgrad,
                                       etol=self.etol,fitgasphase=self.fitgasphase ) )

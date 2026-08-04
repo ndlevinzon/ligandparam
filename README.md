@@ -1,3 +1,5 @@
+[![Documentation Status](https://app.readthedocs.org/projects/ligandparam/badge/?version=latest)](https://ligandparam.readthedocs.io/en/latest/?badge=latest)
+
 # Ligand Parametrization
 
 ## Overview

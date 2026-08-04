@@ -1,167 +1,96 @@
 from abc import abstractmethod
-from typing import Optional,  Union, Any
+from typing import Optional, Union, Any
 from pathlib import Path
 
 
 class Driver:
-    """ Base class for all parametrization drivers.
-    
-    This class is the base class for all parametrizations. It is designed to be subclassed, and the subclass should
-    implement the stages that are needed to complete the parametrization.
+    """Base class for ordered stage pipelines.
 
-    Parameters
-    ----------
-    in_filename : str or Path
-        The input filename for the parametrization.
-    cwd : str or Path
-        The current working directory for the parametrization.
-    *args : list
-        Additional arguments to pass to the subclass.
-    **kwargs : dict
-        Additional keyword arguments to pass to the subclass.
-    
-    
+    Subclasses populate :attr:`stages` and call :meth:`execute` to run them
+    in order. Recipes such as :class:`~ligandparam.parametrization.Recipe`
+    inherit from this class.
+
     Attributes
     ----------
-    in_filename : str or Path
-        The input filename for the parametrization.
-    cwd : str or Path
-        The current working directory for the parametrization.
+    in_filename : Path
+        Primary input structure path.
+    cwd : Path
+        Working directory for intermediate and output files.
     stages : list
-        The list of stages to run for the parametrization.
-    
+        Ordered stage objects to execute.
     """
+
     @abstractmethod
     def __init__(self, in_filename: Union[Path, str], cwd: Union[Path, str], *args, **kwargs):
-        """Initialize the Driver class object.
-
-        This class is the base class for all parametrizations. It is designed to be subclassed, and the subclass should
-        implement the stages that are needed to complete the parametrization.
-
-
-        """
+        """Initialize the driver. Subclasses must set ``stages`` (often empty)."""
         pass
 
     def add_stage(self, stage):
-        """Add a stage to the list of stages to run.
-
-        Adding a stage is done by appending a stage object to the list of stages to run. Adding a stage
-        does not run the stage, it only adds it to the list of stages to run. To run the stages, the execute
-        method must be called.
-
-        Stages are designed using the AbstractStage class, and should be subclassed to implement the desired
-        behavior. The stages should be added in the order that they should be run.
-
+        """Append a stage to the pipeline and list the current stages.
 
         Parameters
         ----------
-        stage : Stage
-            The stage object to add to the list of stages to run.
-
-        Returns
-        -------
-        None
-
+        stage : AbstractStage
+            Stage instance to add. Stages should already be ordered for the
+            intended workflow.
         """
         self.stages.append(stage.append_stage(stage))
         self.list_stages()
-        return
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the stages in the list of stages to run.
-
-        This function executes the stages in the list of stages to run. The stages are executed in the order that they
-        were added to the list. If a stage fails, the function will print an error message and exit. The stages are
+    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Run each stage in order.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stages will not be executed, but the function will print the commands that would be executed.
+            If True, stages should log planned work without running external tools.
         nproc : int, optional
-            The number of processors to use for the stages that support parallel execution.
+            Processor count override for stages that support it.
         mem : int, optional
-            The amount of memory to use for the stages that support memory specification.
-
-        Returns
-        -------
-        None
+            Memory override in GB for stages that support it.
 
         Raises
         ------
         RuntimeError
-            If a stage fails, a RuntimeError is raised with the error message from the stage.
-        
-            
+            If a stage raises an exception during execution.
         """
         for stage in self.stages:
             try:
                 stage.execute(dry_run=dry_run, nproc=nproc, mem=mem)
             except Exception as e:
-                raise RuntimeError(f"Error in stage {stage.stage_name}: {e}")
-        return
+                raise RuntimeError(f"Error in stage {stage.stage_name}: {e}") from e
 
     def clean(self):
-        """Clean up the files created by the stages.
+        """Clean stage outputs in reverse order.
 
-        This function cleans up the files created by the stages. The stages are executed in the
-        reverse order that they were added to the list. If a stage fails, the function will print an error message and
-        exit and be skipped.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        RuntimeError
-            If a stage fails, a RuntimeError is raised with the error message from the stage.
-        
+        Stages without a ``clean`` implementation are skipped. Other failures
+        are re-raised after logging.
         """
-
         for stage in reversed(self.stages):
             try:
                 stage.clean()
             except NotImplementedError:
-                print(f"Clean method not implemented for stage {stage.name}")
+                print(f"Clean method not implemented for stage {stage.stage_name}")
                 print("Skipping...")
                 continue
             except Exception as e:
-                print(f"Error in stage {stage.name}: {e}")
+                print(f"Error in stage {stage.stage_name}: {e}")
                 print("Exiting")
-                raise e
-        return
+                raise
 
     def list_stages(self):
-        """Print out the list of stages to run.
-
-        This function prints out the list of stages that are in the list of stages to run. The stages are printed in the
-        order that they were added to the list.
-
-        Returns
-        -------
-        None
-
-        """
+        """Print the current stage list to stdout."""
         print("List of Stages to Run")
         for stage in self.stages:
             print(f"-->{stage.stage_name} ({stage})")
-        return
 
     def remove_stage(self, stage_name):
-        """Remove a stage from the list of stages to run.
-
-        This function removes a stage from the list of stages to run. If the stage is not in the list, the function will
-        print an error message and exit.
+        """Remove the first stage whose ``stage_name`` matches.
 
         Parameters
         ----------
         stage_name : str
-            The name of the stage to remove from the list of stages to run.
-
-        Returns
-        -------
-        None
-
+            Name of the stage to remove.
         """
         for stage in self.stages:
             if stage.stage_name == stage_name:
@@ -170,34 +99,24 @@ class Driver:
                 self.list_stages()
                 return
         print(f"Stage {stage_name} not found in list of stages.")
-        return
 
     def insert_stage(self, newstage, stage_name, print_info=False):
-        """Insert a stage into the list of stages to run before the specified stage.
-
-        This function inserts a stage into the list of stages to run before the specified stage. If the specified stage
-        is not in the list, the function will print an error message and exit.
+        """Insert ``newstage`` immediately before the named stage.
 
         Parameters
         ----------
+        newstage : AbstractStage
+            Stage to insert.
         stage_name : str
-            The name of the stage to insert into the list of stages to run.
-        newstage : Stage
-            The stage object to insert into the list of stages to run.
+            Existing stage name to insert before.
         print_info : bool, optional
-            If True, the function will print the list of stages after the new stage is inserted.
-        
-        Returns
-        -------
-        None
+            If True, print the updated stage list.
 
         Raises
         ------
         ValueError
-            If the specified stage is not in the list, a ValueError is raised.
-            
+            If ``stage_name`` is not found.
         """
-        idx = -1
         for stage in self.stages:
             if stage.stage_name == stage_name:
                 idx = self.stages.index(stage)

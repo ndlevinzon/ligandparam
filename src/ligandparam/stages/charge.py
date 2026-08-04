@@ -173,7 +173,7 @@ class StageNormalizeCharge(AbstractStage):
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
+            If True, log the commands that would be run without executing them.
         nproc : int, optional
             Number of processors to use.
         mem : int, optional
@@ -183,11 +183,6 @@ class StageNormalizeCharge(AbstractStage):
         ------
         ValueError
             If the charge normalization fails.
-
-        Notes
-        -----
-        TODO: Check what happens when netcharge is nonzero.
-        TODO: Check what happens when charge difference is larger than the number of atoms.
         """
         super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         with warnings.catch_warnings():
@@ -199,10 +194,12 @@ class StageNormalizeCharge(AbstractStage):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 u = mda.Universe(self.in_mol2, format="mol2")
+            # TODO: verify behavior when net_charge is nonzero
             rounded_charges, total_charge, charge_difference = self.check_charge(u.atoms.charges)
 
             if not np.isclose(total_charge, self.net_charge, rtol=1e-10):
                 self.logger.info("Normalizing charges")
+                # TODO: verify behavior when |charge_difference| exceeds natoms * precision
                 new_charges = self.normalize(rounded_charges, charge_difference)
                 _, new_total, new_diff = self.check_charge(new_charges)
                 if np.isclose(new_total, self.net_charge, rtol=1e-10):

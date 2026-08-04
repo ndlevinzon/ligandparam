@@ -1,13 +1,18 @@
-"""
-This module provides classes for parametrizing ligands and managing recipes.
+"""Parametrization drivers and shared recipe option helpers.
 
 Classes
 -------
 Parametrization
-    A class for parametrizing ligands using various stages.
-
+    Base class that owns input paths, logging, and stage lists.
 Recipe
-    A subclass of Parametrization for managing ligand recipes.
+    Thin subclass used by concrete ligand workflows.
+
+Functions
+---------
+fresh_recipe_defaults
+    Build a new defaults mapping with fresh mutable values.
+apply_option_defaults
+    Assign kwargs or defaults onto a recipe instance safely.
 """
 
 import logging
@@ -177,7 +182,9 @@ class Parametrization(Driver):
 
 
 class Recipe(Parametrization):
-    """
-    A subclass of Parametrization for managing ligand recipes.
+    """Convenience alias for a ligand-parametrization workflow.
+
+    Subclasses typically implement :meth:`setup` to populate ``self.stages``
+    and may override :meth:`execute` for logging around the base pipeline.
     """
     pass

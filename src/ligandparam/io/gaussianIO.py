@@ -7,21 +7,16 @@ from pathlib import Path
 class GaussianWriter:
     def \
             __init__(self, filename):
-        """ Class for writing Gaussian input files
+        """Class for writing Gaussian input files.
 
-        The filename selected will be the name of the Gaussian input file that is written to 
+        The filename selected will be the name of the Gaussian input file that is written to
         disk. The class also initializes the number of links to zero, and creates an empty list
         to store the GaussianInput objects.
-        
+
         Parameters
         ----------
         filename : str
-            The name of the file to write
-        
-        Returns
-        -------
-        None
-        
+            The name of the file to write.
         """
         self.filename = filename
         self.out_dir = Path(filename).parent.mkdir(exist_ok=True)
@@ -30,21 +25,15 @@ class GaussianWriter:
         return
     
     def write(self, dry_run=False):
-        """ Write the Gaussian input file to a file
+        """Write the Gaussian input file to disk.
 
-        This function writes the Gaussian input file to disk. If dry_run is set to True, the file will not be written
-        to disk, but will be printed to the screen instead. This is useful for debugging. The file is written in the
-        Gaussian input file format, with the LINK1 blocks separated by the --Link1-- delimiter.
-        
+        If ``dry_run`` is True, print the file contents instead of writing.
+        LINK1 blocks are separated by the ``--Link1--`` delimiter.
+
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the file will not be written to disk
-        
-        Returns
-        -------
-        None
-        
+            If True, print the file instead of writing it to disk.
         """
         if dry_run: 
             self.print()
@@ -60,60 +49,35 @@ class GaussianWriter:
         return 
 
     def print(self):
-        """ Print the Gaussian input file to the screen
-
-        This function prints the Gaussian input file to the screen. This is useful for debugging, or for
-        checking the contents of the file before writing it to disk.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-
-        """
+        """Print the Gaussian input file contents to the screen."""
         for linkno, link in enumerate(self.links):
             if linkno == 1: print("--Link1--")
             link.print()
     
     def add_block(self, block):
-        """ Add a GaussianInput block to the GaussianWriter
-        
-        This function adds a GaussianInput block to the GaussianWriter. This block will be written to the
-        Gaussian input file when the write() function is called.
-        
+        """Add a GaussianInput block to this writer.
+
         Parameters
         ----------
         block : GaussianInput
-            The GaussianInput block to add to the GaussianWriter
-        
-        Returns
-        -------
-        None
-        
+            The GaussianInput block to append.
         """
         if isinstance(block, GaussianInput):
             self.nlinks += 1
             self.links.append(block)
     
     def get_run_command(self, extension='.com'):
-        """ Get the command to run the Gaussian input file
-        
-        This function returns a string that can be used to run the Gaussian input file. This is useful for
-        debugging, or for running the Gaussian input file from a script.
-        
+        """Return a shell command string to run this Gaussian input file.
+
         Parameters
         ----------
         extension : str, optional
-            The extension of the Gaussian input file
-        
+            Extension of the Gaussian input file.
+
         Returns
         -------
         str
-            The command to run the Gaussian input file
-        
+            Command to run the Gaussian input file.
         """
         if extension not in self.filename:
             raise ValueError("Extension does not match filename.")
@@ -121,23 +85,22 @@ class GaussianWriter:
 
 class GaussianInput:
     def __init__(self, command="# HF/6-31G* OPT", elements=None, initial_coordinates=None, charge=0, multiplicity=1, header=None):
-        """ Initialize a Gaussian block with the specified parameters.
+        """Initialize a Gaussian input block.
 
         Parameters
         ----------
         command : str, optional
-            The command for the Gaussian calculation
+            The command for the Gaussian calculation.
         elements : list, optional
-            A list of atomic symbols
-        initial_coordinates : np.array, optional
-            A numpy array of atomic coordinates
+            A list of atomic symbols.
+        initial_coordinates : np.ndarray, optional
+            Atomic coordinates.
         charge : int, optional
-            The charge of the molecule
+            The charge of the molecule.
         multiplicity : int, optional
-            The multiplicity of the molecule
+            The multiplicity of the molecule.
         header : list, optional
-            A list of strings to be included in the header of the Gaussian input file
-
+            Header lines (e.g. ``%NPROC``, ``%MEM``) for the input file.
         """
 
         if initial_coordinates is not None:
@@ -154,22 +117,17 @@ class GaussianInput:
         return
     
     def __str__(self):
+        """Return a string representation (currently prints and returns None)."""
         print(self)
         return
     
     def generate_block(self):
-        """ Generates the gaussina input block as a list of strings
+        """Generate the Gaussian input block as a list of lines.
 
-        This function generates the Gaussian input block as a list of strings. This is useful for writing
-        the block to a file, or printing it to the screen.
-        
-        Parameters
-        ----------
-        None
-        
         Returns
         -------
-        None
+        list of str
+            Lines that make up this Gaussian input block.
         """
         lines = []
         if self.header:
@@ -186,6 +144,7 @@ class GaussianInput:
         return lines
     
     def print(self):
+        """Print this Gaussian input block to the screen."""
         for line in self.generate_block():
             print(line)
 
@@ -194,32 +153,23 @@ class GaussianInput:
 
 class GaussianReader:
     def __init__(self, filename):
-        """ This is a class for reading Gaussian log files and pulling out information from them.
+        """Read Gaussian log files and extract calculation results.
 
         Parameters
         ----------
         filename : str
-            The name of the Gaussian log file to read
-            
+            Path to the Gaussian log file.
         """
         self.filename = Path(filename)
         return
     
     def check_complete(self):
-        """ Check if the Gaussian calculation is complete
-
-        This function checks if the Gaussian calculation is complete. This is done by reading the Gaussian log
-        file and checking for the presence of the "Normal termination" string.
-
-        Parameters
-        ----------
-        None
+        """Check whether the Gaussian calculation finished normally.
 
         Returns
         -------
         bool
-            True if the calculation is complete, False otherwise
-
+            True if ``Normal termination`` is found in the log, else False.
         """
         if not self.filename.exists():
             return False
@@ -230,33 +180,27 @@ class GaussianReader:
         return False
     
     def read_log(self):
-        """ Read the Gaussian log file, and extract information from it.
+        """Read the Gaussian log archive and extract final geometry.
 
-        This is adapted from ReadGauOutput in Tim Giese's parmutils package. This reads the 
-        shebang at the end of the file, which contains information about the calculation final
-        results. This works by parsing based on the \\ delimiter in this section.
-
-        Parameters
-        ----------
-        None
+        Adapted from ReadGauOutput in Tim Giese's parmutils package. Parses the
+        archive section at the end of the file using the ``\\`` delimiter.
 
         Returns
         -------
         atn : list
-            A list of atomic symbols
+            Atomic symbols.
         coords : list
-            A list of atomic coordinates
+            Atomic coordinates.
         charge : int
-            The charge of the molecule
+            Molecular charge.
         multiplicity : int
-            The multiplicity of the molecule
+            Spin multiplicity.
 
         Notes
         -----
         .. todo::
             - Add error handling for missing data
             - Check that this reads only the FINAL geometry
-
         """
         atn, coords = [], []
         charge, multiplicity = 0, 1
@@ -309,5 +253,3 @@ if __name__ == "__main__":
 
     read_test = GaussianReader("F3KRP.log")
     read_test.read_log()
-
-

@@ -1,3 +1,5 @@
+"""Low-level file and stream helpers used across ligandparam."""
+
 import ctypes
 import io
 import mmap
@@ -20,21 +22,19 @@ from typing import Optional,  Union
 
 
 def find_word_and_get_line(filepath: Union[Path, str], word: str):
-    """
-    Finds a word in a file using memory mapping and returns the full lines
-    containing the word.
+    """Return lines containing ``word`` using memory-mapped search.
 
     Parameters
     ----------
-    filepath : Union[Path, str]
-        The path to the file to search.
+    filepath : path-like
+        File to search.
     word : str
-        The word to search for in the file.
+        Substring to find.
 
     Returns
     -------
     list of str
-        A list of lines containing the word.
+        Matching lines (stripped).
     """
     word_b = word.encode()  # Encode the word to bytes for searching in mmap
     lines_found = []
@@ -64,22 +64,21 @@ def find_word_and_get_line(filepath: Union[Path, str], word: str):
 
 
 def modify_gaussian_com(filepath: Path, nproc: int, mem: int):
-    """
-    Modifies a Gaussian input file to update the number of processors and memory allocation.
+    """Update ``%NPROC`` / ``%MEM`` header lines in a Gaussian ``.com`` file.
 
     Parameters
     ----------
     filepath : Path
-        The path to the Gaussian input file.
+        Gaussian input file to modify in place.
     nproc : int
-        The number of processors to set in the file.
+        Processor count.
     mem : int
-        The amount of memory (in GB) to set in the file.
+        Memory in GB.
 
     Returns
     -------
     bool
-        True if the file was successfully modified, False otherwise.
+        True if the file was rewritten successfully.
     """
     config_line_regex = re.compile(
     br"%NPROC=\d+(?:, |\r?\n)%MEM=\d+GB"
@@ -122,18 +121,16 @@ def modify_gaussian_com(filepath: Path, nproc: int, mem: int):
 
 @contextmanager
 def stderr_redirector(stream):
-    """
-    Redirects stderr to a given stream within a context.
+    """Temporarily redirect C-level stderr into ``stream``.
 
     Parameters
     ----------
     stream : io.IOBase
-        The stream to which stderr will be redirected.
+        Destination stream for captured stderr bytes.
 
     Yields
     ------
     None
-        Allows the caller to execute code with stderr redirected.
     """
     # The original fd stderr points to. Usually 1 on POSIX systems.
     original_stderr_fd = sys.stderr.fileno()

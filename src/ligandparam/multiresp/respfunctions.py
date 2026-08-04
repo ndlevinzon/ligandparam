@@ -33,16 +33,24 @@ def ReadNextRespCharges(fh):
             break
     return qs
 def GetAvgStdDevAndErr(x):
-    """ Get the average, standard deviation, and standard error of the mean of a list of numbers 
-    
+    """Get the average, standard deviation, and standard error of the mean.
+
     Parameters
     ----------
     x : list of float
-        The list of numbers
-    
-    TODO: Check why this isn't just done with numpy
+        The list of numbers.
+
+    Returns
+    -------
+    avg : float
+        Arithmetic mean.
+    stddev : float
+        Sample standard deviation.
+    stderr : float
+        Standard error of the mean.
     """
     import math
+    # Could use numpy, but kept pure-Python for minimal deps in this helper.
     n = len(x)
     if n == 0:
         return 0,0,0
@@ -56,85 +64,128 @@ def GetAvgStdDevAndErr(x):
     stderr = math.sqrt( var / n )
     return avg,stddev,stderr
 
-def GetAtomsBondedToIdx(parm,idx):
-    """ Get the atoms bonded to a given atom index
-    
+def BuildBondAdjacency(parm):
+    """Build a bond adjacency map from a ParmEd structure.
+
     Parameters
     ----------
-    parm : parmed structure
-        The parmed structure
-    idx : int
-        The atom index
-    
+    parm : parmed.Structure
+        The ParmEd structure.
+
     Returns
     -------
-    cats : list of int
-        The indices of the atoms bonded to the given atom
+    dict of int to list of int
+        Mapping from atom index to bonded neighbor indices.
     """
-
-    cats=[]
+    adjacency = {atom.idx: [] for atom in parm.atoms}
     for bond in parm.bonds:
-        if bond.atom1.idx == idx:
-            cats.append(bond.atom2.idx)
-        elif bond.atom2.idx == idx:
-            cats.append(bond.atom1.idx)
-    return cats
+        i = bond.atom1.idx
+        j = bond.atom2.idx
+        adjacency[i].append(j)
+        adjacency[j].append(i)
+    return adjacency
 
-def GetEquivHydrogens(parm,sele):
-    """ Get the equivalent hydrogens bonded to a given atom
-    
+
+def GetBondAdjacency(parm):
+    """Return a bond adjacency map, building and caching it on ``parm`` if needed.
+
+    Parameters
+    ----------
+    parm : parmed.Structure
+        The ParmEd structure.
+
+    Returns
+    -------
+    dict of int to list of int
+        Mapping from atom index to bonded neighbor indices.
+    """
+    adjacency = getattr(parm, "_bond_adjacency", None)
+    if adjacency is None:
+        adjacency = BuildBondAdjacency(parm)
+        try:
+            parm._bond_adjacency = adjacency
+        except (AttributeError, TypeError):
+            pass
+    return adjacency
+
+
+def GetAtomsBondedToIdx(parm, idx, adjacency=None):
+    """Get the atoms bonded to a given atom index.
+
+    Parameters
+    ----------
+    parm : parmed.Structure
+        The ParmEd structure.
+    idx : int
+        The atom index.
+    adjacency : dict of int to list of int, optional
+        Precomputed bond adjacency. If omitted, one is built/cached on ``parm``.
+
+    Returns
+    -------
+    list of int
+        Indices of atoms bonded to ``idx``.
+    """
+    if adjacency is None:
+        adjacency = GetBondAdjacency(parm)
+    return adjacency.get(idx, [])
+
+
+def GetEquivHydrogens(parm, sele):
+    """Get the equivalent hydrogens bonded to a given atom.
+
     Parameters
     ----------
     parm : parmed structure
-        The parmed structure
+        The ParmEd structure.
     sele : list of int
-        The atom indices
-    
+        The atom indices.
+
     Returns
     -------
     hpairs : list of list of int
-        The indices of the equivalent hydrogens
+        The indices of the equivalent hydrogens.
     """
-
+    adjacency = GetBondAdjacency(parm)
     hpairs = []
     for hvy in sele:
         if parm.atoms[hvy].atomic_number > 1:
-            hbnds=[]
-            bnds = GetAtomsBondedToIdx(parm,hvy)
-            for bat in bnds:
+            hbnds = []
+            for bat in GetAtomsBondedToIdx(parm, hvy, adjacency=adjacency):
                 if parm.atoms[bat].atomic_number == 1:
                     hbnds.append(bat)
             if len(hbnds) > 1:
                 hbnds.sort()
-                hpairs.append( hbnds )
+                hpairs.append(hbnds)
     return hpairs
 
-def GetEquivNonbridgeOxygens(parm,sele):
-    """ Get the equivalent non-bridge oxygens bonded to a given atom
-    
+
+def GetEquivNonbridgeOxygens(parm, sele):
+    """Get the equivalent non-bridge oxygens bonded to a given atom.
+
     Parameters
     ----------
     parm : parmed structure
-        The parmed structure
+        The ParmEd structure.
     sele : list of int
-        The atom indices
-    
+        The atom indices.
+
     Returns
     -------
     hpairs : list of list of int
-        The indices of the equivalent non-bridge oxygens
+        The indices of the equivalent non-bridge oxygens.
     """
+    adjacency = GetBondAdjacency(parm)
     hpairs = []
     for hvy in sele:
         if parm.atoms[hvy].atomic_number == 15:
-            hbnds=[]
-            bnds = GetAtomsBondedToIdx(parm,hvy)
-            for bat in bnds:
+            hbnds = []
+            for bat in GetAtomsBondedToIdx(parm, hvy, adjacency=adjacency):
                 if parm.atoms[bat].type == "O2" or parm.atoms[bat].type == "o2":
                     hbnds.append(bat)
             if len(hbnds) > 1:
                 hbnds.sort()
-                hpairs.append( hbnds )
+                hpairs.append(hbnds)
     return hpairs
 
 def GetResidueNameFromAtomIdx(parm,iat,unique_residues):

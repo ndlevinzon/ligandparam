@@ -21,15 +21,26 @@ rm -f ${out}.punch ${out}.qout ${out}.qwt ${out}.esp
     
 
 def WriteLeapSh(leapsh,param,lib,frcmod,pdb,base,fh=None,overwrite=False):
-    """Writes a shell-script for running tleap
+    """Write a shell script for running tleap.
 
-@param leapsh: name of shell-script to write
-@param param: parm7 object (from parmed)
-@param lib: list of off files to read
-@param frcmod: list of frcmod files to read
-@param pdb: pdb file to read
-@param base: the output basnemae of the parm7 and rst7 files
-@return none
+    Parameters
+    ----------
+    leapsh : str
+        Name of the shell script to write.
+    param : parmed.Structure
+        ParmEd structure (parm7) used for box information.
+    lib : list of str
+        OFF library files to load.
+    frcmod : list of str
+        FRCMod files to load.
+    pdb : str or list of str
+        PDB file(s) to load.
+    base : str
+        Output basename for the parm7 and rst7 files.
+    fh : file handle, optional
+        Open file handle to append to; if omitted, ``leapsh`` is opened.
+    overwrite : bool, optional
+        If False, avoid clobbering an existing ``base.parm7``.
     """
     if fh is None:
         fh = open(leapsh,"w")

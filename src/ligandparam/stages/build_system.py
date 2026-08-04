@@ -13,14 +13,34 @@ from ligandparam.log import get_logger
 
 class StageBuild(AbstractStage):
     """
-    A stage for building molecular systems using Antechamber and Leap.
+    Build molecular systems with Leap (aqueous, gas, or target).
+
+    Parameters
+    ----------
+    stage_name : str
+        The name of the stage.
+    name : Union[Path, str]
+        Main input / ligand name passed to ``AbstractStage``.
+    cwd : Union[Path, str]
+        Current working directory.
+    build_type : str, optional
+        Build mode as a string: ``'aq'``, ``'gas'``, or ``'target'``
+        (default: ``'aq'``). Stored as an integer after validation.
+    target_pdb : str
+        Target PDB file (required for ``'target'`` builds).
+    concentration : float, optional
+        Ion concentration (default: 0.14).
+    rbuffer : float, optional
+        Solvent buffer radius (default: 9.0).
+    leaprc : list of str, optional
+        Leaprc configuration files.
 
     Attributes
     ----------
     target_pdb : str
         The target PDB file.
     build_type : int
-        The type of build to perform (0 for aqueous, 1 for gas, 2 for target).
+        Validated build mode: 0 (aqueous), 1 (gas), or 2 (target).
     concentration : float
         The concentration of ions.
     rbuffer : float
@@ -31,23 +51,6 @@ class StageBuild(AbstractStage):
 
     @override
     def __init__(self, stage_name: str, name: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
-        """ This class is used to initialize from pdb to mol2 file using Antechamber.
-        
-        Parameters
-        ----------
-        name : str
-            The name of the stage
-        build_type : str
-            The type of build to perform [aq, gas, or target]
-        target_pdb : str
-            The target pdb file
-        concentration : float
-            The concentration of the ions
-        rbuffer : float
-            The buffer radius
-        inputoptions : dict
-            The input options
-        """
         super().__init__(stage_name, name, cwd, *args, **kwargs)
         
         self.target_pdb = kwargs['target_pdb']
@@ -111,20 +114,16 @@ class StageBuild(AbstractStage):
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """
-        Execute the Gaussian calculations.
+        Execute the Leap system build for the selected ``build_type``.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
+            If True, log the commands that would be run without executing them.
         nproc : int, optional
-            The number of processors to use (default is None).
+            Number of processors to use (unused by Leap builds).
         mem : int, optional
-            The amount of memory to use (in GB, default is None).
-
-        Returns
-        -------
-        None
+            Amount of memory to use in GB (unused by Leap builds).
         """
         if self.build_type == 0:
             self._aq_build(dry_run=dry_run)
@@ -151,7 +150,7 @@ class StageBuild(AbstractStage):
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
+            If True, log the commands that would be run without executing them.
         """
         aqleap = LeapWriter("aq")
         # Add the leaprc files
@@ -198,12 +197,12 @@ class StageBuild(AbstractStage):
 
     def _gas_build(self, dry_run=False):
         """
-        Build the ligand in a gas environment.
+        Build the ligand in a gas-phase environment.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
+            If True, log the commands that would be run without executing them.
         """
         gasleap = LeapWriter("gas")
         # Add the leaprc files
@@ -224,12 +223,12 @@ class StageBuild(AbstractStage):
 
     def _target_build(self, dry_run=False):
         """
-        Build the ligand in the target environment.
+        Build the ligand in the target (complex) environment.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
+            If True, log the commands that would be run without executing them.
         """
         self.check_target()
         targetleap = LeapWriter("target")

@@ -2,6 +2,7 @@ import os
 from typing import Optional,  Union, Any
 import logging
 import warnings
+from itertools import product
 
 import MDAnalysis as mda
 
@@ -105,13 +106,17 @@ class GaussianMinimizeRESP(AbstractStage):
             self.gaussian_binary = "g16"
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Appends the stage.
+        """Append a stage to the current stage.
 
-        Args:
-            stage (AbstractStage): _description_
+        Parameters
+        ----------
+        stage : AbstractStage
+            The stage to append.
 
-        Returns:
-            AbstractStage: _description_
+        Returns
+        -------
+        AbstractStage
+            The appended stage.
         """
         return stage
 
@@ -195,17 +200,16 @@ class GaussianMinimizeRESP(AbstractStage):
         return gau_complete
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the Gaussian calculations.
+        """Execute the Gaussian minimization and RESP calculations.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would
-
-        Returns
-        -------
-        None
-
+            If True, log the commands that would be run without executing them.
+        nproc : int, optional
+            Number of processors to use.
+        mem : int, optional
+            Amount of memory to use (in GB).
         """
         super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         gau_complete = self.setup(self.label)
@@ -308,13 +312,17 @@ class GaussianRESP(AbstractStage):
             self.gaussian_binary = "g16"
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Appends the stage.
+        """Append a stage to the current stage.
 
-        Args:
-            stage (AbstractStage): _description_
+        Parameters
+        ----------
+        stage : AbstractStage
+            The stage to append.
 
-        Returns:
-            AbstractStage: _description_
+        Returns
+        -------
+        AbstractStage
+            The appended stage.
         """
         return stage
 
@@ -382,17 +390,16 @@ class GaussianRESP(AbstractStage):
         return gau_complete
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the Gaussian calculations.
+        """Execute the Gaussian RESP calculation.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would
-
-        Returns
-        -------
-        None
-
+            If True, log the commands that would be run without executing them.
+        nproc : int, optional
+            Number of processors to use.
+        mem : int, optional
+            Amount of memory to use (in GB).
         """
         super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         gau_complete = self.setup(self.label)
@@ -419,63 +426,66 @@ class GaussianRESP(AbstractStage):
         raise NotImplementedError("clean method not implemented")
 
 class StageGaussianRotation(AbstractStage):
+    """
+    Rotate the ligand and run Gaussian RESP calculations for each orientation.
+
+    Rotations use Euler angles in degrees applied as Rx then Ry then Rz about
+    the center of mass, matching :meth:`Coordinates.rotate`.
+
+    Parameters
+    ----------
+    stage_name : str
+        The name of the stage.
+    main_input : Union[Path, str]
+        Path to the input mol2 file.
+    cwd : Union[Path, str]
+        Current working directory.
+    out_gaussian_label : str
+        Label for the output Gaussian files.
+    alpha : list of float
+        Alpha (x-axis) rotation angles in degrees.
+    beta : list of float
+        Beta (y-axis) rotation angles in degrees.
+    gamma : list of float
+        Gamma (z-axis) rotation angles in degrees.
+    opt_theory : str, optional
+        Theory for optimization (default: 'HF/6-31G*').
+    resp_theory : str, optional
+        Theory for RESP calculation (default: 'HF/6-31G*').
+    net_charge : float, optional
+        Net charge for the molecule (default: 0.0).
+    force_gaussian_rerun : bool, optional
+        Whether to force rerun of Gaussian (default: False).
+
+    Attributes
+    ----------
+    in_mol2 : Path
+        Path to the input mol2 file.
+    out_gaussian_label : str
+        Label for the output Gaussian files.
+    alpha : list of float
+        Alpha (x-axis) rotation angles in degrees.
+    beta : list of float
+        Beta (y-axis) rotation angles in degrees.
+    gamma : list of float
+        Gamma (z-axis) rotation angles in degrees.
+    opt_theory : str
+        Theory for optimization.
+    resp_theory : str
+        Theory for RESP calculation.
+    net_charge : float
+        Net charge for the molecule.
+    force_gaussian_rerun : bool
+        Whether to force rerun of Gaussian.
+    gaussian_cwd : Path
+        Directory for Gaussian calculations.
+    in_com_template : Path
+        Template for input Gaussian .com files.
+    xyz : Path
+        Path to the output XYZ file for rotations.
+    """
+
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
-        """
-        Rotate the ligand and run Gaussian calculations of the RESP charges for each rotated ligand.
-
-        Parameters
-        ----------
-        stage_name : str
-            The name of the stage.
-        main_input : Union[Path, str]
-            Path to the input mol2 file.
-        cwd : Union[Path, str]
-            Current working directory.
-        out_gaussian_label : str
-            Label for the output Gaussian files.
-        alpha : list
-            List of alpha angles to rotate the ligand.
-        beta : list
-            List of beta angles to rotate the ligand.
-        gamma : list
-            List of gamma angles to rotate the ligand.
-        opt_theory : str, optional
-            Theory for optimization (default: 'HF/6-31G*').
-        resp_theory : str, optional
-            Theory for RESP calculation (default: 'HF/6-31G*').
-        net_charge : float, optional
-            Net charge for the molecule (default: 0.0).
-        force_gaussian_rerun : bool, optional
-            Whether to force rerun of Gaussian (default: False).
-
-        Attributes
-        ----------
-        in_mol2 : Path
-            Path to the input mol2 file.
-        out_gaussian_label : str
-            Label for the output Gaussian files.
-        alpha : list
-            List of alpha angles to rotate the ligand.
-        beta : list
-            List of beta angles to rotate the ligand.
-        gamma : list
-            List of gamma angles to rotate the ligand.
-        opt_theory : str
-            Theory for optimization.
-        resp_theory : str
-            Theory for RESP calculation.
-        net_charge : float
-            Net charge for the molecule.
-        force_gaussian_rerun : bool
-            Whether to force rerun of Gaussian.
-        gaussian_cwd : Path
-            Directory for Gaussian calculations.
-        in_com_template : Path
-            Template for input Gaussian .com files.
-        xyz : Path
-            Path to the output XYZ file for rotations.
-        """
-
         super().__init__(stage_name, main_input, cwd, *args, **kwargs)
         self.in_mol2 = Path(main_input)
         self.out_gaussian_label = kwargs["out_gaussian_label"]
@@ -522,13 +532,17 @@ class StageGaussianRotation(AbstractStage):
             self.gaussian_binary = "g16"
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Append the stage to the current stage.
+        """Append a stage to the current stage.
 
         Parameters
         ----------
         stage : AbstractStage
-            The stage to append to the current stage
+            The stage to append.
 
+        Returns
+        -------
+        AbstractStage
+            The appended stage.
         """
         return stage
 
@@ -538,8 +552,9 @@ class StageGaussianRotation(AbstractStage):
 
         Parameters
         ----------
-        name_template : str
-            Template name for input/output files.
+        name_template : str or Path
+            Template name for input/output files. Accepted as either a string
+            or a Path (callers may pass either).
 
         Returns
         -------
@@ -556,8 +571,7 @@ class StageGaussianRotation(AbstractStage):
         logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
         print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
 
-        # This is a work-around, for some reason the dpfree method brings name_templte in as a Path object, whereas regular free ligand
-        # brings it in as a string. This just allows the code to work with both cases.
+        # Work-around: some callers pass name_template as a Path, others as a str.
         if not isinstance(name_template, Path):
             name_label = name_template
         else:
@@ -566,30 +580,29 @@ class StageGaussianRotation(AbstractStage):
         store_coords = []
         self.in_coms = []
         self.out_logs = []
-        for a in self.alpha:
-            for b in self.beta:
-                for g in self.gamma:
-                    test_rotation = self.coord_object.rotate(alpha=a, beta=b, gamma=g)
-                    store_coords.append(test_rotation)
-                    in_com = self.gaussian_cwd / f"{name_label}_rot_{a:0.2f}_{b:0.2f}_{g:0.2f}.com"
-                    print(f"--> Writing Gaussian input file: {in_com}")
-                    self.in_coms.append(in_com)
-                    newgau = GaussianWriter(in_com)
-                    newgau.add_block(
-                        GaussianInput(
-                            command=f"#P {self.resp_theory} SCF(Conver=6) NoSymm Test Pop=mk IOp(6/33=2) GFInput GFPrint",
-                            initial_coordinates=test_rotation,
-                            elements=self.coord_object.get_elements(),
-                            charge=self.net_charge,
-                            header=self.header,
-                        )
-                    )
-                    # Always write the Gaussian input file
-                    newgau.write(dry_run=False)
+        elements = self.coord_object.get_elements()
+        for a, b, g in product(self.alpha, self.beta, self.gamma):
+            test_rotation = self.coord_object.rotate(alpha=a, beta=b, gamma=g)
+            store_coords.append(test_rotation)
+            in_com = self.gaussian_cwd / f"{name_label}_rot_{a:0.2f}_{b:0.2f}_{g:0.2f}.com"
+            print(f"--> Writing Gaussian input file: {in_com}")
+            self.in_coms.append(in_com)
+            newgau = GaussianWriter(in_com)
+            newgau.add_block(
+                GaussianInput(
+                    command=f"#P {self.resp_theory} SCF(Conver=6) NoSymm Test Pop=mk IOp(6/33=2) GFInput GFPrint",
+                    initial_coordinates=test_rotation,
+                    elements=elements,
+                    charge=self.net_charge,
+                    header=self.header,
+                )
+            )
+            # Always write the Gaussian input file
+            newgau.write(dry_run=False)
 
-                    out_log = self.gaussian_cwd / f"{name_label}_rot_{a:0.2f}_{b:0.2f}_{g:0.2f}.log"
-                    self.out_logs.append(out_log)
-                    self._add_outputs(out_log)
+            out_log = self.gaussian_cwd / f"{name_label}_rot_{a:0.2f}_{b:0.2f}_{g:0.2f}.log"
+            self.out_logs.append(out_log)
+            self._add_outputs(out_log)
 
         # Write the coordinates to a "trajectory" file
         self.write_rotation(store_coords, name_label)
@@ -597,15 +610,16 @@ class StageGaussianRotation(AbstractStage):
         return False
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the Gaussian calculations for the rotated ligands.
+        """Execute Gaussian RESP calculations for each rotated ligand.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would
-
-        Returns
-        -------
+            If True, log the commands that would be run without executing them.
+        nproc : int, optional
+            Number of processors to use.
+        mem : int, optional
+            Amount of memory to use (in GB).
         """
         super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         self.setup(self.out_gaussian_label)
@@ -626,37 +640,37 @@ class StageGaussianRotation(AbstractStage):
 
     def _print_rotation(self, alpha, beta, gamma):
         """
-        Print the rotation angles to the user.
+        Log the current rotation angles.
 
         Parameters
         ----------
         alpha : float
-            Alpha rotation angle.
+            Alpha (x-axis) rotation angle in degrees.
         beta : float
-            Beta rotation angle.
+            Beta (y-axis) rotation angle in degrees.
         gamma : float
-            Gamma rotation angle.
+            Gamma (z-axis) rotation angle in degrees.
         """
         self.logger.info(f"---> Rotation: alpha={alpha}, beta={beta}, gamma={gamma}")
         return
 
     def _print_status(self, count, alphas, betas, gammas):
-        """Print the status of the stage.
+        """Log progress through the rotation grid.
 
         Parameters
         ----------
         count : int
-            The current count of the rotations
-        alphas : list
-            The list of alpha angles
-        betas : list
-            The list of beta angles
-        gammas : list
-            The list of gamma angles
+            Index of the current rotation (0-based).
+        alphas : list of float
+            Alpha (x-axis) angles in degrees.
+        betas : list of float
+            Beta (y-axis) angles in degrees.
+        gammas : list of float
+            Gamma (z-axis) angles in degrees.
         """
         total_count = len(alphas) * len(betas) * len(gammas)
         percent = count / total_count * 100
-        self.logger.info(f"Current Rotation Progress: {percent:.2f}%%")
+        self.logger.info(f"Current Rotation Progress: {percent:.2f}%")
         return
 
     def write_rotation(self, coords, name_template: str):
@@ -776,11 +790,6 @@ class StageGaussiantoMol2(AbstractStage):
         ----------
         name_template : str
             Template name for input/output files.
-
-        Returns
-        -------
-        bool
-            Always returns None (setup does not check completion).
         """
         self.add_required(self.in_log)
 
@@ -793,12 +802,11 @@ class StageGaussiantoMol2(AbstractStage):
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would
-
-        Returns
-        -------
-        None
-
+            If True, log the commands that would be run without executing them.
+        nproc : int, optional
+            Number of processors to use.
+        mem : int, optional
+            Amount of memory to use (in GB).
         """
         super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
 
@@ -840,12 +848,7 @@ class StageGaussiantoMol2(AbstractStage):
         Parameters
         ----------
         file_path : str
-            The path to the file to remove blank lines from
-
-        Returns
-        -------
-        None
-
+            Path to the file to clean.
         """
         if Path(file_path).exists():
             # Read the file and filter out blank lines

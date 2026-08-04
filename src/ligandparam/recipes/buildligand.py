@@ -1,8 +1,19 @@
+"""Recipes for building solvated or target-bound ligand systems.
+
+This module is a placeholder; :class:`BuildLigand` is not implemented yet.
+"""
+
 from ligandparam.parametrization import Recipe
 from ligandparam.stages import *
 
 
 class BuildLigand(Recipe):
+    """Build gas/aqueous/target systems around a parameterized ligand.
+
+    Not implemented. Use :class:`~ligandparam.recipes.LazyLigand` or
+    :class:`~ligandparam.recipes.FreeLigand` for ligand parameterization.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -14,26 +25,6 @@ class BuildLigand(Recipe):
         self.target_pdb = kwargs.get("target_pdb")
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         raise NotImplementedError(
-            "The BuildLigand recipe is not yet implemented. Please use LazyLigand or another recipe for now."
+            "The BuildLigand recipe is not yet implemented. "
+            "Please use LazyLigand or another recipe for now."
         )
-
-"""
-    def setup(self):
-        self.stages = [
-            StageInitialize("Initialize",,,
-            StageNormalizeCharge("Normalize1",,,
-            GaussianMinimize("Minimize", inputoptions=self.inputoptions),
-            StageGaussianRotation("Rotate",,,
-            StageGaussiantoMol2("GrabGaussianCharge",,,
-            StageMultiRespFit("MultiRespFit",,,
-            StageUpdateCharge("UpdateCharge",,,
-            StageNormalizeCharge("Normalize2",,,
-            StageUpdate("UpdateNames",,,
-            StageUpdate("UpdateTypes",,,
-            StageParmChk("ParmChk",,,
-            StageLeap("Leap",,,
-            StageBuild("BuildGas",  build_type='gas', inputoptions=self.inputoptions),
-            StageBuild("BuildAq",  build_type='aq', concentration=0.14, inputoptions=self.inputoptions),
-            StageBuild("BuildTarget",  build_type='target', inputoptions=self.inputoptions)
-        ]
-"""

@@ -5,7 +5,8 @@ from ligandparam.log import get_logger
 
 
 class TestStage(AbstractStage):
-    """ This is an abstract class for all the stages. """
+    """Minimal stage used for testing the stage interface."""
+
     def __init__(self, name, **kwargs) -> None:
         self.name = name
         self._parse_inputoptions(kwargs)

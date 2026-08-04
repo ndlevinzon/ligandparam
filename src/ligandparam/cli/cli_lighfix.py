@@ -1,3 +1,5 @@
+"""CLI to fix ligand hydrogenation and bonding from PDB input."""
+
 import sys
 from pathlib import Path
 import argparse

@@ -1,3 +1,5 @@
+"""CLI to generate AMBER parameters from a MOL2 via OpenFF Sage."""
+
 import os
 
 from ligandparam.stages import StageSageCreate, StageSageToAmber

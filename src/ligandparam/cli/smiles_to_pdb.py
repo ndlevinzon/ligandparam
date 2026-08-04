@@ -1,3 +1,5 @@
+"""CLI to convert a SMILES string to a 3D PDB."""
+
 import argparse
 from rdkit import Chem
 from rdkit.Chem import AllChem

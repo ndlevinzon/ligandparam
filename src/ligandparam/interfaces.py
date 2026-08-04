@@ -1,3 +1,5 @@
+"""Wrappers that invoke external Amber/Gaussian tools via subprocess."""
+
 import logging
 import os
 from abc import abstractmethod
@@ -9,28 +11,21 @@ from ligandparam.log import get_logger
 
 
 class SimpleInterface:
-    """
-    A simple interface to call external programs.
+    """Base wrapper for calling an external program.
 
-    This class is designed to be subclassed, with the `method` attribute set to the desired program. The `call` method will then execute the program with the specified arguments.
-
-    Parameters
-    ----------
-    *args : list
-        Additional arguments to pass to the subclass.
-    **kwargs : dict
-        Additional keyword arguments to pass to the subclass.
+    Subclasses set ``method`` to the executable name. :meth:`call` runs the
+    program in ``cwd`` with optional logging and dry-run support.
 
     Attributes
     ----------
     method : str
-        The method to call the external program.
+        Executable name or path.
     logger : logging.Logger
-        The logger to use for logging.
+        Logger used for command output.
     cwd : Path
-        The current working directory to run the program in.
+        Working directory for the subprocess.
     nproc : int
-        The number of processors to use for the program.
+        Processor hint forwarded by callers that support it.
     """
 
     @abstractmethod

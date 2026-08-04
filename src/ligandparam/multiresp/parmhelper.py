@@ -618,14 +618,8 @@ class Fragment(object):
         idx : int
             The index
         """
-        
-        cats=[]
-        for bond in self.parmobj.bonds:
-            if bond.atom1.idx == idx:
-                cats.append(bond.atom2.idx)
-            elif bond.atom2.idx == idx:
-                cats.append(bond.atom1.idx)
-        return cats
+        from ligandparam.multiresp.respfunctions import GetAtomsBondedToIdx as _bonded_to
+        return _bonded_to(self.parmobj, idx)
 
 class FragmentedSys(object):
     """ A fragmented system """

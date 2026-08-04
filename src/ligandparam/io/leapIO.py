@@ -52,12 +52,12 @@ class LeapWriter:
         return
 
     def remove_line(self, string):
-        """ Remove a line from the tleap input file. 
-        
+        """Remove the first line containing ``string`` from the tleap input.
+
         Parameters
         ----------
-        line : str
-            The line to remove from the tleap input file
+        string : str
+            Substring used to identify the line to remove.
         """
         for line in self.lines:
             if string in line:
@@ -65,11 +65,12 @@ class LeapWriter:
         return
     
     def write(self, out_filepath):
-        """ Write the tleap input file to disk.
+        """Write the tleap input file to disk.
 
-        This method writes the tleap input file to disk. The filename
-        is generated from the name of the LeapWriter object.
-
+        Parameters
+        ----------
+        out_filepath : str
+            Path of the tleap input file to write.
         """
         with open(out_filepath, 'w') as f:
             for line in self.leaprc:

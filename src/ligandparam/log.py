@@ -1,17 +1,4 @@
-"""
-This module provides logging utilities for the ligandparam package.
-
-Functions
----------
-get_logger() -> logging.Logger
-    Returns a logger with a null handler.
-
-set_stream_logger(logging_level: int = logging.INFO) -> logging.Logger
-    Sets up a logger to output to the standard output stream.
-
-set_file_logger(logfilename: Path, logname: str = None, filemode: str = 'a') -> logging.Logger
-    Sets up a logger to output to a file.
-"""
+"""Logging helpers for the ligandparam package."""
 
 import sys
 import logging

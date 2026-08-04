@@ -7,26 +7,25 @@ import numpy as np
 from rdkit.Chem import rdFMCS
 
 class PDBFromSMILES:
-    """ This class generates a PDB file from a SMILES string. 
-    
-    Parameters:
-    ----------
-    resname : str
-        The residue name of the molecule.
-    smiles : str
-        The SMILES string of the molecule.
-    
+    """Generate a PDB file from a SMILES string.
 
-    Attributes:
+    Parameters
     ----------
     resname : str
-        The residue name of the molecule.
+        Residue name of the molecule.
     smiles : str
-        The SMILES string of the molecule.
+        SMILES string of the molecule.
+
+    Attributes
+    ----------
+    resname : str
+        Residue name of the molecule.
+    smiles : str
+        SMILES string of the molecule.
     mol : rdkit.Chem.Mol
-        The RDKit molecule object.
+        RDKit molecule object.
     pdb_filename : str
-        The name of the PDB file.
+        Path to the written PDB file.
     """
     def __init__(self, resname, smiles):
         self.resname = resname
@@ -36,18 +35,14 @@ class PDBFromSMILES:
 
     
     def write_pdb(self, filename, randomSeed=0xf00d):
-        """ Write the PDB file using rdkit to filename. 
-        
-        Parameters:
+        """Embed the molecule and write a cleaned PDB file.
+
+        Parameters
         ----------
         filename : str
-            The name of the PDB file.
-        randomSeed : hex
-            The random seed for the embedding algorithm.
-        
-        Returns:
-        --------
-        None
+            Output PDB path.
+        randomSeed : int, optional
+            Random seed for the embedding algorithm.
         """
         params = rdkit.Chem.AllChem.ETKDGv3()
         params.randomSeed = randomSeed
@@ -58,16 +53,12 @@ class PDBFromSMILES:
         return
     
     def mol_from_smiles(self, addHs=True):
-        """ Generate a molecule from a SMILES string. 
-        
-        Parameters:
-        -----------
-        addHs : bool
+        """Build an RDKit molecule from the stored SMILES string.
+
+        Parameters
+        ----------
+        addHs : bool, optional
             Whether to add hydrogens to the molecule.
-            
-        Returns:
-        -------
-        None
         """
         mol = rdkit.Chem.MolFromSmiles(self.smiles)
         if addHs:
@@ -76,6 +67,8 @@ class PDBFromSMILES:
         return 
     
 class MolFromPDB:
+    """Load a PDB file into both RDKit and MDAnalysis representations."""
+
     def __init__(self, pdb_filename, removeHs=False):
         self.remove_Hs = removeHs
         self.pdb_filename = pdb_filename
@@ -85,33 +78,34 @@ class MolFromPDB:
 
     
     def _rdkit_representation(self):
-        """ Generate an RDKit molecule from a PDB file. """
+        """Generate an RDKit molecule from the PDB file."""
         self.rdkit_mol = rdkit.Chem.rdmolfiles.MolFromPDBFile(self.pdb_filename, removeHs=self.remove_Hs)
         return
     
     def _mda_representation(self):
-        """ Generate an MDAnalysis Universe from a PDB file. """
+        """Generate an MDAnalysis Universe from the PDB file."""
         self.mda_universe = mda.Universe(self.pdb_filename)
         return
     
     def resname(self):
-        """ Get the residue name from the PDB file. """
+        """Return the residue name from the PDB file."""
         return self.mda_universe.atoms.residues.resnames[0]
     
     def names(self):
+        """Return atom names from the MDAnalysis Universe."""
         return self.mda_universe.atoms.names
     
     def elements(self):
+        """Return element symbols from the MDAnalysis Universe."""
         return self.mda_universe.atoms.elements
     
     def write_pdb(self, filename):
-        """ Write the PDB file using MDAnalysis to filename.
-        
-        Parameters:
+        """Write the Universe to a PDB file and clean residue names.
+
+        Parameters
         ----------
         filename : str
-            The name of the PDB file.
-        
+            Output PDB path.
         """
         self.mda_universe.atoms.write(filename)
         clean_pdb(filename, self.resname())
@@ -119,27 +113,25 @@ class MolFromPDB:
     
     
 class RenamePDBTypes:
-    """ This class renames the atom types in a PDB file based on a reference PDB file.
-    
-    Parameters:
+    """Rename atom types in a PDB file using a reference structure.
+
+    Parameters
     ----------
     primary_pdb : str
-        The name of the primary PDB file.
+        Path to the primary PDB file to rename.
     resname : str
-        The residue name of the molecule.
-    
-    Attributes:
-    -----------
+        Residue name of the molecule.
+
+    Attributes
+    ----------
     primary_pdb : str
-        The name of the primary PDB file.
+        Path to the primary PDB file.
     resname : str
-        The residue name of the molecule.
+        Residue name of the molecule.
     mols : list
-        A list of MolFromPDB objects.
+        List of :class:`MolFromPDB` objects.
     mcs_mol : rdkit.Chem.Mol
-        The RDKit molecule object of the common substructure.
-    
-    
+        RDKit molecule of the common substructure.
     """
     def __init__(self, primary_pdb, resname):
         self.primary_pdb = primary_pdb
@@ -149,12 +141,12 @@ class RenamePDBTypes:
         return
     
     def add_mol(self, mol_pdb):
-        """ Add a molecule to the RenamePDBTypes object. """
+        """Add a reference molecule from a PDB path."""
         self.mols.append(MolFromPDB(mol_pdb))
         return
     
     def rename_by_reference(self):
-        """ Rename the PDB files by the reference PDB file. """
+        """Rename atoms in the primary PDB to match the reference molecule."""
         if len(self.mols) != 2:
             raise ValueError("ERROR: Only two molecules can be compared for reference.")
         st_comm, rf_comm = self.common_atoms()
@@ -185,18 +177,35 @@ class RenamePDBTypes:
         return
     
     def find_mcs(self):
-        """ Find the common substructure between the molecules. """
+        """Find the maximum common substructure between loaded molecules."""
         mcs = rdFMCS.FindMCS([mol.rdkit_mol for mol in self.mols])
         self.mcs_mol = rdkit.Chem.rdmolfiles.MolFromSmarts(mcs.smartsString)
         return
     
     def common_atoms(self):
-        """ Get the common atoms between the molecules. """
+        """Return atom-index arrays for the common substructure in each molecule.
+
+        Returns
+        -------
+        list of np.ndarray
+            Matching atom indices per molecule.
+        """
         self.find_mcs()
         return [np.array(mol.rdkit_mol.GetSubstructMatch(self.mcs_mol)) for mol in self.mols]
 
     def _split_letters_numbers(self, s):
-        """Split a string into letters and numbers."""
+        """Split a string into leading letters and trailing digits.
+
+        Parameters
+        ----------
+        s : str
+            Atom-name-like string to split.
+
+        Returns
+        -------
+        tuple or None
+            ``(letters, numbers)`` if matched, else None.
+        """
         match = re.match(r"([a-zA-Z]+)([0-9]+)", s)
         if match:
             return match.groups()
@@ -205,6 +214,15 @@ class RenamePDBTypes:
 
 
 def clean_pdb(pdb_filename, resname):
+    """Replace UNL residue names and strip SYST tags from a PDB file.
+
+    Parameters
+    ----------
+    pdb_filename : str
+        PDB file to clean in place.
+    resname : str
+        Three-character residue name to substitute for ``UNL``.
+    """
     if len(resname) != 3:
         raise ValueError("Resname must be 3 characters")
     lines = []
