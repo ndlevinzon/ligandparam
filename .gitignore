@@ -157,3 +157,4 @@ sqm*
 !/examples/05_FromSDF/*sdf
 
 localtest/
+ligparam.txt
