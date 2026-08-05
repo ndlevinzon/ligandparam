@@ -41,6 +41,10 @@ class FreeLigand(Recipe):
         Leaprc files for the Leap stage. Default ``["leaprc.gaff2"]``.
     force_gaussian_rerun : bool, optional
         Rerun Gaussian even if output logs already exist.
+    orientation_protocol : {"so3_n28", "legacy_euler"}, optional
+        Rotation sampling used for multi-RESP. The default ``so3_n28`` uses
+        28 deterministic quaternion-packed orientations. ``legacy_euler``
+        restores the previous 28-point alpha/beta grid with gamma fixed at 0.
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
@@ -85,6 +89,7 @@ class FreeLigand(Recipe):
         for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
             setattr(self, opt, kwargs.pop(opt, None))
 
+        self.orientation_protocol = kwargs.pop("orientation_protocol", "so3_n28")
         self.kwargs = kwargs
 
     def setup(self):
@@ -100,7 +105,12 @@ class FreeLigand(Recipe):
         hightheory_minimization_gaussian_log = self.cwd / f"{self.label}.hightheory.minimization.log"
         resp_mol2_low = self.cwd / f"{self.label}.minimized.lowtheory.mol2"
         resp_mol2_high = self.cwd / f"{self.label}.minimized.mol2"
-        rotation_label = f"{self.label}.rotation"
+        # Namespace quaternion outputs so stale legacy Euler logs cannot be
+        # included accidentally in the same multi-RESP fit.
+        if self.orientation_protocol == "so3_n28":
+            rotation_label = f"{self.label}.rotation.so3_n28"
+        else:
+            rotation_label = f"{self.label}.rotation"
         rotated_mol2 = self.cwd / f"{self.label}.rotated.mol2"
         out_respfit = self.cwd / f"respfit.charges.{self.label}"
         resp_mol2 = self.cwd / f"{self.label}.resp.mol2"
@@ -214,6 +224,8 @@ class FreeLigand(Recipe):
                 theory=self.theory,
                 force_gaussian_rerun=self.force_gaussian_rerun,
                 out_gaussian_label=rotation_label,
+                orientation_protocol=self.orientation_protocol,
+                # Retained for reproducibility when legacy_euler is requested.
                 alpha=[0, 30, 60, 90, 120, 150, 180],
                 beta=[0, 30, 60, 90],
                 gamma=[0],
@@ -228,6 +240,7 @@ class FreeLigand(Recipe):
                 in_gaussian_label=rotation_label,
                 out_respfit=out_respfit,
                 net_charge=self.net_charge,
+                expected_gaussian_logs=28,
                 logger=self.logger,
                 **self.kwargs,
             ),

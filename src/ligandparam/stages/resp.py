@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.interfaces import Antechamber
+from ligandparam.io.gaussianIO import GaussianReader
 
 from ligandparam.multiresp import parmhelper
 from ligandparam.multiresp.residueresp import ResidueResp
@@ -141,6 +142,9 @@ class StageMultiRespFit(AbstractStage):
         Path to the output RESP fit file (from kwargs).
     net_charge : float, optional
         Net charge for the molecule (default is 0.0).
+    expected_gaussian_logs : int, optional
+        Required number of rotation logs. If provided, fitting stops rather
+        than silently using a partial or mixed orientation set.
     """
 
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
@@ -169,6 +173,7 @@ class StageMultiRespFit(AbstractStage):
         self.out_respfit = Path(kwargs["out_respfit"])
 
         self.net_charge = kwargs.get("net_charge", 0.0)
+        self.expected_gaussian_logs = kwargs.get("expected_gaussian_logs")
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """
@@ -204,9 +209,43 @@ class StageMultiRespFit(AbstractStage):
         Any
             None
         """
+        # Both Euler and quaternion rotation jobs preserve the
+        # "<in_gaussian_label>_*.log" naming contract. Sorting makes the
+        # multi-state fit deterministic (q000, q001, ... for quaternion packs).
+        gaussian_logs = sorted(glob.glob(self.glob_str))
+        if not gaussian_logs:
+            raise FileNotFoundError(
+                f"No Gaussian rotation logs matched {self.glob_str!r}"
+            )
+        if (
+            self.expected_gaussian_logs is not None
+            and len(gaussian_logs) != self.expected_gaussian_logs
+        ):
+            raise RuntimeError(
+                f"Expected {self.expected_gaussian_logs} Gaussian rotation logs "
+                f"for {self.in_gaussian_label!r}, found {len(gaussian_logs)}. "
+                "Refusing to perform a partial or mixed-orientation RESP fit."
+            )
+        incomplete_logs = [
+            filename
+            for filename in gaussian_logs
+            if not GaussianReader(filename).check_complete()
+        ]
+        if incomplete_logs:
+            names = ", ".join(Path(filename).name for filename in incomplete_logs)
+            raise RuntimeError(
+                f"{len(incomplete_logs)} Gaussian rotation job(s) did not "
+                f"terminate normally: {names}"
+            )
+
         comp = parmhelper.BASH(12)
         model = ResidueResp(comp, 1)
-        model.add_state(self.in_gaussian_label, str(self.in_mol2), glob.glob(self.glob_str), qmmask="@*")
+        model.add_state(
+            self.in_gaussian_label,
+            str(self.in_mol2),
+            gaussian_logs,
+            qmmask="@*",
+        )
         model.multimolecule_fit(True)
         model.perform_fit("@*", unique_residues=False)
         with open(self.out_respfit, "w") as f:

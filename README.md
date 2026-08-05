@@ -121,7 +121,7 @@ Typical outputs (depending on recipe) include minimized / RESP `mol2` files, `fr
 |--------|----------------|-----------|
 | **`LazierLigand`** | Antechamber charges (e.g. BCC) + Leap | You want a fast, no-Gaussian path |
 | **`LazyLigand`** | Gaussian minimize + single-orientation RESP | Standard RESP without multi-orientation sampling |
-| **`FreeLigand`** | Multi-orientation ESP + multi-RESP fit | Higher-quality charge averaging over rotations |
+| **`FreeLigand`** | 28-point quaternion SO(3) sampling + multi-RESP fit | Higher-quality charge averaging over well-separated orientations |
 | **`DPLigand`** | DeepMD minimization + Gaussian RESP | You have a DeepMD model for geometry |
 | **`DPFreeLigand`** | DeepMD + multi-orientation RESP | DeepMD geometry + FreeLigand-quality charges |
 | **`SQMLigand`** | SQM / DeepMD-assisted minimize + RESP | Semiempirical-assisted workflows |
@@ -135,6 +135,11 @@ recipe.remove_stage("Normalize1")
 # recipe.insert_stage(new_stage, "SomeExistingStage")
 recipe.execute()
 ```
+
+`FreeLigand` uses the deterministic `so3_n28` quaternion pack by default. To
+reproduce the previous alpha/beta Euler grid, pass
+`orientation_protocol="legacy_euler"` when constructing the recipe. Both
+protocols use 28 Gaussian ESP jobs.
 
 ---
 

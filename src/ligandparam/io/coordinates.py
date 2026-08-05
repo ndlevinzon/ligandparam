@@ -136,6 +136,41 @@ class Coordinates:
         self.u.atoms.positions = rotated
         return rotated
 
+    def rotate_matrix(self, rotation: np.ndarray) -> np.ndarray:
+        """Rotate the original coordinates using an explicit rotation matrix.
+
+        The rotation is applied about the mass-weighted center of mass. This
+        is the path used by quaternion SO(3) orientation protocols.
+
+        Parameters
+        ----------
+        rotation : np.ndarray, shape (3, 3)
+            Proper orthogonal rotation matrix.
+
+        Returns
+        -------
+        np.ndarray
+            Rotated coordinates with shape ``(n_atoms, 3)``.
+
+        Raises
+        ------
+        ValueError
+            If ``rotation`` is not a valid proper rotation matrix.
+        """
+        rotation = np.asarray(rotation, dtype=float)
+        if rotation.shape != (3, 3):
+            raise ValueError(f"Expected rotation shape (3, 3), got {rotation.shape}")
+        if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-8):
+            raise ValueError("Rotation matrix must be orthogonal")
+        if not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-8):
+            raise ValueError("Rotation matrix must have determinant +1")
+
+        coords = np.asarray(self.original_coords, dtype=float)
+        com = np.average(coords, axis=0, weights=self.u.atoms.masses)
+        rotated = (coords - com) @ rotation.T + com
+        self.u.atoms.positions = rotated
+        return rotated
+
 
 def SimpleXYZ(file_obj, coordinates):
     """Write coordinates to a simple XYZ trajectory frame.

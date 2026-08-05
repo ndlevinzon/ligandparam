@@ -12,6 +12,11 @@ import shutil as sh
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.io.coordinates import Coordinates, SimpleXYZ, Mol2Writer
 from ligandparam.io.gaussianIO import GaussianWriter, GaussianInput, GaussianReader
+from ligandparam.io.orientations import (
+    get_quaternion_pack,
+    minimum_pairwise_rotation_angle,
+    quaternion_to_matrix,
+)
 from ligandparam.interfaces import Gaussian, Antechamber
 from ligandparam.log import get_logger
 
@@ -472,8 +477,9 @@ class StageGaussianRotation(AbstractStage):
     """
     Rotate the ligand and run Gaussian RESP calculations for each orientation.
 
-    Rotations use Euler angles in degrees applied as Rx then Ry then Rz about
-    the center of mass, matching :meth:`Coordinates.rotate`.
+    The default legacy mode uses Euler angles in degrees applied as Rx then Ry
+    then Rz about the center of mass. Quaternion protocols instead use a
+    deterministic maximin pack to cover the full SO(3) rotation group.
 
     Parameters
     ----------
@@ -485,12 +491,11 @@ class StageGaussianRotation(AbstractStage):
         Current working directory.
     out_gaussian_label : str
         Label for the output Gaussian files.
-    alpha : list of float
-        Alpha (x-axis) rotation angles in degrees.
-    beta : list of float
-        Beta (y-axis) rotation angles in degrees.
-    gamma : list of float
-        Gamma (z-axis) rotation angles in degrees.
+    orientation_protocol : {"legacy_euler", "so3_n28"}, optional
+        Orientation generator. ``legacy_euler`` requires ``alpha``, ``beta``,
+        and ``gamma`` lists. ``so3_n28`` uses a fixed 28-point quaternion pack.
+    alpha, beta, gamma : list of float, optional
+        Euler angles in degrees, required only for ``legacy_euler``.
     opt_theory : str, optional
         Theory for optimization (default: 'HF/6-31G*').
     resp_theory : str, optional
@@ -506,12 +511,8 @@ class StageGaussianRotation(AbstractStage):
         Path to the input mol2 file.
     out_gaussian_label : str
         Label for the output Gaussian files.
-    alpha : list of float
-        Alpha (x-axis) rotation angles in degrees.
-    beta : list of float
-        Beta (y-axis) rotation angles in degrees.
-    gamma : list of float
-        Gamma (z-axis) rotation angles in degrees.
+    orientation_protocol : str
+        Selected orientation protocol.
     opt_theory : str
         Theory for optimization.
     resp_theory : str
@@ -540,12 +541,23 @@ class StageGaussianRotation(AbstractStage):
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
 
-        if "alpha" not in kwargs or "beta" not in kwargs or "gamma" not in kwargs:
-            raise ValueError("Please provide the alpha, beta, and gamma angles as lists")
-
-        self.alpha = [float(a) for a in kwargs["alpha"]]
-        self.beta = [float(b) for b in kwargs["beta"]]
-        self.gamma = [float(g) for g in kwargs["gamma"]]
+        self.orientation_protocol = kwargs.get("orientation_protocol", "legacy_euler")
+        if self.orientation_protocol == "legacy_euler":
+            if "alpha" not in kwargs or "beta" not in kwargs or "gamma" not in kwargs:
+                raise ValueError(
+                    "legacy_euler requires alpha, beta, and gamma angle lists"
+                )
+            self.alpha = [float(a) for a in kwargs["alpha"]]
+            self.beta = [float(b) for b in kwargs["beta"]]
+            self.gamma = [float(g) for g in kwargs["gamma"]]
+        elif self.orientation_protocol == "so3_n28":
+            self.alpha = []
+            self.beta = []
+            self.gamma = []
+        else:
+            raise ValueError(
+                "orientation_protocol must be 'legacy_euler' or 'so3_n28'"
+            )
 
         self.in_com_template = Path(self.gaussian_cwd, f"{self.out_gaussian_label}.com")
         self.xyz = Path(self.gaussian_cwd, f"{self.out_gaussian_label}_rotations.xyz")
@@ -589,6 +601,26 @@ class StageGaussianRotation(AbstractStage):
         """
         return stage
 
+    def _orientation_coordinates(self):
+        """Yield stable filename suffixes and coordinates for each orientation."""
+        if self.orientation_protocol == "so3_n28":
+            quaternions = get_quaternion_pack("so3_n28")
+            minimum_angle = minimum_pairwise_rotation_angle(quaternions)
+            self.logger.info(
+                f"Using {len(quaternions)}-point SO(3) quaternion pack "
+                f"(minimum pairwise angle {minimum_angle:.2f} degrees)"
+            )
+            for index, quaternion in enumerate(quaternions):
+                rotation = quaternion_to_matrix(quaternion)
+                yield f"q{index:03d}", self.coord_object.rotate_matrix(rotation)
+            return
+
+        for alpha, beta, gamma in product(self.alpha, self.beta, self.gamma):
+            suffix = f"{alpha:0.2f}_{beta:0.2f}_{gamma:0.2f}"
+            yield suffix, self.coord_object.rotate(
+                alpha=alpha, beta=beta, gamma=gamma
+            )
+
     def setup(self, name_template: str) -> bool:
         """
         Set up Gaussian input and output files for the rotation calculations.
@@ -614,20 +646,18 @@ class StageGaussianRotation(AbstractStage):
         logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
         print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
 
-        # Work-around: some callers pass name_template as a Path, others as a str.
-        if not isinstance(name_template, Path):
-            name_label = name_template
-        else:
-            name_label = name_template.name
+        # Some recipes pass a Path while others pass a string.
+        name_label = Path(name_template).name
 
         store_coords = []
         self.in_coms = []
         self.out_logs = []
         elements = self.coord_object.get_elements()
-        for a, b, g in product(self.alpha, self.beta, self.gamma):
-            test_rotation = self.coord_object.rotate(alpha=a, beta=b, gamma=g)
+        for orientation_suffix, test_rotation in self._orientation_coordinates():
             store_coords.append(test_rotation)
-            in_com = self.gaussian_cwd / f"{name_label}_rot_{a:0.2f}_{b:0.2f}_{g:0.2f}.com"
+            # Keep "<rotation label>_*.log" stable: StageMultiRespFit discovers
+            # these files by that prefix regardless of the orientation protocol.
+            in_com = self.gaussian_cwd / f"{name_label}_rot_{orientation_suffix}.com"
             print(f"--> Writing Gaussian input file: {in_com}")
             self.in_coms.append(in_com)
             newgau = GaussianWriter(in_com)
@@ -643,7 +673,7 @@ class StageGaussianRotation(AbstractStage):
             # Always write the Gaussian input file
             newgau.write(dry_run=False)
 
-            out_log = self.gaussian_cwd / f"{name_label}_rot_{a:0.2f}_{b:0.2f}_{g:0.2f}.log"
+            out_log = self.gaussian_cwd / f"{name_label}_rot_{orientation_suffix}.log"
             self.out_logs.append(out_log)
             self._add_outputs(out_log)
 
@@ -677,7 +707,7 @@ class StageGaussianRotation(AbstractStage):
                 gaussian_scratch=self.gaussian_scratch,
             )
             gau_run.call(inp_pipe=in_com.name, out_pipe=out_log.name, dry_run=dry_run)
-            self._print_status(i, self.alpha, self.beta, self.gamma)
+            self._print_status(i + 1, len(self.in_coms))
 
         return
 
@@ -697,21 +727,16 @@ class StageGaussianRotation(AbstractStage):
         self.logger.info(f"---> Rotation: alpha={alpha}, beta={beta}, gamma={gamma}")
         return
 
-    def _print_status(self, count, alphas, betas, gammas):
-        """Log progress through the rotation grid.
+    def _print_status(self, count, total_count):
+        """Log progress through the orientation set.
 
         Parameters
         ----------
         count : int
-            Index of the current rotation (0-based).
-        alphas : list of float
-            Alpha (x-axis) angles in degrees.
-        betas : list of float
-            Beta (y-axis) angles in degrees.
-        gammas : list of float
-            Gamma (z-axis) angles in degrees.
+            Number of completed orientations.
+        total_count : int
+            Total number of orientations.
         """
-        total_count = len(alphas) * len(betas) * len(gammas)
         percent = count / total_count * 100
         self.logger.info(f"Current Rotation Progress: {percent:.2f}%")
         return
