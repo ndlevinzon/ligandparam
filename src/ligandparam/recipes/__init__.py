@@ -1,4 +1,4 @@
-Public ligand parameterization recipes.
+"""Public ligand parameterization recipes.
 
 Exports
 -------

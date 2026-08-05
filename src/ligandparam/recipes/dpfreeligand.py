@@ -95,6 +95,14 @@ class DPFreeLigand(Recipe):
         self.orientation_protocol = kwargs.pop(
             "orientation_protocol", DEFAULT_ORIENTATION_PROTOCOL
         )
+        if self.orientation_protocol not in ("so3_n28", "legacy_euler"):
+            raise ValueError(
+                "orientation_protocol must be 'so3_n28' or 'legacy_euler', "
+                f"got {self.orientation_protocol!r}"
+            )
+        if self.orientation_protocol == "so3_n28":
+            for key in ("alpha", "beta", "gamma"):
+                kwargs.pop(key, None)
         self.kwargs = kwargs
 
     def setup(self):
@@ -115,7 +123,10 @@ class DPFreeLigand(Recipe):
             rotation_label = f"{self.label}.rotation"
         out_respfit = self.cwd / f"{self.label}.respfit"
 
-        rotation_kwargs = {"orientation_protocol": self.orientation_protocol}
+        rotation_kwargs = {
+            **self.kwargs,
+            "orientation_protocol": self.orientation_protocol,
+        }
         if self.orientation_protocol == "legacy_euler":
             rotation_kwargs.update(legacy_euler_kwargs())
 
@@ -210,7 +221,6 @@ class DPFreeLigand(Recipe):
                 out_gaussian_label=rotation_label,
                 logger=self.logger,
                 **rotation_kwargs,
-                **self.kwargs,
             ),
             # Gaussian stages write under cwd/gaussianCalcs
             StageMultiRespFit(

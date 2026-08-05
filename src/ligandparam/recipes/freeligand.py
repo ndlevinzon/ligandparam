@@ -93,9 +93,20 @@ class FreeLigand(Recipe):
         for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
             setattr(self, opt, kwargs.pop(opt, None))
 
+        # Default is so3_n28; only legacy_euler opts into the old Euler grid.
         self.orientation_protocol = kwargs.pop(
             "orientation_protocol", DEFAULT_ORIENTATION_PROTOCOL
         )
+        if self.orientation_protocol not in ("so3_n28", "legacy_euler"):
+            raise ValueError(
+                "orientation_protocol must be 'so3_n28' or 'legacy_euler', "
+                f"got {self.orientation_protocol!r}"
+            )
+        # Angle lists belong only to legacy_euler; drop them for so3_n28 so they
+        # cannot leak into StageGaussianRotation via **self.kwargs.
+        if self.orientation_protocol == "so3_n28":
+            for key in ("alpha", "beta", "gamma"):
+                kwargs.pop(key, None)
         self.kwargs = kwargs
 
     def setup(self):
@@ -119,7 +130,9 @@ class FreeLigand(Recipe):
         frcmod = self.cwd / f"{self.label}.frcmod"
         lib = self.cwd / f"{self.label}.lib"
 
+        # Recipe protocol wins over any leftover stage kwargs.
         rotation_kwargs = {
+            **self.kwargs,
             "orientation_protocol": self.orientation_protocol,
         }
         if self.orientation_protocol == "legacy_euler":
@@ -232,7 +245,6 @@ class FreeLigand(Recipe):
                 out_gaussian_label=rotation_label,
                 logger=self.logger,
                 **rotation_kwargs,
-                **self.kwargs,
             ),
             # Gaussian stages write under cwd/gaussianCalcs
             StageMultiRespFit(
