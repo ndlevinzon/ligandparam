@@ -226,6 +226,7 @@ git push origin --tags
 
 - [Zeke Piskulich](mailto:piskulichz@gmail.com)
 - [German P. Barletta](https://github.com/pgbarletta)
+- [Timothy J. Giese]
 - [Nate Levinzon](mailto:ndlevinzon@gmail.com)
 
 ---

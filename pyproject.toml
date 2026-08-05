@@ -12,6 +12,7 @@ license = {text = "MIT"}
 authors = [
   {name = "Zeke Piskulich", email = "piskulichz@gmail.com"},
   {name = "German P. Barletta", email = "https://github.com/pgbarletta"},
+  {name = "Timothy J. Giese"},
   {name = "Nate Levinzon", email = "ndlevinzon@gmail.com"},
 ]
 classifiers = [
