@@ -474,59 +474,40 @@ class GaussianRESP(AbstractStage):
         raise NotImplementedError("clean method not implemented")
 
 class StageGaussianRotation(AbstractStage):
-    """
-    Rotate the ligand and run Gaussian RESP calculations for each orientation.
+    """Rotate the ligand and run a Gaussian ESP job at each orientation.
 
-    The default legacy mode uses Euler angles in degrees applied as Rx then Ry
-    then Rz about the center of mass. Quaternion protocols instead use a
-    deterministic maximin pack to cover the full SO(3) rotation group.
+    Supports two protocols:
+
+    * ``so3_n28`` — 28 deterministic quaternion-packed SO(3) orientations
+    * ``legacy_euler`` — historical Rx/Ry Euler grid (requires ``alpha``,
+      ``beta``, ``gamma`` lists)
+
+    Output logs are named ``{out_gaussian_label}_rot_*.log`` so
+    :class:`~ligandparam.stages.resp.StageMultiRespFit` can discover them
+    regardless of protocol.
 
     Parameters
     ----------
     stage_name : str
-        The name of the stage.
-    main_input : Union[Path, str]
-        Path to the input mol2 file.
-    cwd : Union[Path, str]
-        Current working directory.
+        Stage name.
+    main_input : path-like
+        Input mol2 used for the rotated ESP jobs.
+    cwd : path-like
+        Working directory (Gaussian files go under ``cwd/gaussianCalcs``).
     out_gaussian_label : str
-        Label for the output Gaussian files.
+        Filename prefix for ``.com`` / ``.log`` outputs.
     orientation_protocol : {"legacy_euler", "so3_n28"}, optional
-        Orientation generator. ``legacy_euler`` requires ``alpha``, ``beta``,
-        and ``gamma`` lists. ``so3_n28`` uses a fixed 28-point quaternion pack.
+        Orientation generator. Default ``legacy_euler`` when used as a
+        standalone stage; recipes such as FreeLigand typically pass ``so3_n28``.
     alpha, beta, gamma : list of float, optional
-        Euler angles in degrees, required only for ``legacy_euler``.
-    opt_theory : str, optional
-        Theory for optimization (default: 'HF/6-31G*').
+        Euler angles in degrees (Rx, Ry, Rz). Required for ``legacy_euler``.
     resp_theory : str, optional
-        Theory for RESP calculation (default: 'HF/6-31G*').
+        Theory for the ESP / RESP single-point jobs.
     net_charge : float, optional
-        Net charge for the molecule (default: 0.0).
+        Net molecular charge.
     force_gaussian_rerun : bool, optional
-        Whether to force rerun of Gaussian (default: False).
-
-    Attributes
-    ----------
-    in_mol2 : Path
-        Path to the input mol2 file.
-    out_gaussian_label : str
-        Label for the output Gaussian files.
-    orientation_protocol : str
-        Selected orientation protocol.
-    opt_theory : str
-        Theory for optimization.
-    resp_theory : str
-        Theory for RESP calculation.
-    net_charge : float
-        Net charge for the molecule.
-    force_gaussian_rerun : bool
-        Whether to force rerun of Gaussian.
-    gaussian_cwd : Path
-        Directory for Gaussian calculations.
-    in_com_template : Path
-        Template for input Gaussian .com files.
-    xyz : Path
-        Path to the output XYZ file for rotations.
+        Unused for rotations today (jobs are always rewritten); kept for API
+        consistency with other Gaussian stages.
     """
 
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
@@ -561,8 +542,6 @@ class StageGaussianRotation(AbstractStage):
 
         self.in_com_template = Path(self.gaussian_cwd, f"{self.out_gaussian_label}.com")
         self.xyz = Path(self.gaussian_cwd, f"{self.out_gaussian_label}_rotations.xyz")
-
-        return
 
     def _validate_input_paths(self, **kwargs):
         """
@@ -711,52 +690,17 @@ class StageGaussianRotation(AbstractStage):
 
         return
 
-    def _print_rotation(self, alpha, beta, gamma):
-        """
-        Log the current rotation angles.
-
-        Parameters
-        ----------
-        alpha : float
-            Alpha (x-axis) rotation angle in degrees.
-        beta : float
-            Beta (y-axis) rotation angle in degrees.
-        gamma : float
-            Gamma (z-axis) rotation angle in degrees.
-        """
-        self.logger.info(f"---> Rotation: alpha={alpha}, beta={beta}, gamma={gamma}")
-        return
-
     def _print_status(self, count, total_count):
-        """Log progress through the orientation set.
-
-        Parameters
-        ----------
-        count : int
-            Number of completed orientations.
-        total_count : int
-            Total number of orientations.
-        """
+        """Log progress through the orientation set."""
         percent = count / total_count * 100
         self.logger.info(f"Current Rotation Progress: {percent:.2f}%")
-        return
 
     def write_rotation(self, coords, name_template: str):
-        """
-        Write the rotated coordinates to a trajectory file.
-
-        Parameters
-        ----------
-        coords : list
-            List of rotated coordinates.
-        name_template : str
-            Template name for the output file.
-        """
+        """Write all rotated frames to ``{label}_rotations.xyz``."""
         self.logger.info(f"--> Writing rotations to file: gaussianCalcs/{name_template}_rotations.xyz")
         with open(self.xyz, "w") as file_obj:
             for frame in coords:
                 SimpleXYZ(file_obj, frame)
-        return
 
     def _clean(self):
         return

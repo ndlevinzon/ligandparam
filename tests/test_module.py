@@ -1,13 +1,14 @@
+"""Package smoke tests."""
+
 import unittest
-from my_python_package.module import your_function  # Replace with actual function/class names
 
-class TestYourFunction(unittest.TestCase):
 
-    def test_case_1(self):
-        self.assertEqual(your_function(args), expected_result)  # Replace with actual test case
+class TestPackageImport(unittest.TestCase):
+    def test_import_ligandparam(self):
+        import ligandparam
 
-    def test_case_2(self):
-        self.assertRaises(ExpectedException, your_function, args)  # Replace with actual test case
+        self.assertTrue(hasattr(ligandparam, "__version__"))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

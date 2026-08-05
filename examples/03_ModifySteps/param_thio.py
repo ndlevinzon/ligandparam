@@ -15,7 +15,7 @@ gaussian_paths = {
 
 cwd = Path(sys.argv[0]).resolve().parent
 
-# Load the pdb as a instance of the FreeLigand class
+# Load the pdb as an instance of the LazyLigand class
 test = LazyLigand(
     in_filename=cwd / "thiophenol.pdb",
     cwd=cwd,

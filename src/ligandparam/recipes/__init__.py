@@ -1,8 +1,11 @@
-"""Public ligand parameterization recipes.
+Public ligand parameterization recipes.
 
 Exports
 -------
 LazyLigand, LazierLigand, FreeLigand, DPLigand, DPFreeLigand, SQMLigand
+
+``FreeLigand`` / ``DPFreeLigand`` default to the ``so3_n28`` orientation
+protocol for multi-RESP sampling.
 """
 
 from .lazyligand import LazyLigand

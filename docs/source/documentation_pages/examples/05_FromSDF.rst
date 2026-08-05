@@ -1,9 +1,12 @@
 Extracting from SDF
-=====================
+===================
 
-In this example, we will demonstrate how to use the ligandparam package to generate pdb files from SDF files, which can then be used 
-to parametrize ligands. 
+Generate PDB files from an SDF for later parameterization.
 
+Files
+-----
 
-.. literalinclude :: ../../../../examples/04_FromSmiles/smiles_to_pdb.py
+See ``examples/05_FromSDF`` in the source tree.
+
+.. literalinclude :: ../../../../examples/05_FromSDF/cdk2_extract.py
     :language: python

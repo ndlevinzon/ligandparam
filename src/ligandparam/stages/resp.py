@@ -125,93 +125,56 @@ class StageLazyResp(AbstractStage):
 
 
 class StageMultiRespFit(AbstractStage):
-    """
-    Runs a multi-state RESP fitting calculation based on multiple Gaussian output files.
+    """Fit RESP charges from multiple Gaussian ESP orientation logs.
+
+    Discovers logs matching ``*{in_gaussian_label}_*.log`` under ``cwd``
+    (typically ``gaussianCalcs``). Works with both ``so3_n28``
+    (``..._rot_q000.log``) and ``legacy_euler`` (``..._rot_0.00_0.00_0.00.log``)
+    naming.
 
     Parameters
     ----------
     stage_name : str
-        Name of the stage.
-    main_input : Union[Path, str]
-        Path to the input mol2 file.
-    cwd : Union[Path, str]
-        Directory containing Gaussian output files.
+        Stage name.
+    main_input : path-like
+        Template mol2 providing topology for the fit.
+    cwd : path-like
+        Directory containing the Gaussian rotation logs.
     in_gaussian_label : str
-        Label for Gaussian output files (from kwargs).
-    out_respfit : str
-        Path to the output RESP fit file (from kwargs).
+        Shared filename prefix used by :class:`StageGaussianRotation`.
+    out_respfit : path-like
+        Destination for the fitted charges.
     net_charge : float, optional
-        Net charge for the molecule (default is 0.0).
+        Net molecular charge.
     expected_gaussian_logs : int, optional
-        Required number of rotation logs. If provided, fitting stops rather
-        than silently using a partial or mixed orientation set.
+        If set, require exactly this many completed logs before fitting.
     """
 
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
-        """
-        Initialize the StageMultiRespFit.
-
-        Parameters
-        ----------
-        stage_name : str
-            Name of the stage.
-        main_input : Union[Path, str]
-            Path to the input mol2 file.
-        cwd : Union[Path, str]
-            Directory containing Gaussian output files.
-        *args
-            Additional positional arguments.
-        **kwargs
-            Additional keyword arguments. Must include 'in_gaussian_label' and 'out_respfit'.
-        """
         super().__init__(stage_name, main_input, cwd, *args, **kwargs)
         self.in_gaussian_label = kwargs["in_gaussian_label"]
         self.in_mol2 = Path(main_input)
         self.in_gaussian_dir = Path(cwd)
         self.glob_str = str(self.in_gaussian_dir / f"*{self.in_gaussian_label}_*.log")
-        # self.add_required(self.in_gaussian_log)
         self.out_respfit = Path(kwargs["out_respfit"])
-
         self.net_charge = kwargs.get("net_charge", 0.0)
         self.expected_gaussian_logs = kwargs.get("expected_gaussian_logs")
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Appends the stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
         return stage
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """
-        Execute a multi-state RESP fitting calculation.
+        """Run multi-state RESP fitting on the discovered Gaussian logs.
 
         Parameters
         ----------
         dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
-        nproc : int, optional
-            Number of processors to use (default is None).
-        mem : int, optional
-            Memory to use in MB (default is None).
-
-        Returns
-        -------
-        Any
-            None
+            Currently unused; kept for stage API consistency.
+        nproc, mem : optional
+            Unused; kept for stage API consistency.
         """
-        # Both Euler and quaternion rotation jobs preserve the
-        # "<in_gaussian_label>_*.log" naming contract. Sorting makes the
-        # multi-state fit deterministic (q000, q001, ... for quaternion packs).
+        # Both Euler and quaternion jobs keep the "<label>_*.log" contract.
+        # Sorting makes the fit deterministic (q000, q001, ...).
         gaussian_logs = sorted(glob.glob(self.glob_str))
         if not gaussian_logs:
             raise FileNotFoundError(
@@ -254,12 +217,4 @@ class StageMultiRespFit(AbstractStage):
         return
 
     def _clean(self):
-        """
-        Clean the files generated during the stage.
-
-        Raises
-        ------
-        NotImplementedError
-            If the method is not implemented.
-        """
         raise NotImplementedError("clean method not implemented")

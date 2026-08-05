@@ -70,80 +70,33 @@ def apply_option_defaults(
 
 
 class Parametrization(Driver):
-    """
-    A class for parametrizing ligands using various stages.
+    """Base ligand parameterization workflow.
 
-    Parameters
-    ----------
-    in_filename : Union[Path, str]
-        The input filename of the ligand.
-    cwd : Union[Path, str]
-        The current working directory.
-    *args : tuple
-        Additional positional arguments.
-    **kwargs : dict
-        Additional keyword arguments.
-
-    Keyword Args
-    ------------
-    label : str, optional
-        A label for the ligand, by default the stem of `in_filename`.
-    leaprc : list, optional
-        A list of leaprc files to use, by default ["leaprc.gaff2"].
-    logger : Union[str, logging.Logger], optional
-        The logger to use. Can be "file", "stream", or a logging.Logger instance.
-
-    Attributes
-    ----------
-    in_filename : Path
-        The resolved path to the input file.
-    label : str
-        The label for the ligand.
-    cwd : Path
-        The current working directory.
-    stages : list
-        A list of stages to run.
-    leaprc : list
-        A list of leaprc files to use.
-    logger : logging.Logger
-        The logger instance.
-
-    Raises
-    ------
-    ValueError
-        If an invalid logger type is provided.
+    Subclasses (or callers) populate ``self.stages`` and then call
+    :meth:`~ligandparam.driver.Driver.execute`. See :class:`Recipe` for the
+    thin alias used by the built-in recipe modules.
     """
 
     @override
     def __init__(self, in_filename: Union[Path, str], cwd: Union[Path, str], *args, **kwargs):
         """
-        The rough approach to using this class is to generate a new Parametrization class, and then generate self.stages as a list
-        of stages that you want to run.
-
         Parameters
         ----------
-        in_filename : Union[Path, str]
-            The input filename of the ligand.
-        cwd : Union[Path, str]
-            The current working directory.
-        *args : tuple
-            Additional positional arguments.
-        **kwargs : dict
-            Additional keyword arguments.
-
-        Keyword Args
-        ------------
+        in_filename : path-like
+            Input ligand structure.
+        cwd : path-like
+            Working directory for intermediate and output files.
         label : str, optional
-            A label for the ligand, by default the stem of `in_filename`.
-        leaprc : list, optional
-            A list of leaprc files to use, by default ["leaprc.gaff2"].
-        logger : Union[str, logging.Logger], optional
-            The logger to use. Can be "file", "stream", or a logging.Logger instance.
+            Ligand label; defaults to the stem of ``in_filename``.
+        leaprc : list of str, optional
+            Leaprc files; default ``["leaprc.gaff2"]``.
+        logger : {"file", "stream"} or logging.Logger, optional
+            Logging destination.
 
         Raises
         ------
         ValueError
-            If an invalid logger type is provided.
+            If ``logger`` is an unrecognized string or type.
         """
         self.in_filename = Path(in_filename).resolve()
         self.label = kwargs.get("label", self.in_filename.stem)

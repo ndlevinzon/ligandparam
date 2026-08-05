@@ -12,7 +12,7 @@ gaussian_paths = {
     "gaussian_scratch": "/home/.../GAUSSIAN/g16/scratch",
 }
 
-# Load the pdb as a instance of the FreeLigand class
+# Load the pdb as an instance of the FreeLigand class
 parametrize_ligand = FreeLigand(
     in_filename=cwd / "thiophenol.pdb",
     cwd=cwd,
@@ -23,7 +23,7 @@ parametrize_ligand = FreeLigand(
     # **gaussian_paths,
 )
 
-# Select the pre-initialized stages for Lazy Ligand
+# Build the FreeLigand stage list
 parametrize_ligand.setup()
 
 # List the stages out to the user

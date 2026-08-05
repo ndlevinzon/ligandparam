@@ -4,6 +4,11 @@ from typing import Optional, Union, Any
 from typing_extensions import override
 
 from ligandparam.parametrization import Recipe, apply_option_defaults
+from ligandparam.io.orientations import (
+    DEFAULT_ORIENTATION_PROTOCOL,
+    N_ORIENTATIONS_SO3_N28,
+    legacy_euler_kwargs,
+)
 from ligandparam.stages import (
     StageInitialize,
     StageNormalizeCharge,
@@ -23,9 +28,9 @@ from ligandparam.stages import (
 class FreeLigand(Recipe):
     """Parameterize a ligand with multi-orientation Gaussian RESP fitting.
 
-    Builds mol2/lib/frcmod outputs via initialization, low- and high-level
-    Gaussian minimization, multi-orientation ESP sampling, multi-RESP fitting,
-    and Leap.
+    Pipeline: initialize → normalize → center → low/high Gaussian minimize →
+    multi-orientation ESP (default: ``so3_n28`` quaternion pack) → multi-RESP
+    fit → charge/name/type updates → ``parmchk2`` / LEaP (``.frcmod`` / ``.lib``).
 
     Parameters
     ----------
@@ -42,9 +47,8 @@ class FreeLigand(Recipe):
     force_gaussian_rerun : bool, optional
         Rerun Gaussian even if output logs already exist.
     orientation_protocol : {"so3_n28", "legacy_euler"}, optional
-        Rotation sampling used for multi-RESP. The default ``so3_n28`` uses
-        28 deterministic quaternion-packed orientations. ``legacy_euler``
-        restores the previous 28-point alpha/beta grid with gamma fixed at 0.
+        Multi-RESP orientation set. Default ``so3_n28`` (28 quaternion-packed
+        orientations). ``legacy_euler`` restores the older alpha/beta grid.
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
@@ -89,35 +93,37 @@ class FreeLigand(Recipe):
         for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
             setattr(self, opt, kwargs.pop(opt, None))
 
-        self.orientation_protocol = kwargs.pop("orientation_protocol", "so3_n28")
+        self.orientation_protocol = kwargs.pop(
+            "orientation_protocol", DEFAULT_ORIENTATION_PROTOCOL
+        )
         self.kwargs = kwargs
 
     def setup(self):
-        """Build the ordered FreeLigand stage list on ``self.stages``.
-
-        Stages cover initialization, charge normalization, centering, low- and
-        high-level minimization, multi-orientation RESP, charge/name/type
-        updates, and Leap library generation.
-        """
+        """Build the ordered FreeLigand stage list on ``self.stages``."""
         initial_mol2 = self.cwd / f"{self.label}.initial.mol2"
         centered_mol2 = self.cwd / f"{self.label}.centered.mol2"
         lowtheory_minimization_gaussian_log = self.cwd / f"{self.label}.lowtheory.minimization.log"
         hightheory_minimization_gaussian_log = self.cwd / f"{self.label}.hightheory.minimization.log"
         resp_mol2_low = self.cwd / f"{self.label}.minimized.lowtheory.mol2"
         resp_mol2_high = self.cwd / f"{self.label}.minimized.mol2"
-        # Namespace quaternion outputs so stale legacy Euler logs cannot be
-        # included accidentally in the same multi-RESP fit.
+        # Namespace orientation labels so leftover logs from another protocol
+        # cannot enter the same multi-RESP fit.
         if self.orientation_protocol == "so3_n28":
             rotation_label = f"{self.label}.rotation.so3_n28"
         else:
             rotation_label = f"{self.label}.rotation"
-        rotated_mol2 = self.cwd / f"{self.label}.rotated.mol2"
         out_respfit = self.cwd / f"respfit.charges.{self.label}"
         resp_mol2 = self.cwd / f"{self.label}.resp.mol2"
         final_mol2 = self.cwd / f"final_{self.label}.mol2"
         nonminimized_mol2 = self.cwd / f"{self.label}.mol2"
         frcmod = self.cwd / f"{self.label}.frcmod"
         lib = self.cwd / f"{self.label}.lib"
+
+        rotation_kwargs = {
+            "orientation_protocol": self.orientation_protocol,
+        }
+        if self.orientation_protocol == "legacy_euler":
+            rotation_kwargs.update(legacy_euler_kwargs())
 
         self.stages = [
             StageInitialize(
@@ -224,12 +230,8 @@ class FreeLigand(Recipe):
                 theory=self.theory,
                 force_gaussian_rerun=self.force_gaussian_rerun,
                 out_gaussian_label=rotation_label,
-                orientation_protocol=self.orientation_protocol,
-                # Retained for reproducibility when legacy_euler is requested.
-                alpha=[0, 30, 60, 90, 120, 150, 180],
-                beta=[0, 30, 60, 90],
-                gamma=[0],
                 logger=self.logger,
+                **rotation_kwargs,
                 **self.kwargs,
             ),
             # Gaussian stages write under cwd/gaussianCalcs
@@ -240,7 +242,7 @@ class FreeLigand(Recipe):
                 in_gaussian_label=rotation_label,
                 out_respfit=out_respfit,
                 net_charge=self.net_charge,
-                expected_gaussian_logs=28,
+                expected_gaussian_logs=N_ORIENTATIONS_SO3_N28,
                 logger=self.logger,
                 **self.kwargs,
             ),

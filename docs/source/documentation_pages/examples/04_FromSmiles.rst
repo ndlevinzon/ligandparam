@@ -13,9 +13,10 @@ Learning Outcomes:
 2) Demonstrate automation of batches of ligand parametrizations using python scripting.
 3) Demonstrate how to build parm7 and rst7 files for Molecular Dynamics simulations.
 
-Files 
+Files
 -----
-The files for this example can be found in the `LigandParameterization/examples/04_FromSmiles` directory of the source code.
+
+See ``examples/04_FromSmiles`` in the source tree.
 
 
 Tutorial 

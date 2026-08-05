@@ -1,79 +1,94 @@
 Creating New Recipes
-=====================
+====================
 
-Recipes are classes that combine the building blocks of the workflow for parametrizing a ligand. 
+Recipes subclass :class:`~ligandparam.parametrization.Recipe`, populate
+``self.stages`` in ``setup()``, and run them with ``execute()``. Built-in
+examples include :class:`~ligandparam.recipes.LazyLigand` and
+:class:`~ligandparam.recipes.FreeLigand`.
 
-`LazyLigand`, `FreeLigand`, and `BuildLigand` are examples of recipes that are included in the ligandparam package by default.
+One-off pipeline
+----------------
 
-However, you might find yourself wanting to generate new recipes that are tailored to your specific needs and/or workflow.
-
-In this example, we will demonstrate how to create a new recipe by subclassing the `Recipe` class and adding your own stages to the pipeline.
-
-Building from Scratch for One Time Use
---------------------------------------
-
-If you are building a recipe for a one-time use, you can use the `Recipe` class directly and add the stages to the pipeline.
-
-Here is an example of a simple recipe that only has two stages, `StageInitialize` and `StageNormalizeCharge`:
+For a single script, construct a ``Recipe`` and assign stages directly:
 
 .. code-block:: python
 
-    from ligandparam.recipes import Recipe
-    from ligandparam.stages import *
+    from pathlib import Path
+    from ligandparam.parametrization import Recipe
+    from ligandparam.stages import StageInitialize, StageNormalizeCharge
 
-    inputoptions = {
-        'base_name': 'my_ligand',
-        'net_charge': 0,
-        'mem': '60GB',
-        'nproc': 12
-    }
+    cwd = Path("output")
+    ligand = cwd / "my_ligand.pdb"
+    initial_mol2 = cwd / "my_ligand.initial.mol2"
 
-    new_recipe = Recipe(inputoptions=inputoptions)
-    new_recipe.add_stage(StageInitialize("Initialize", inputoptions=inputoptions))
-    new_recipe.add_stage(StageNormalizeCharge("NormalizeCharge", 
-                        inputoptions=inputoptions, 
-                        orig_mol2=new_recipe.base_name+".antechamber.mol2",
-                        new_mol2=new_recipe.base_name+".antechamber.mol2"))
-    new_recipe.execute(dry_run=False)
+    recipe = Recipe(ligand, cwd, logger="stream")
+    recipe.stages = [
+        StageInitialize(
+            "Initialize",
+            main_input=ligand,
+            cwd=cwd,
+            out_mol2=initial_mol2,
+            net_charge=0,
+            logger=recipe.logger,
+        ),
+        StageNormalizeCharge(
+            "Normalize",
+            main_input=initial_mol2,
+            cwd=cwd,
+            net_charge=0,
+            out_mol2=initial_mol2,
+            logger=recipe.logger,
+        ),
+    ]
+    recipe.execute(dry_run=False)
 
-This script might be useful for generating a mol2 file from a pdb file, creating bcc charges, and then normalizing the charges to zero.
+Reusable recipe
+---------------
 
-
-Building from Scratch for Reuse
--------------------------------
-
-If you are building a recipe that you plan to reuse, you should subclass the `Recipe` class and add the stages to the pipeline.
-
-Here is an example of a simple recipe that only has two stages like before, `StageInitialize` and `StageNormalizeCharge`:
+For a workflow you will reuse, subclass ``Recipe`` and implement ``setup``:
 
 .. code-block:: python
 
-    from ligandparam.recipes import Recipe
-    from ligandparam.stages import *
+    from pathlib import Path
+    from typing import Union
+
+    from ligandparam.parametrization import Recipe
+    from ligandparam.stages import StageInitialize, StageNormalizeCharge
+
 
     class MyNewRecipe(Recipe):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            return
+        def __init__(self, in_filename, cwd, *, net_charge: int, **kwargs):
+            super().__init__(in_filename, cwd, **kwargs)
+            self.net_charge = net_charge
+            self.kwargs = kwargs
+
         def setup(self):
+            initial_mol2 = self.cwd / f"{self.label}.initial.mol2"
             self.stages = [
-                StageInitialize("Initialize", inputoptions=self.inputoptions),
-                StageNormalizeCharge("Normalize1", self.inputoptions, 
-                                    orig_mol2=self.base_name+".antechamber.mol2", 
-                                    new_mol2=self.base_name+".antechamber.mol2")
+                StageInitialize(
+                    "Initialize",
+                    main_input=self.in_filename,
+                    cwd=self.cwd,
+                    out_mol2=initial_mol2,
+                    net_charge=self.net_charge,
+                    logger=self.logger,
+                    **self.kwargs,
+                ),
+                StageNormalizeCharge(
+                    "Normalize1",
+                    main_input=initial_mol2,
+                    cwd=self.cwd,
+                    net_charge=self.net_charge,
+                    out_mol2=initial_mol2,
+                    logger=self.logger,
+                    **self.kwargs,
+                ),
             ]
 
-Then you can use this recipe just like before.:
 
-.. code-block:: python
+    recipe = MyNewRecipe("my_ligand.pdb", "output", net_charge=0, logger="stream")
+    recipe.setup()
+    recipe.execute(dry_run=False, nproc=12, mem=8)
 
-    inputoptions = {
-        'base_name': 'my_ligand',
-        'net_charge': 0,
-        'mem': '60GB',
-        'nproc': 12
-    }
-
-    new_recipe = MyNewRecipe('my_ligand.pdb', netcharge=0, nproc=12, mem='60GB')
-    new_recipe.setup()
-    new_recipe.execute(dry_run=False)
+See ``src/ligandparam/recipes/lazyligand.py`` and ``freeligand.py`` for fuller
+pipelines to copy from.

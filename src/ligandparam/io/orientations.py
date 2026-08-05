@@ -1,22 +1,30 @@
-"""Deterministic orientation sets for sampling the rotation group SO(3).
+"""Deterministic orientation sets for multi-orientation RESP sampling.
 
-Unit quaternions provide a nonsingular representation of 3D rotations. Since
-``q`` and ``-q`` represent the same rotation, distances use the SO(3) geodesic
-``2 * arccos(abs(dot(q_i, q_j)))``.
+``so3_n28`` packs 28 unit quaternions to cover SO(3). Because ``q`` and ``-q``
+are the same rotation, pairwise distances use the geodesic
+``2 * arccos(|q_i · q_j|)``.
+
+``legacy_euler`` keeps the historical FreeLigand alpha/beta grid (gamma fixed
+at 0) for reproducibility. Both protocols use 28 Gaussian ESP jobs.
 """
 
 from typing import Union
 
 import numpy as np
 
+DEFAULT_ORIENTATION_PROTOCOL = "so3_n28"
+N_ORIENTATIONS_SO3_N28 = 28
 
-# Deterministic 28-point maximin quaternion pack. The identity is retained as
-# the reference orientation. The other points were selected by farthest-point
-# sampling from 300,000 Haar-distributed unit-quaternion candidates using seed
-# 20260805. Its minimum pairwise SO(3) angle is approximately 62.71 degrees.
-#
-# This table is checked in rather than regenerated at runtime so every user and
-# platform submits exactly the same Gaussian orientations.
+# Historical FreeLigand Euler grid (Rx/Ry sampling only; gamma stays 0).
+LEGACY_EULER_ALPHA = [0, 30, 60, 90, 120, 150, 180]
+LEGACY_EULER_BETA = [0, 30, 60, 90]
+LEGACY_EULER_GAMMA = [0]
+
+# Deterministic 28-point maximin quaternion pack. Identity is the reference
+# orientation. Remaining points used farthest-point sampling from 300,000
+# Haar-distributed unit-quaternion candidates (seed 20260805). Minimum
+# pairwise SO(3) angle is approximately 62.71 degrees. Checked in so every
+# platform submits identical Gaussian orientations.
 SO3_N28_QUATERNIONS = np.array(
     [
         [1.0000000000000000, 0.0000000000000000, 0.0000000000000000, 0.0000000000000000],
@@ -82,14 +90,33 @@ def quaternion_to_matrix(quaternion: Union[np.ndarray, list, tuple]) -> np.ndarr
 
 
 def get_quaternion_pack(name: str = "so3_n28") -> np.ndarray:
-    """Return a copy of a named deterministic quaternion orientation pack."""
+    """Return a copy of a named deterministic quaternion orientation pack.
+
+    Parameters
+    ----------
+    name : {"so3_n28"}, optional
+        Pack identifier.
+
+    Returns
+    -------
+    np.ndarray, shape (n, 4)
+        Scalar-first unit quaternions ``(w, x, y, z)``.
+    """
     if name != "so3_n28":
         raise ValueError(f"Unknown quaternion orientation protocol: {name!r}")
     return SO3_N28_QUATERNIONS.copy()
 
 
 def minimum_pairwise_rotation_angle(quaternions: np.ndarray, degrees: bool = True) -> float:
-    """Return the minimum SO(3) geodesic angle in a quaternion set."""
+    """Return the minimum SO(3) geodesic angle among a quaternion set.
+
+    Parameters
+    ----------
+    quaternions : np.ndarray, shape (n, 4)
+        Unit (or near-unit) quaternions.
+    degrees : bool, optional
+        If True, return degrees; otherwise radians.
+    """
     q = np.asarray(quaternions, dtype=float)
     if q.ndim != 2 or q.shape[1] != 4 or len(q) < 2:
         raise ValueError("Expected at least two quaternions with shape (n, 4)")
@@ -98,3 +125,13 @@ def minimum_pairwise_rotation_angle(quaternions: np.ndarray, degrees: bool = Tru
     np.fill_diagonal(dots, 0.0)
     angle = 2.0 * np.arccos(np.clip(np.max(dots), -1.0, 1.0))
     return float(np.degrees(angle) if degrees else angle)
+
+
+def legacy_euler_kwargs() -> dict:
+    """Keyword arguments for :class:`~ligandparam.stages.gaussian.StageGaussianRotation` in legacy mode."""
+    return {
+        "orientation_protocol": "legacy_euler",
+        "alpha": list(LEGACY_EULER_ALPHA),
+        "beta": list(LEGACY_EULER_BETA),
+        "gamma": list(LEGACY_EULER_GAMMA),
+    }

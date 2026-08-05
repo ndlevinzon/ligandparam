@@ -1,9 +1,21 @@
-Overview over LigandParametrization
-====================================
+Overview
+========
 
-*LigandParameterization* is a python package that provides a simple interface for parameterizing non-standard residues 
-for use in molecular dynamics simulations using the AMBER force field. The package is designed to be easily extensible,
-and is built around a series of stages that can be easily added or removed from a parametrization pipeline. 
+``ligandparam`` provides a stage-based interface for parameterizing nonstandard
+ligands and residues for Amber MD. Recipes such as
+:class:`~ligandparam.recipes.FreeLigand` and
+:class:`~ligandparam.recipes.LazyLigand` assemble a pipeline; each stage wraps
+a concrete step (Gaussian ESP, RESP fitting, Leap, …).
 
-The package is designed to be used in a modular fashion, with a set of pre-defined recipes that can be used to 
-parametrize a ligand with a single command. More on these recipes can be found in the :doc:`recipes` section of the documentation.
+Multi-orientation RESP
+----------------------
+
+:class:`~ligandparam.recipes.FreeLigand` (and
+:class:`~ligandparam.recipes.DPFreeLigand`) sample multiple ligand orientations
+before averaging charges. The default ``so3_n28`` protocol uses a fixed
+28-point quaternion pack that covers SO(3) more uniformly than the historical
+Euler alpha/beta grid (``legacy_euler``). Both protocols keep the same job
+count and feed the same multi-RESP → ``parmchk2`` → LEaP path.
+
+See :mod:`ligandparam.io.orientations` and the :doc:`recipes` / :doc:`examples`
+sections for details.

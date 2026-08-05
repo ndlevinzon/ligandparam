@@ -34,7 +34,7 @@ class Driver:
             Stage instance to add. Stages should already be ordered for the
             intended workflow.
         """
-        self.stages.append(stage.append_stage(stage))
+        self.stages.append(stage)
         self.list_stages()
 
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:

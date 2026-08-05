@@ -123,7 +123,7 @@ Typical outputs (depending on recipe) include minimized / RESP `mol2` files, `fr
 | **`LazyLigand`** | Gaussian minimize + single-orientation RESP | Standard RESP without multi-orientation sampling |
 | **`FreeLigand`** | 28-point quaternion SO(3) sampling + multi-RESP fit | Higher-quality charge averaging over well-separated orientations |
 | **`DPLigand`** | DeepMD minimization + Gaussian RESP | You have a DeepMD model for geometry |
-| **`DPFreeLigand`** | DeepMD + multi-orientation RESP | DeepMD geometry + FreeLigand-quality charges |
+| **`DPFreeLigand`** | DeepMD + ``so3_n28`` multi-RESP | DeepMD geometry + FreeLigand-quality charges |
 | **`SQMLigand`** | SQM / DeepMD-assisted minimize + RESP | Semiempirical-assisted workflows |
 
 Each recipe builds an ordered list of **stages**. You can inspect and modify that list after `setup()`:
@@ -136,10 +136,10 @@ recipe.remove_stage("Normalize1")
 recipe.execute()
 ```
 
-`FreeLigand` uses the deterministic `so3_n28` quaternion pack by default. To
-reproduce the previous alpha/beta Euler grid, pass
-`orientation_protocol="legacy_euler"` when constructing the recipe. Both
-protocols use 28 Gaussian ESP jobs.
+`FreeLigand` and `DPFreeLigand` use the deterministic `so3_n28` quaternion pack
+by default. To reproduce the previous alpha/beta Euler grid, pass
+`orientation_protocol="legacy_euler"`. Both protocols use 28 Gaussian ESP jobs
+and feed the same multi-RESP → `parmchk2` → LEaP path (`.frcmod` / `.lib`).
 
 ---
 
