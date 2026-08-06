@@ -206,6 +206,69 @@ def _build_cap_coordinates(
     return cap_coords
 
 
+def _heavy_clash_tables(
+    ligand: Ligand,
+    retained_atoms: set[int],
+    distances: dict[int, dict[int, int]],
+    thresholds: ClashThresholds,
+) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray]:
+    """Precompute heavy-atom clash pairs and VDW allowances (caps unused in scoring).
+
+    Caps were previously built each angle then skipped in ``_minimum_margin``
+    (string cap ids fail the ``isinstance(..., int)`` gate). Screening only
+    scores retained heavy–heavy contacts with graph distance > 2.
+    """
+
+    heavy_idxs = [
+        idx
+        for idx in sorted(retained_atoms)
+        if ligand.atom(idx).element != "H"
+    ]
+    n = len(heavy_idxs)
+    left_rows: list[int] = []
+    right_rows: list[int] = []
+    allowed: list[float] = []
+    for i in range(n):
+        li = heavy_idxs[i]
+        left_element = ligand.atom(li).element
+        left_vdw = VDW_RADII.get(left_element, 1.7)
+        for j in range(i + 1, n):
+            rj = heavy_idxs[j]
+            path_length = distances.get(li, {}).get(rj, 99)
+            if path_length <= 2:
+                continue
+            scale = thresholds.path3_scale if path_length == 3 else thresholds.far_scale
+            right_element = ligand.atom(rj).element
+            allowed.append(
+                scale * (left_vdw + VDW_RADII.get(right_element, 1.2))
+            )
+            left_rows.append(i)
+            right_rows.append(j)
+    return (
+        heavy_idxs,
+        np.asarray(left_rows, dtype=np.intp),
+        np.asarray(right_rows, dtype=np.intp),
+        np.asarray(allowed, dtype=float),
+    )
+
+
+def _vectorized_worst_margin(
+    heavy_coords: np.ndarray,
+    left_rows: np.ndarray,
+    right_rows: np.ndarray,
+    allowed: np.ndarray,
+) -> tuple[float, int]:
+    """Return (worst_margin, pair_index) for precomputed heavy-atom pairs."""
+
+    if left_rows.size == 0:
+        return 0.0, -1
+    delta = heavy_coords[left_rows] - heavy_coords[right_rows]
+    observed = np.linalg.norm(delta, axis=1)
+    margins = observed - allowed
+    worst_i = int(np.argmin(margins))
+    return float(margins[worst_i]), worst_i
+
+
 def _minimum_margin(
     ligand: Ligand,
     retained_atoms: set[int],
@@ -216,11 +279,14 @@ def _minimum_margin(
 ) -> tuple[float, dict[str, object] | None]:
     """Measure the worst nonbonded margin among retained heavy atoms.
 
+    ``caps`` is accepted for API compatibility but ignored: historical scoring
+    never counted cap–atom pairs (cap ids are non-integers).
+
     Args:
         ligand: Parent ligand record.
         retained_atoms: Parent atom indices retained in the fragment.
         coordinates: Coordinates for retained atoms in the current conformer.
-        caps: Generated cap coordinates keyed by cap identifier.
+        caps: Unused; retained for call-site compatibility.
         thresholds: Clash-threshold parameters.
         distances: Precomputed shortest-path lengths on the retained subgraph.
 
@@ -229,43 +295,35 @@ def _minimum_margin(
         restrictive atom pair.
     """
 
-    entities: list[tuple[str | int, str, np.ndarray]] = []
-    for atom_idx in sorted(retained_atoms):
-        atom = ligand.atom(atom_idx)
-        entities.append((atom_idx, atom.element, coordinates[atom_idx]))
-    for cap_name, coord in sorted(caps.items()):
-        entities.append((cap_name, "H", coord))
-
-    worst_margin = float("inf")
-    worst_detail: dict[str, object] | None = None
-    for idx, (left_id, left_element, left_coord) in enumerate(entities):
-        for right_id, right_element, right_coord in entities[idx + 1:]:
-            if not (isinstance(left_id, int) and isinstance(right_id, int)):
-                continue
-            if left_element == "H" or right_element == "H":
-                continue
-            path_length = distances.get(left_id, {}).get(right_id, 99)
-            if path_length <= 2:
-                continue
-            scale = thresholds.path3_scale if path_length == 3 else thresholds.far_scale
-            allowed = scale * (VDW_RADII.get(left_element, 1.7) + VDW_RADII.get(right_element, 1.2))
-            observed = float(np.linalg.norm(left_coord - right_coord))
-            margin = observed - allowed
-            if margin < worst_margin:
-                worst_margin = margin
-                worst_detail = {
-                    "left_atom_index": left_id,
-                    "left_atom_name": ligand.atom(left_id).name,
-                    "left_element": left_element,
-                    "right_atom_index": right_id,
-                    "right_atom_name": ligand.atom(right_id).name,
-                    "right_element": right_element,
-                    "graph_distance": path_length,
-                    "observed_distance": observed,
-                    "allowed_distance": allowed,
-                    "margin": margin,
-                }
-    return (worst_margin if worst_margin != float("inf") else 0.0, worst_detail)
+    del caps  # built historically but never scored
+    heavy_idxs, left_rows, right_rows, allowed = _heavy_clash_tables(
+        ligand, retained_atoms, distances, thresholds
+    )
+    if not heavy_idxs or left_rows.size == 0:
+        return 0.0, None
+    heavy_coords = np.asarray([coordinates[idx] for idx in heavy_idxs], dtype=float)
+    worst_margin, worst_i = _vectorized_worst_margin(
+        heavy_coords, left_rows, right_rows, allowed
+    )
+    if worst_i < 0:
+        return 0.0, None
+    li = heavy_idxs[int(left_rows[worst_i])]
+    rj = heavy_idxs[int(right_rows[worst_i])]
+    path_length = distances.get(li, {}).get(rj, 99)
+    observed = float(np.linalg.norm(heavy_coords[int(left_rows[worst_i])] - heavy_coords[int(right_rows[worst_i])]))
+    worst_detail = {
+        "left_atom_index": li,
+        "left_atom_name": ligand.atom(li).name,
+        "left_element": ligand.atom(li).element,
+        "right_atom_index": rj,
+        "right_atom_name": ligand.atom(rj).name,
+        "right_element": ligand.atom(rj).element,
+        "graph_distance": path_length,
+        "observed_distance": observed,
+        "allowed_distance": float(allowed[worst_i]),
+        "margin": worst_margin,
+    }
+    return worst_margin, worst_detail
 
 
 def screen_candidate(
@@ -278,7 +336,8 @@ def screen_candidate(
     """Reject fragments whose sampled torsions introduce steric clashes.
 
     Topology (graph / bond-path distances) is fixed for a candidate; only
-    Cartesian coordinates change across the torsion scan.
+    Cartesian coordinates change across the torsion scan. Cap coordinates are
+    not built: clash scoring only uses retained heavy atoms.
 
     Args:
         ligand: Parent ligand record.
@@ -302,7 +361,6 @@ def screen_candidate(
     side_from_c = _descendants(graph, d, c, retained)
     side_from_b = _descendants(graph, a, b, retained)
     rotating_side = side_from_c if len(side_from_c) <= len(side_from_b) else side_from_b
-    # Distances through the fragment (retained subgraph), not via cut-away atoms.
     distances = graph_distance_map(graph.subgraph(retained))
     original = ligand.coordinates
     pivot1 = original[b]
@@ -317,19 +375,59 @@ def screen_candidate(
         original[c],
         original[d],
     )
+
+    retained_list = sorted(retained)
+    row_of = {idx: i for i, idx in enumerate(retained_list)}
+    base_coords = np.asarray([original[idx] for idx in retained_list], dtype=float)
+    rotating_rows = np.asarray(
+        [row_of[idx] for idx in rotating_side if idx in row_of],
+        dtype=np.intp,
+    )
+    heavy_idxs, left_rows, right_rows, allowed = _heavy_clash_tables(
+        ligand, retained, distances, thresholds
+    )
+    heavy_rows = np.asarray([row_of[idx] for idx in heavy_idxs], dtype=np.intp)
+    pivot = np.asarray(pivot1, dtype=float)
+
     worst = float("inf")
     for target_angle in range(-180, 180, angle_step):
-        coords = {atom_idx: coord.copy() for atom_idx, coord in original.items() if atom_idx in retained}
+        coords = base_coords.copy()
         delta_angle = ((target_angle - current_dihedral + 180.0) % 360.0) - 180.0
-        rotation = _rotation_matrix(axis, math.radians(delta_angle))
-        pivot = pivot1
-        for atom_idx in rotating_side:
-            shifted = coords[atom_idx] - pivot
-            coords[atom_idx] = rotation @ shifted + pivot
-        caps = _build_cap_coordinates(ligand, candidate, coords, graph)
-        margin, detail = _minimum_margin(
-            ligand, retained, coords, caps, thresholds, distances
-        )
+        if rotating_rows.size:
+            rotation = _rotation_matrix(axis, math.radians(delta_angle))
+            shifted = coords[rotating_rows] - pivot
+            coords[rotating_rows] = (rotation @ shifted.T).T + pivot
+        if heavy_rows.size == 0 or left_rows.size == 0:
+            margin, worst_i = 0.0, -1
+            detail = None
+        else:
+            heavy_coords = coords[heavy_rows]
+            margin, worst_i = _vectorized_worst_margin(
+                heavy_coords, left_rows, right_rows, allowed
+            )
+            detail = None
+            if worst_i >= 0:
+                li = heavy_idxs[int(left_rows[worst_i])]
+                rj = heavy_idxs[int(right_rows[worst_i])]
+                path_length = distances.get(li, {}).get(rj, 99)
+                observed = float(
+                    np.linalg.norm(
+                        heavy_coords[int(left_rows[worst_i])]
+                        - heavy_coords[int(right_rows[worst_i])]
+                    )
+                )
+                detail = {
+                    "left_atom_index": li,
+                    "left_atom_name": ligand.atom(li).name,
+                    "left_element": ligand.atom(li).element,
+                    "right_atom_index": rj,
+                    "right_atom_name": ligand.atom(rj).name,
+                    "right_element": ligand.atom(rj).element,
+                    "graph_distance": path_length,
+                    "observed_distance": observed,
+                    "allowed_distance": float(allowed[worst_i]),
+                    "margin": margin,
+                }
         worst = min(worst, margin)
         if margin < 0:
             if detail is not None:

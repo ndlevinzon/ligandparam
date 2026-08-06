@@ -1,12 +1,63 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 
 import networkx as nx
 
 from .graph import build_graph, ring_bond_set, sorted_cut_bond
 from .models import CandidateFragment, CapSite, Ligand, TorsionDefinition
 from .torsions import find_rotatable_bonds
+
+
+@dataclass(frozen=True)
+class FragmentationTopology:
+    """Ligand-level rigid-domain decomposition reused across torsions."""
+
+    graph: nx.Graph
+    heavy_graph: nx.Graph
+    ring_edges: frozenset[tuple[int, int]]
+    domains: tuple[frozenset[int], ...]
+    atom_to_domain: dict[int, int]
+    domain_graph: nx.Graph
+    domain_has_ring: dict[int, bool]
+
+
+def get_fragmentation_topology(
+    ligand: Ligand,
+    include_rigid_single_bonds: bool = True,
+    rotatable_bond_smarts: tuple[str, ...] = (),
+) -> FragmentationTopology:
+    """Return domains / rings / rotatable cuts, cached once per ligand+config.
+
+    ``build_candidate_fragments`` used to rebuild this stack for every torsion.
+    """
+
+    cache_key = (bool(include_rigid_single_bonds), tuple(rotatable_bond_smarts))
+    cached = getattr(ligand, "_frag_topology", None)
+    if cached is not None and cached[0] == cache_key:
+        return cached[1]
+
+    graph = build_graph(ligand)
+    heavy_graph = _build_heavy_graph(graph)
+    ring_edges = frozenset(ring_bond_set(graph, ligand))
+    domains, atom_to_domain, domain_graph, domain_has_ring = _build_domains(
+        ligand,
+        heavy_graph,
+        include_rigid_single_bonds=include_rigid_single_bonds,
+        rotatable_bond_smarts=rotatable_bond_smarts,
+    )
+    topo = FragmentationTopology(
+        graph=graph,
+        heavy_graph=heavy_graph,
+        ring_edges=ring_edges,
+        domains=tuple(frozenset(d) for d in domains),
+        atom_to_domain=atom_to_domain,
+        domain_graph=domain_graph,
+        domain_has_ring=domain_has_ring,
+    )
+    ligand._frag_topology = (cache_key, topo)
+    return topo
 
 
 def _is_heavy(atom) -> bool:
@@ -284,15 +335,17 @@ def build_candidate_fragments(
         Candidate fragments sorted from smaller shells to larger fallbacks.
     """
 
-    graph = build_graph(ligand)
-    heavy_graph = _build_heavy_graph(graph)
-    ring_edges = ring_bond_set(graph)
-    domains, atom_to_domain, domain_graph, domain_has_ring = _build_domains(
+    topo = get_fragmentation_topology(
         ligand,
-        heavy_graph,
         include_rigid_single_bonds=include_rigid_single_bonds,
         rotatable_bond_smarts=rotatable_bond_smarts,
     )
+    graph = topo.graph
+    ring_edges = set(topo.ring_edges)
+    domains = [set(d) for d in topo.domains]
+    atom_to_domain = topo.atom_to_domain
+    domain_graph = topo.domain_graph
+    domain_has_ring = topo.domain_has_ring
 
     a, b, c, d = torsion.atom_indices
     left_domain = atom_to_domain[b]

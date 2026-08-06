@@ -43,21 +43,32 @@ def build_graph(ligand: Ligand) -> nx.Graph:
     return graph
 
 
-def ring_bond_set(graph: nx.Graph) -> set[tuple[int, int]]:
+def ring_bond_set(graph: nx.Graph, ligand: Ligand | None = None) -> set[tuple[int, int]]:
     """Return all graph edges that participate in at least one cycle.
+
+    When ``ligand`` is provided, the edge set is cached on the ligand for the
+    lifetime of the current topology.
 
     Args:
         graph: Molecular graph to analyze.
+        ligand: Optional parent ligand used as a cache host.
 
     Returns:
         Normalized bond pairs that are part of any cycle.
     """
+
+    if ligand is not None:
+        cached = getattr(ligand, "_ring_edges", None)
+        if cached is not None:
+            return cached
 
     ring_edges: set[tuple[int, int]] = set()
     for cycle in nx.cycle_basis(graph):
         for idx in range(len(cycle)):
             edge = tuple(sorted((cycle[idx], cycle[(idx + 1) % len(cycle)])))
             ring_edges.add(edge)
+    if ligand is not None:
+        ligand._ring_edges = ring_edges
     return ring_edges
 
 

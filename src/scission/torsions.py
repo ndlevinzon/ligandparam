@@ -218,7 +218,12 @@ def find_rotatable_bonds(
     """
 
     graph = graph if graph is not None else build_graph(ligand)
-    ring_edges = ring_bond_set(graph)
+    cache_key = (bool(include_rigid_single_bonds), tuple(rotatable_bond_smarts))
+    cached = getattr(ligand, "_rotatable_bonds_cache", None)
+    if cached is not None and cached[0] == cache_key:
+        return list(cached[1])
+
+    ring_edges = ring_bond_set(graph, ligand)
     smarts_matched_bonds = _match_rotatable_bond_smarts(ligand, rotatable_bond_smarts)
     rotatable: list[tuple[int, int]] = []
     for bond in ligand.bonds:
@@ -234,6 +239,7 @@ def find_rotatable_bonds(
             continue
         rotatable.append(edge)
     rotatable.sort()
+    ligand._rotatable_bonds_cache = (cache_key, tuple(rotatable))
     return rotatable
 
 
