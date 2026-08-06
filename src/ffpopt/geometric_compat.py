@@ -17,6 +17,10 @@ from __future__ import annotations
 
 import sys
 
+# Emit at most one notice per process; constrained wavefront scans hit this
+# path on many geometries and would otherwise flood Slurm stderr.
+_CARTESIAN_FALLBACK_NOTIFIED = False
+
 
 def patch_constrained_cartesian_fallback() -> None:
     """Replace unsupported Cartesian recovery under constraints with IC rebuild."""
@@ -30,10 +34,14 @@ def patch_constrained_cartesian_fallback() -> None:
 
     def _check_coordinate_system(self, recover=False, cartesian=False):
         if cartesian and self.IC.haveConstraints():
-            sys.stderr.write(
-                "[ffpopt] geomeTRIC requested Cartesian IC recovery under "
-                "constraints; rebuilding the same constrained IC system instead.\n"
-            )
+            global _CARTESIAN_FALLBACK_NOTIFIED
+            if not _CARTESIAN_FALLBACK_NOTIFIED:
+                sys.stderr.write(
+                    "[ffpopt] geomeTRIC requested Cartesian IC recovery under "
+                    "constraints; rebuilding the same constrained IC system "
+                    "instead (further notices suppressed for this process).\n"
+                )
+                _CARTESIAN_FALLBACK_NOTIFIED = True
             return _orig(self, recover=True, cartesian=False)
         return _orig(self, recover=recover, cartesian=cartesian)
 
