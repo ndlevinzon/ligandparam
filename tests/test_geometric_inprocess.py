@@ -99,5 +99,30 @@ class TestNormalizeConverge(unittest.TestCase):
         self.assertIsNone(_normalize_converge(None))
 
 
+class TestWritePlainXyz(unittest.TestCase):
+    def test_no_charge_column(self):
+        import tempfile
+        from pathlib import Path
+
+        from ase import Atoms
+
+        from ffpopt.geometric_inprocess import write_plain_xyz
+
+        atoms = Atoms(
+            "CH",
+            positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            charges=[-0.0026, 0.0026],
+        )
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "tmp.xyz"
+            write_plain_xyz(path, atoms)
+            lines = path.read_text().strip().splitlines()
+        # Header + comment + 2 atoms; each atom line is symbol + 3 floats.
+        self.assertEqual(lines[0].strip(), "2")
+        for line in lines[2:]:
+            parts = line.split()
+            self.assertEqual(len(parts), 4, msg=line)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -77,6 +77,17 @@ def _normalize_converge(converge) -> Optional[list]:
     return [str(converge)]
 
 
+def write_plain_xyz(path: PathLike, atoms) -> None:
+    """Write element + xyz only (no charge columns) for geomeTRIC Molecule.
+
+    ASE's default ``Atoms.write()`` emits extended XYZ with
+    ``initial_charges`` as a 4th column, which geomeTRIC rejects.
+    """
+    import ase.io
+
+    ase.io.write(str(path), atoms, format="xyz", parallel=False)
+
+
 def run_geometric_inprocess(
     atoms,
     calc,
@@ -124,7 +135,7 @@ def run_geometric_inprocess(
     prefix = str(prefix)
     Path(prefix).parent.mkdir(parents=True, exist_ok=True)
     xyz_path = prefix + ".xyz"
-    atoms.write(xyz_path)
+    write_plain_xyz(xyz_path, atoms)
 
     # Load from the written XYZ so Molecule.Data / topology match CLI path.
     # Index [0] matches geometric.ase_engine.main (frame 0).
