@@ -42,6 +42,29 @@ from collections import defaultdict as ddict
 from ffpopt.AmberParm import CopyParm
 
 
+def _scratch_atoms_energy_forces(calc_wrapper, underlying_calc):
+    """Reuse one ASE Atoms shell for SANDER-style calculators (avoid rebuilds)."""
+    import ase
+
+    atoms = calc_wrapper.atoms
+    scratch = getattr(calc_wrapper, "_scratch_atoms", None)
+    positions = atoms.get_positions()
+    charges = atoms.get_initial_charges()
+    if scratch is None or len(scratch) != len(atoms):
+        eles = atoms.get_chemical_symbols()
+        atlist = "".join(["%s1" % (ele,) for ele in eles])
+        scratch = ase.Atoms(atlist, positions=positions, charges=charges)
+        scratch.calc = underlying_calc
+        calc_wrapper._scratch_atoms = scratch
+    else:
+        scratch.set_positions(positions)
+        if charges is not None and len(charges) == len(scratch):
+            scratch.set_initial_charges(charges)
+        if scratch.calc is not underlying_calc:
+            scratch.calc = underlying_calc
+    return scratch.get_potential_energy(), scratch.get_forces()
+
+
 class GenCalculator(Calculator):
 
     implemented_properties = ['energy','forces','free_energy']
@@ -556,23 +579,11 @@ class SanderCalculator(Calculator):
                   atoms=None,
                   properties=None,
                   system_changes=all_changes):
-        import numpy as np
-        import ase
-        import sys
-                
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        
-        eles = self.atoms.get_chemical_symbols()
-        crds = self.atoms.get_positions()
-        qs   = self.atoms.get_initial_charges()
-        atlist = "".join( ["%s1"%(ele) for ele in eles ] )
-        atoms = ase.Atoms(atlist,positions=crds,charges=qs)
-        atoms.calc =  self.calc
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
-        #sys.stderr.write("energy=%.4f\n"%(energy))
+
+        energy, forces = _scratch_atoms_energy_forces(self, self.calc)
         self.results['energy'] = energy
         self.results['free_energy'] = energy
         self.results['forces'] = forces
@@ -638,23 +649,11 @@ class SanderSQMCalculator(Calculator):
                   atoms=None,
                   properties=None,
                   system_changes=all_changes):
-        import numpy as np
-        import ase
-        import sys
-                
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
 
-        eles = self.atoms.get_chemical_symbols()
-        crds = self.atoms.get_positions()
-        qs   = self.atoms.get_initial_charges()
-        atlist = "".join( ["%s1"%(ele) for ele in eles ] )
-        atoms = ase.Atoms(atlist,positions=crds,charges=qs)
-        atoms.calc =  self.calc
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
-        #sys.stderr.write("energy=%.4f\n"%(energy))
+        energy, forces = _scratch_atoms_energy_forces(self, self.calc)
         self.results['energy'] = energy
         self.results['free_energy'] = energy
         self.results['forces'] = forces
@@ -680,26 +679,16 @@ class RestrainedCalculator(Calculator):
                   system_changes=all_changes):
         
         import numpy as np
-        import ase
         
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        
-        eles = self.atoms.get_chemical_symbols()
+
         crds = self.atoms.get_positions()
-        qs   = self.atoms.get_initial_charges()
-        atlist = "".join( ["%s1"%(ele) for ele in eles ] )
-        atoms = ase.Atoms(atlist,positions=crds,charges=qs)
-        atoms.calc =  self.calc
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
+        energy, forces = _scratch_atoms_energy_forces(self, self.calc)
 
-
-        #print("nres=",len(self.restraints),energy)
         for rst in self.restraints:
-            e2,f2 = rst.GetValueAndGradients(crds)
-            #print("restraint:",e2,rst.name,rst.value)
+            e2, f2 = rst.GetValueAndGradients(crds)
             energy += e2
             forces -= f2
         

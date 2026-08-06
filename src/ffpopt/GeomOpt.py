@@ -764,10 +764,7 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
         try:
             out = GeomOpt_ASE(los,struct,constraints,restraints)
         except Exception as e:
-            import traceback
-            print("\n\n\nASE GEOMETRY OPTIMIZATION FAILURE\n")
-            print(e)
-            traceback.print_exc()
+            _geomopt_fallback_note("ASE", e, "geomeTRIC")
             out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
     else:
         try:
@@ -776,12 +773,27 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
             # geomeTRIC sometimes cannot recover its IC system under frozen
             # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
             # watchdog, …). Fall back to ASE BFGS with the same constraints.
-            import traceback
-            print("\n\n\ngeomeTRIC GEOMETRY OPTIMIZATION FAILURE; falling back to ASE\n")
-            print(e)
-            traceback.print_exc()
+            _geomopt_fallback_note("geomeTRIC", e, "ASE")
             out = GeomOpt_ASE(los,struct,constraints,restraints)
     return out
+
+
+def _geomopt_fallback_note(failed: str, exc: Exception, fallback: str) -> None:
+    """One-line stderr note; full traceback only if FFPOPT_GEOMOPT_TRACEBACK=1."""
+    import os
+    import sys
+    import traceback
+
+    sys.stderr.write(
+        f"[ffpopt] {failed} geomopt failed ({type(exc).__name__}: {exc}); "
+        f"falling back to {fallback}\n"
+    )
+    if os.environ.get("FFPOPT_GEOMOPT_TRACEBACK", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        traceback.print_exc()
 
 
 

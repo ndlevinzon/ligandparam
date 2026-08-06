@@ -649,6 +649,47 @@ def FillConstraints(atoms,cons,force=False):
     return [ con.fill(atoms,force=force) for con in cons ]
 
 
+def has_nonbonded_clash(positions, bonds, min_dist=0.8):
+    """Vectorized clash check: any non-bonded pair closer than ``min_dist``.
+
+    Parameters
+    ----------
+    positions : array-like, shape (N, 3)
+        Cartesian coordinates (Å).
+    bonds : sequence of pair
+        Covalent bonds as ``[i, j]`` or ``(i, j)`` (0-based).
+    min_dist : float
+        Clash threshold in Å.
+
+    Returns
+    -------
+    tuple
+        ``(clashed, i, j, dist)`` where ``i, j, dist`` are set only if clashed.
+    """
+    import numpy as np
+
+    pos = np.asarray(positions, dtype=float)
+    n = int(pos.shape[0])
+    if n < 2:
+        return False, None, None, None
+
+    bonded = np.zeros((n, n), dtype=bool)
+    for b in bonds:
+        i, j = int(b[0]), int(b[1])
+        bonded[i, j] = True
+        bonded[j, i] = True
+    np.fill_diagonal(bonded, True)
+
+    diff = pos[:, None, :] - pos[None, :, :]
+    d2 = np.einsum("ijk,ijk->ij", diff, diff)
+    min_d2 = float(min_dist) * float(min_dist)
+    clash = (d2 < min_d2) & (~bonded)
+    if not np.any(clash):
+        return False, None, None, None
+    i, j = map(int, np.argwhere(clash)[0])
+    return True, i, j, float(np.sqrt(d2[i, j]))
+
+
 
 
 ####################################

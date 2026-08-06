@@ -21,15 +21,7 @@ _WORKER: dict = {}
 
 def _clear_los_calc(los: ListOfStruct) -> None:
     """Drop live calculators so workers rebuild (and cache) in-process."""
-    calc = getattr(los, "calc", None)
-    if calc is not None:
-        try:
-            calc.reset()
-        except Exception:
-            pass
-        los.calc = None
-    if hasattr(los, "_ffpopt_calc_cache"):
-        los._ffpopt_calc_cache = None
+    los.clear_runtime_caches()
 
 
 def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) -> None:
@@ -215,8 +207,7 @@ class WavefrontNode:
                 self._write_checkpoint()
                 self.complete = True
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                print(f"Node {self.node_id} optimization error: {type(e).__name__}: {e}")
                 self._mark_failed("optimization_error", e)
 
     def _write_checkpoint(self) -> None:
@@ -225,7 +216,7 @@ class WavefrontNode:
         self.los = None
         try:
             with open(self.node_pkl, 'wb') as f:
-                pickle.dump(self, f)
+                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
         finally:
             self.los = los
 
@@ -251,18 +242,16 @@ class WavefrontNode:
     def _precheck_geometry(self, min_dist: float = 0.8) -> bool:
         """Return False if constraints produce a severe clash (nonbonded < min_dist)."""
         try:
-            from ffpopt.Constraints import FillConstraints, ApplyConstraints
+            from ffpopt.Constraints import FillConstraints, ApplyConstraints, has_nonbonded_clash
             myatoms = self.struct.GetASEAtoms()
             cons = FillConstraints(myatoms, copy.deepcopy(self.constraints))
             myatoms = ApplyConstraints(myatoms, cons)
-            bond_list = self.struct.data["bonds"]
-
-            for i in range(len(myatoms)):
-                for j in range(i+1, len(myatoms)):
-                    dist = myatoms.get_distance(i, j)
-                    if dist < min_dist and (i, j) not in bond_list:
-                        print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Å (< {min_dist} Å)")
-                        return False
+            clashed, i, j, dist = has_nonbonded_clash(
+                myatoms.get_positions(), self.struct.data["bonds"], min_dist=min_dist
+            )
+            if clashed:
+                print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Å (< {min_dist} Å)")
+                return False
         except Exception as e:
             print(f"Precheck failed due to error: {e}")
             return False
@@ -650,18 +639,14 @@ class Wavefront:
         else:
             cons = FillConstraints(myatoms, [con])
         myatoms = ApplyConstraints(myatoms, cons)
-        bond_list = struct.data["bonds"]
-        #for bond in stdargs.mol.bonds:
-        #    bond_list.append((bond.atom1.idx, bond.atom2.idx))
-        #    bond_list.append((bond.atom2.idx, bond.atom1.idx))
-
-        for i in range(len(myatoms)):
-            for j in range(i+1, len(myatoms)):
-                dist = myatoms.get_distance(i, j)
-                if dist < 0.8 and (i, j) not in bond_list:
-                    print(f"Warning: Distance between atom {i} and atom {j} is {dist:.3f} Å (< 0.8 Å)")
-                    print(f"Ommitting this node due to close proximity of atoms.")
-                    return False
+        from ffpopt.Constraints import has_nonbonded_clash
+        clashed, i, j, dist = has_nonbonded_clash(
+            myatoms.get_positions(), struct.data["bonds"], min_dist=0.8
+        )
+        if clashed:
+            print(f"Warning: Distance between atom {i} and atom {j} is {dist:.3f} Å (< 0.8 Å)")
+            print(f"Ommitting this node due to close proximity of atoms.")
+            return False
         return True
 
     @staticmethod
@@ -951,25 +936,28 @@ class Wavefront:
             The name of the file to save the checkpoint to.
             
         """
-        from copy import deepcopy
         # Refresh the derived per-level convergence history so any checkpoint is
         # immediately consumable by ffpopt-WavefrontAnimate.py.
         self._rebuild_level_energies()
-        if self.los.calc is not None:
-            self.los.calc.reset()
-            self.los.calc = None
-        #tmp = self
-        #try:
-        #    tmp.los.calc.reset()
-        #    tmp.los.calc = None
-        #except Exception as e:
-        #    import traceback
-        #    print(f"Wavefront.save_checkpoint: {e}")
-        #    traceback.print_exc()
-            
+        if self.los is not None:
+            self.los.clear_runtime_caches()
+        self._slim_nodes_for_checkpoint()
         with open(self.checkpoint, 'wb') as f:
-            pickle.dump(self, f)
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"Checkpoint saved to {self.checkpoint}.")
+
+    def _slim_nodes_for_checkpoint(self) -> None:
+        """Drop bulky redundant arrays from completed nodes before pickling."""
+        for level in getattr(self, "levels", []) or []:
+            for node in getattr(level, "nodes", []) or []:
+                if not getattr(node, "complete", False):
+                    continue
+                # Forces are not needed to resume; energy + opt_geom coords are.
+                if getattr(node, "opt_geom", None) is not None:
+                    if "forces" in node.opt_geom.data:
+                        node.opt_geom.data["forces"] = None
+                n_atoms = len(node.struct.data["elements"])
+                node.forces = np.zeros((n_atoms, 3))
 
     def init_min(self) -> None:
         """Initial geometry optimization and angle calculation.

@@ -66,15 +66,7 @@ def GetGridNeighbors(bidx, grid, validbins=None):
 
 
 def _clear_los_calc(los: ListOfStruct) -> None:
-    calc = getattr(los, "calc", None)
-    if calc is not None:
-        try:
-            calc.reset()
-        except Exception:
-            pass
-        los.calc = None
-    if hasattr(los, "_ffpopt_calc_cache"):
-        los._ffpopt_calc_cache = None
+    los.clear_runtime_caches()
 
 
 def _init_worker(los, conlist, reslist, template_struct) -> None:
@@ -312,8 +304,7 @@ class WavefrontNode(object):
                 self.complete = True
                 
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                print(f"Node {self.node_id} optimization error: {type(e).__name__}: {e}")
                 self._mark_failed("optimization_error", e)
 
 
@@ -324,7 +315,7 @@ class WavefrontNode(object):
         self.los = None
         try:
             with open(self.node_pkl, 'wb') as f:
-                pickle.dump(self, f)
+                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
         finally:
             self.los = los
 
@@ -355,26 +346,17 @@ class WavefrontNode(object):
     def _precheck_geometry(self, min_dist: float = 0.8) -> bool:
         """Return False if constraints produce a severe clash (nonbonded < min_dist)."""
         try:
-            from ffpopt.Constraints import FillConstraints, ApplyConstraints
+            from ffpopt.Constraints import ApplyConstraints, has_nonbonded_clash
             myatoms = self.struct.GetASEAtoms()
-            #cons = FillConstraints(myatoms, copy.deepcopy(self.conlist.cons))
-
-            #rests = []
-            #if self.struct.restraints.rests is not None:
-            #    rests.extend( self.struct.restraints.rests )
-            #if self.reslist.rests is not None:
-            #    rests.extend( self.reslist.rests )
-            #if len(rests) == 0:
-            #    rests = None
-            myatoms = ApplyConstraints(myatoms, self.conlist.cons, graph=self.struct.GetGraph()) #, rests=rests, k=0.1)
-            bond_list = self.struct.data["bonds"]
-
-            for i in range(len(myatoms)):
-                for j in range(i+1, len(myatoms)):
-                    dist = myatoms.get_distance(i, j)
-                    if dist < min_dist and (i, j) not in bond_list:
-                        print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Å (< {min_dist} Å)")
-                        return False
+            myatoms = ApplyConstraints(
+                myatoms, self.conlist.cons, graph=self.struct.GetGraph()
+            )
+            clashed, i, j, dist = has_nonbonded_clash(
+                myatoms.get_positions(), self.struct.data["bonds"], min_dist=min_dist
+            )
+            if clashed:
+                print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Å (< {min_dist} Å)")
+                return False
         except Exception as e:
             print(f"Precheck failed due to error: {e}")
             return False
@@ -1152,26 +1134,27 @@ class Wavefront(object):
             The name of the file to save the checkpoint to.
             
         """
-        #import copy
         # Refresh the derived per-level convergence history so any checkpoint is
         # immediately consumable by ffpopt-WavefrontAnimate.py.
         self._rebuild_level_energies()
-        # tmp = copy.deepcopy(self)
-        # if tmp.los.calc is not None:
-        #     tmp.los.calc.reset()
-        #     tmp.los.calc = None
-        #tmp = self
-        #try:
-        #    tmp.los.calc.reset()
-        #    tmp.los.calc = None
-        #except Exception as e:
-        #    import traceback
-        #    print(f"Wavefront.save_checkpoint: {e}")
-        #    traceback.print_exc()
-            
+        if self.los is not None:
+            self.los.clear_runtime_caches()
+        self._slim_nodes_for_checkpoint()
         with open(self.checkpoint, 'wb') as f:
-            pickle.dump(self, f)
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"Checkpoint saved to {self.checkpoint}.")
+
+    def _slim_nodes_for_checkpoint(self) -> None:
+        """Drop bulky redundant arrays from completed nodes before pickling."""
+        for level in getattr(self, "levels", []) or []:
+            for node in getattr(level, "nodes", []) or []:
+                if not getattr(node, "complete", False):
+                    continue
+                if getattr(node, "opt_geom", None) is not None:
+                    if "forces" in node.opt_geom.data:
+                        node.opt_geom.data["forces"] = None
+                n_atoms = len(node.struct.data["elements"])
+                node.forces = np.zeros((n_atoms, 3))
 
 
     def add_level(self) -> WavefrontLevel:

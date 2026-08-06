@@ -575,12 +575,14 @@ class Struct(object):
             raise Exception(f"Unknown format {fmt}")
 
     def GetGraph(self):
-        """Returns a ffpopt.GraphSearch object of covalent bonds"""
+        """Return the cached covalent GraphSearch (read-only for RotateMask).
+
+        Callers that only need masks / path queries must not mutate the graph.
+        """
         from . AmberParm import bonds2graph
-        from copy import deepcopy
         if self.graph is None:
             self.graph = bonds2graph(self.data["bonds"])
-        return deepcopy(self.graph)
+        return self.graph
 
     
     def GetFunctionalGroups(self):
@@ -845,16 +847,26 @@ class ListOfStruct(object):
         return self.structs[index]
 
     
-    def save(self,filename):
+    def save(self, filename, indent=None):
+        """Write structures as JSON. Default ``indent=None`` (compact)."""
         import json
-        fh = open(filename,"w")
         for x in self.structs:
             if x.data["constraints"] is None:
                 x.data["constraints"] = []
-            #print(x.data)
-            #if len(x.data["constraints"]) > 0:
-            #    x.data["constraints"][0]["value"] = None
-        json.dump([ x.data for x in self.structs ],fh,indent=4)
+        with open(filename, "w") as fh:
+            json.dump([x.data for x in self.structs], fh, indent=indent)
+
+    def clear_runtime_caches(self):
+        """Drop live calculators / model caches before pickling checkpoints."""
+        calc = getattr(self, "calc", None)
+        if calc is not None:
+            try:
+                calc.reset()
+            except Exception:
+                pass
+            self.calc = None
+        if hasattr(self, "_ffpopt_calc_cache"):
+            self._ffpopt_calc_cache = None
 
 
     def GetByName(self,name):
