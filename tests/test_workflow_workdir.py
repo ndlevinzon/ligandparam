@@ -1,6 +1,7 @@
 """Tests for workdir path helpers (no Amber / wavefront required)."""
 
 import inspect
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -51,8 +52,31 @@ class TestPrepareFragmentNoChdir(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["cwd"], str(frag_dir))
         cmd = run.call_args.args[0]
+        self.assertEqual(cmd[0], sys.executable)
+        self.assertTrue(cmd[1].endswith("ffpopt-PrepareInput.py"))
         self.assertTrue(any(a.startswith("--parm=") for a in cmd))
         self.assertTrue(any(a.startswith("--out=") and "start.json" in a for a in cmd))
+
+
+class TestRunCurrentPython(unittest.TestCase):
+    def test_apply_fit_uses_sys_executable(self):
+        from ffpopt.Workflows import _apply_fit_and_prepare
+
+        wd = Path("/tmp/fragB")
+        with patch("ffpopt.Workflows.subprocess.run") as run, patch.object(
+            Path, "exists", return_value=False
+        ), patch("ffpopt.Workflows._ffpopt_bin_script", return_value="/fake/PrepareInput.py"):
+            _apply_fit_and_prepare(
+                citname="it01",
+                origparm="fragment.parm7",
+                inp="start.json",
+                skip_existing=False,
+                workdir=wd,
+            )
+        self.assertGreaterEqual(run.call_count, 2)
+        fit_cmd = run.call_args_list[0].args[0]
+        self.assertEqual(fit_cmd[0], sys.executable)
+        self.assertTrue(str(fit_cmd[1]).endswith("it01.py"))
 
 
 class TestFragmentedWorkflowNoChdir(unittest.TestCase):

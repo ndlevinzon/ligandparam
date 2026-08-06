@@ -864,6 +864,7 @@ def RunDeltaPuckerFit\
     import shutil
     import argparse
     import subprocess
+    import sys
     from types import SimpleNamespace
     from . Options import AddStandardOptions
     from . Struct import ListOfStruct
@@ -927,7 +928,7 @@ def RunDeltaPuckerFit\
         
         fitobj.write_parmed(f"{base}.py")
         
-        subprocess.run(["python3",
+        subprocess.run([sys.executable,
                         f"{base}.py",
                         f"{base}.inp.parm7",
                         modparm],

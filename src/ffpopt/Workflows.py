@@ -74,6 +74,41 @@ def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
     return logger if logger is not None else _LOG
 
 
+def _ffpopt_bin_script(script_name: str) -> str:
+    """Absolute path to a script under ``ffpopt.bin``."""
+    from importlib import resources
+
+    import ffpopt.bin as bin_pkg
+
+    return str(resources.files(bin_pkg).joinpath(script_name))
+
+
+def _run_current_python(
+    script: PathLike,
+    *args: str,
+    cwd: Optional[str] = None,
+) -> None:
+    """Run ``script`` with ``sys.executable`` (same env as the parent process).
+
+    Bare ``python3`` on HPC often resolves to a system interpreter without
+    ParmEd / ffpopt, which breaks generated fit scripts (``it01.py``, …).
+    """
+    subprocess.run(
+        [sys.executable, str(script), *args],
+        check=True,
+        cwd=cwd,
+    )
+
+
+def _run_ffpopt_bin(
+    script_name: str,
+    *args: str,
+    cwd: Optional[str] = None,
+) -> None:
+    """Run an ``ffpopt.bin`` console script with the current interpreter."""
+    _run_current_python(_ffpopt_bin_script(script_name), *args, cwd=cwd)
+
+
 def normalize_bond_pairs0(bond) -> list[BondPair0]:
     """Normalize central bonds to 0-based ``(i, j)`` tuples.
 
@@ -464,9 +499,10 @@ def _run_gendihedfit(
         log.info("[twist] %s exists — skipping GenDihedFit.", py_out)
         return
     log.info("[twist] GenDihedFit → %s", py_out)
-    subprocess.run(
-        ["ffpopt-GenDihedFit.py", f"--nlmaxiter={nlmaxiter}", fit_json],
-        check=True,
+    _run_ffpopt_bin(
+        "ffpopt-GenDihedFit.py",
+        f"--nlmaxiter={nlmaxiter}",
+        fit_json,
         cwd=_subprocess_cwd(workdir),
     )
 
@@ -548,10 +584,10 @@ def _apply_fit_and_prepare(
 ) -> None:
     """ Apply the fit script to ``origparm`` and rebuild the JSON input.
 
-    Runs ``python3 <citname>.py origparm <citname>.parm7`` to bake the new
-    torsion terms into a fresh parm7, then ``ffpopt-PrepareInput.py
-    --update`` to produce ``<citname>.json``. FUTURE: replace subprocess
-    calls with API calls once PrepareInput is refactored.
+    Runs ``python <citname>.py origparm <citname>.parm7`` (current
+    interpreter) to bake the new torsion terms into a fresh parm7, then
+    PrepareInput ``--update`` to produce ``<citname>.json``. FUTURE: replace
+    subprocess calls with API calls once PrepareInput is refactored.
 
     Parameters
     ----------
@@ -582,21 +618,19 @@ def _apply_fit_and_prepare(
         )
         return
     log.info("[twist] applying fit → %s", parm_out)
-    subprocess.run(
-        ["python3", str(py_script), str(origparm_path), str(parm_out)],
-        check=True,
+    _run_current_python(
+        py_script,
+        str(origparm_path),
+        str(parm_out),
         cwd=_subprocess_cwd(workdir),
     )
     log.info("[twist] PrepareInput → %s", json_out)
-    subprocess.run(
-        [
-            "ffpopt-PrepareInput.py",
-            "--update",
-            f"--parm={parm_out.resolve()}",
-            f"--crd={inp_path}",
-            f"--out={json_out.resolve()}",
-        ],
-        check=True,
+    _run_ffpopt_bin(
+        "ffpopt-PrepareInput.py",
+        "--update",
+        f"--parm={parm_out.resolve()}",
+        f"--crd={inp_path}",
+        f"--out={json_out.resolve()}",
         cwd=_subprocess_cwd(workdir),
     )
 
@@ -1125,14 +1159,11 @@ def _prepare_fragment_input(
         log.info("[frag-twist] %s exists — skipping PrepareInput", start_json)
         return str(start_json)
     log.info("[frag-twist] PrepareInput → %s (cwd=%s)", start_json, frag_dir)
-    subprocess.run(
-        [
-            "ffpopt-PrepareInput.py",
-            f"--parm={parm7}",
-            f"--crd={rst7}",
-            f"--out={start_json}",
-        ],
-        check=True,
+    _run_ffpopt_bin(
+        "ffpopt-PrepareInput.py",
+        f"--parm={parm7}",
+        f"--crd={rst7}",
+        f"--out={start_json}",
         cwd=str(frag_dir),
     )
     return str(start_json)
