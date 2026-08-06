@@ -13,6 +13,30 @@ from typing import Any, Optional, Union
 from ligandparam.stages.abstractstage import AbstractStage
 
 
+def coerce_fragment_config(value: Any):
+    """Normalize ``fragment_config`` to a FragmentConfig or ``None``.
+
+    Accepts ``None``, a :class:`scission.models.FragmentConfig`, or a dict
+    for ``FragmentConfig.from_dict``.
+    """
+    if value is None:
+        return None
+    try:
+        from scission.models import FragmentConfig
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "fragment_config requires the integrated scission package"
+        ) from exc
+    if isinstance(value, FragmentConfig):
+        return value
+    if isinstance(value, dict):
+        return FragmentConfig.from_dict(value)
+    raise TypeError(
+        "fragment_config must be None, a FragmentConfig, or a dict; "
+        f"got {type(value).__name__}"
+    )
+
+
 class StageDihedTwistCorrection(AbstractStage):
     """Fit and merge dihedral corrections into a parent Amber frcmod.
 
@@ -47,6 +71,12 @@ class StageDihedTwistCorrection(AbstractStage):
         Use geomeTRIC for constrained optimizations. Default ``True``.
     skip_existing : bool, optional
         Restart-friendly reuse of on-disk artifacts. Default ``True``.
+    delta : int, optional
+        Wavefront dihedral step in degrees (CLI ``--delta``). Default ``10``.
+    fragment_config : FragmentConfig or dict, optional
+        Scission fragmentation settings forwarded to
+        ``run_fragmented_dihed_twist_workflow``. Default ``None`` (scission
+        defaults).
     """
 
     def __init__(
@@ -70,6 +100,7 @@ class StageDihedTwistCorrection(AbstractStage):
         self.geometric_opt = bool(kwargs.get("geometric_opt", True))
         self.skip_existing = bool(kwargs.get("skip_existing", True))
         self.rotatable_bond_smarts = kwargs.get("rotatable_bond_smarts")
+        self.fragment_config = coerce_fragment_config(kwargs.get("fragment_config"))
         self.add_required(self.in_mol2)
         self.add_required(self.in_lib)
         self.add_required(self.in_frcmod)
@@ -135,6 +166,7 @@ class StageDihedTwistCorrection(AbstractStage):
             geometric_opt=self.geometric_opt,
             skip_existing=self.skip_existing,
             rotatable_bond_smarts=self.rotatable_bond_smarts,
+            fragment_config=self.fragment_config,
             logger=self.logger,
         )
         self.logger.info(
@@ -161,6 +193,7 @@ def dihed_twist_stage_kwargs(
     delta: int = 10,
     skip_existing: bool = True,
     rotatable_bond_smarts=None,
+    fragment_config=None,
 ) -> dict:
     """Keyword arguments for constructing :class:`StageDihedTwistCorrection`."""
     return {
@@ -177,5 +210,6 @@ def dihed_twist_stage_kwargs(
         "geometric_opt": geometric_opt,
         "skip_existing": skip_existing,
         "rotatable_bond_smarts": rotatable_bond_smarts,
+        "fragment_config": fragment_config,
         "logger": logger,
     }

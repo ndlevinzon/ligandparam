@@ -57,8 +57,15 @@ class FreeLigand(Recipe):
         High-level model for dihedral fitting. Default ``"qdpi2"``.
     dihed_maxiter : int, optional
         Fit-then-rescan iterations. Default ``2``.
+    dihed_delta : int, optional
+        Wavefront dihedral step in degrees (same as CLI ``--delta``).
+        Default ``10``.
+    dihed_fragment_config : FragmentConfig or dict, optional
+        Scission fragmentation settings (``FragmentConfig`` or a dict for
+        ``FragmentConfig.from_dict``). Default ``None``.
     nproc, mem : int, optional
-        Gaussian processor count and memory in GB.    gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
+        Gaussian processor count and memory in GB.
+    gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
         Gaussian environment overrides; otherwise environment variables are used.
     **kwargs
         Extra options forwarded to stages (for example ``logger``).

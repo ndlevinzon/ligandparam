@@ -36,7 +36,8 @@ CLI
    lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10
 
 Python stage (also used when ``dihed_correct=True`` on FreeLigand / LazyLigand /
-DPFreeLigand):
+DPFreeLigand). Recipe kwargs ``dihed_delta`` and ``dihed_fragment_config``
+mirror CLI ``--delta`` and scission ``FragmentConfig`` settings:
 
 .. code-block:: python
 
@@ -50,6 +51,7 @@ DPFreeLigand):
        in_frcmod="chaps.frcmod",
        out_frcmod="chaps.dihed.frcmod",
        model="xtb",
+       delta=10,
        nproc=10,
    ).execute()
 

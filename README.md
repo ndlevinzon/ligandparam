@@ -182,9 +182,11 @@ lig-scission fragment -d CHA3 -r CHA --label chaps
 scission fragment --mol2 ... --lib ... --frcmod ... --outdir frags
 ```
 
-Python recipes can still append the stage with `dihed_correct=True`
-(`FreeLigand` / `LazyLigand` / `DPFreeLigand`). Prefer the standalone CLIs when
-running interactively after `lig-getparam`.
+Python recipes can still append the stage with ``dihed_correct=True``
+(``FreeLigand`` / ``LazyLigand`` / ``DPFreeLigand``). Use ``dihed_delta`` for
+the wavefront step (CLI ``--delta``) and ``dihed_fragment_config`` for
+scission settings. Prefer the standalone CLIs when running interactively
+after ``lig-getparam``.
 
 ---
 

@@ -42,6 +42,10 @@ class LazyLigand(Recipe):
         If True, append an ffpopt fragmented dihed-twist stage after Leap.
     dihed_model : str, optional
         High-level model for dihedral fitting. Default ``"qdpi2"``.
+    dihed_delta : int, optional
+        Wavefront dihedral step in degrees (CLI ``--delta``). Default ``10``.
+    dihed_fragment_config : FragmentConfig or dict, optional
+        Scission fragmentation settings. Default ``None``.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
         Gaussian environment overrides; otherwise environment variables are used.
     **kwargs
