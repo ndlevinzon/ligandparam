@@ -434,9 +434,9 @@ def _write_fit_json(
         Path to the current parm7 (origparm on the first iteration,
         ``<prev>.parm7`` thereafter).
     workdir : pathlib.Path, optional
-        When set, the fit JSON is written under this directory. Profile
-        and output basenames stay relative so GenDihedFit can run with
-        ``cwd=workdir``.
+        When set, the fit JSON and all referenced outputs/profiles are
+        written as absolute paths under this directory so GenDihedFit does
+        not depend on process cwd.
 
     Returns
     -------
@@ -444,13 +444,21 @@ def _write_fit_json(
         Path to the written ``<citname>.fit.json`` file.
     """
     ss = copy.deepcopy(s_template)
-    ss["output"] = citname + ".py"
-    # Absolute parm so fit tools do not depend on process cwd.
+    # Absolute outputs / profiles: GenDihedFit opens these relative to its
+    # own process cwd; hardcoding absolutes avoids silent writes to the
+    # launch directory if cwd is wrong.
+    py_out = str(_in_workdir(workdir, f"{citname}.py").resolve())
+    frcmod_out = str(_in_workdir(workdir, f"{citname}.frcmod").resolve())
+    ss["output"] = py_out
     ss["parm"] = str(_in_workdir(workdir, parm).resolve())
     ss["profiles"] = [
         {
-            "hl": f"{hl_prefix}_{scan.GetIdxStr()}.json",
-            "ll": f"{ll_prefix}_{scan.GetIdxStr()}.json",
+            "hl": str(
+                _in_workdir(workdir, f"{hl_prefix}_{scan.GetIdxStr()}.json").resolve()
+            ),
+            "ll": str(
+                _in_workdir(workdir, f"{ll_prefix}_{scan.GetIdxStr()}.json").resolve()
+            ),
             "name": citname,
             "plots": [scan.GetParamByType()],
         }
@@ -458,13 +466,23 @@ def _write_fit_json(
     ]
     datadict = {
         "params": params,
-        "output": f"{citname}.frcmod",
+        "output": frcmod_out,
         "systems": [ss],
     }
-    out_path = _in_workdir(workdir, f"{citname}.fit.json")
+    out_path = _in_workdir(workdir, f"{citname}.fit.json").resolve()
     with open(out_path, "w") as fh:
         json.dump(datadict, fh, indent=4)
     return str(out_path)
+
+
+def _require_files(paths: list[PathLike], *, step: str) -> None:
+    """Raise if any expected output path is missing after a workflow step."""
+    missing = [str(p) for p in paths if not Path(p).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"{step}: expected output file(s) missing:\n  "
+            + "\n  ".join(missing)
+        )
 
 
 def _run_gendihedfit(
@@ -493,18 +511,21 @@ def _run_gendihedfit(
         Directory containing the fit JSON; passed as ``subprocess`` ``cwd``.
     """
     log = _resolve_logger(logger)
-    py_out = _in_workdir(workdir, f"{citname}.py")
-    fit_json = f"{citname}.fit.json"
+    py_out = _in_workdir(workdir, f"{citname}.py").resolve()
+    frcmod_out = _in_workdir(workdir, f"{citname}.frcmod").resolve()
+    fit_json = str(_in_workdir(workdir, f"{citname}.fit.json").resolve())
     if skip_existing and py_out.exists():
         log.info("[twist] %s exists — skipping GenDihedFit.", py_out)
         return
-    log.info("[twist] GenDihedFit → %s", py_out)
+    log.info("[twist] GenDihedFit → %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
     _run_ffpopt_bin(
         "ffpopt-GenDihedFit.py",
         f"--nlmaxiter={nlmaxiter}",
         fit_json,
         cwd=_subprocess_cwd(workdir),
     )
+    _require_files([py_out, frcmod_out], step="GenDihedFit")
+    log.info("[twist] wrote %s and %s", py_out, frcmod_out)
 
 
 def _compare_per_bond(
@@ -621,7 +642,7 @@ def _apply_fit_and_prepare(
     _run_current_python(
         py_script,
         str(origparm_path),
-        str(parm_out),
+        str(parm_out.resolve()),
         cwd=_subprocess_cwd(workdir),
     )
     log.info("[twist] PrepareInput → %s", json_out)
@@ -633,6 +654,8 @@ def _apply_fit_and_prepare(
         f"--out={json_out.resolve()}",
         cwd=_subprocess_cwd(workdir),
     )
+    _require_files([parm_out, json_out], step="apply+prepare")
+    log.info("[twist] wrote %s and %s", parm_out.resolve(), json_out.resolve())
 
 
 def run_dihed_twist_workflow(

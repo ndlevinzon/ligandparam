@@ -1,6 +1,7 @@
 """Tests for workdir path helpers (no Amber / wavefront required)."""
 
 import inspect
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -65,7 +66,9 @@ class TestRunCurrentPython(unittest.TestCase):
         wd = Path("/tmp/fragB")
         with patch("ffpopt.Workflows.subprocess.run") as run, patch.object(
             Path, "exists", return_value=False
-        ), patch("ffpopt.Workflows._ffpopt_bin_script", return_value="/fake/PrepareInput.py"):
+        ), patch.object(Path, "is_file", return_value=True), patch(
+            "ffpopt.Workflows._ffpopt_bin_script", return_value="/fake/PrepareInput.py"
+        ):
             _apply_fit_and_prepare(
                 citname="it01",
                 origparm="fragment.parm7",
@@ -77,6 +80,39 @@ class TestRunCurrentPython(unittest.TestCase):
         fit_cmd = run.call_args_list[0].args[0]
         self.assertEqual(fit_cmd[0], sys.executable)
         self.assertTrue(str(fit_cmd[1]).endswith("it01.py"))
+
+    def test_write_fit_json_uses_absolute_paths(self):
+        import tempfile
+
+        from ffpopt.Workflows import _write_fit_json
+
+        class Scan:
+            def GetIdxStr(self):
+                return "0-1-2-3"
+
+            def GetParamByType(self):
+                return "X-X-X-X"
+
+        with tempfile.TemporaryDirectory() as td:
+            wd = Path(td)
+            (wd / "xtb_0-1-2-3.json").write_text("[]")
+            (wd / "orig_0-1-2-3.json").write_text("[]")
+            (wd / "frag.parm7").write_text("parm")
+            path = _write_fit_json(
+                citname="it01",
+                scans=[Scan()],
+                params={},
+                s_template={"params": {}},
+                hl_prefix="xtb",
+                ll_prefix="orig",
+                parm="frag.parm7",
+                workdir=wd,
+            )
+            data = json.loads(Path(path).read_text())
+            self.assertTrue(Path(data["output"]).is_absolute())
+            self.assertTrue(Path(data["systems"][0]["output"]).is_absolute())
+            self.assertTrue(Path(data["systems"][0]["profiles"][0]["hl"]).is_absolute())
+            self.assertEqual(Path(data["systems"][0]["output"]).parent, wd.resolve())
 
 
 class TestFragmentedWorkflowNoChdir(unittest.TestCase):

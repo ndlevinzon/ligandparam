@@ -1651,7 +1651,9 @@ def run_dihed_wavefront(
         if args.wf_max_levels < minlevels:
             args.wf_max_levels = int(minlevels)
 
-    checkpoint_path = Path(f"checkpoint_{Path(args.out).with_suffix('.pkl')}")
+    checkpoint_path = Path(args.out).resolve().parent / (
+        f"checkpoint_{Path(args.out).resolve().with_suffix('.pkl').name}"
+    )
 
     if args.wf_alt_starting_checkpoint:
         starting_checkpoint_path = Path(args.wf_alt_starting_checkpoint)
@@ -1719,17 +1721,19 @@ def run_dihed_wavefront(
         print(f"Angle: {rcs}, Energy: {energies[i]}")
     print(f"Wavefront scan completed. Results written to {args.out}.")
 
-    dat = Path(args.out).with_suffix(".dat")
+    out_path = Path(args.out).resolve()
+    dat = out_path.with_suffix(".dat")
     with open(dat, "w") as fh:
         for a, e, n in zip(rcs, energies, energies_noshift):
             fh.write(f"{a} {e} {n}\n")
     print(f"Data written to {dat}.")
 
-    pickle.dump(wf_run, open(Path(args.out).with_suffix(".pkl"), "wb"))
-    print(f"Wavefront run saved to {Path(args.out).with_suffix('.pkl')}.")
-    wf_pngfile = f"wf_workflow_{Path(args.out).with_suffix('.png').name}"
-    wf_xmlfile = Path(wf_pngfile).with_suffix('.xml').name
-    wf_run.plot_wavefront(pngfile=wf_pngfile,xmlfile=wf_xmlfile)
+    pkl_path = out_path.with_suffix(".pkl")
+    pickle.dump(wf_run, open(pkl_path, "wb"))
+    print(f"Wavefront run saved to {pkl_path}.")
+    wf_pngfile = str(out_path.parent / f"wf_workflow_{out_path.with_suffix('.png').name}")
+    wf_xmlfile = str(Path(wf_pngfile).with_suffix(".xml"))
+    wf_run.plot_wavefront(pngfile=wf_pngfile, xmlfile=wf_xmlfile)
     wf_run.print_summary()
     print(f"Wavefront plot saved as '{wf_pngfile}'.")
     print(f"Energies saved as '{wf_xmlfile}'.")
