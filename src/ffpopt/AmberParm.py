@@ -59,61 +59,64 @@ def CopyParm(parm):
     return p
 
 
-def RotateMask(graph,idxs):
-    left = "%i"%(idxs[1])
-    right = "%i"%(idxs[2])
-    nat = len(graph.nodes)
-    gleft = []
-    gright = []
-    for n in graph.nodes:
-        if n == left:
-            gleft.append(int(n))
-        elif n == right:
-            gright.append(int(n))
-        else:
-            rleft = len(graph.FindMinPaths(left,n)[0])
-            rright = len(graph.FindMinPaths(right,n)[0])
-            if rleft < rright:
-                gleft.append(int(n))
-            else:
-                gright.append(int(n))
-    mask = [0]*nat
-    if len(gleft) < len(gright):
-        gmove = gleft
-    else:
-        gmove = gright
-    for i in gmove:
-        mask[i] = 1
+def RotateMask(graph, idxs):
+    """Build a 0/1 atom mask for rotating about a central bond.
 
+    For dihedral ``idxs = [a, b, c, d]``, the rotatable bond is ``b–c``.
+    Atoms are bipartitioned with a single BFS across that bond (same idea as
+    scission ``component_beyond_bond``), then the mask is oriented so atom
+    ``d`` moves. Prefer the smaller side before flipping.
+
+    Parameters
+    ----------
+    graph : GraphSearch
+        Covalent graph with string node ids (``"0"``, ``"1"``, …).
+    idxs : sequence of int
+        Four 0-based atom indices defining the dihedral.
+
+    Returns
+    -------
+    list of int
+        Length ``N`` mask; ``1`` marks atoms that should move under the twist.
+    """
+    left = "%i" % (idxs[1],)
+    right = "%i" % (idxs[2],)
+    nat = len(graph.nodes)
+    gright = graph.ComponentBeyondBond(left, right)
+    gleft = set(graph.nodes) - gright
+    gmove = gleft if len(gleft) < len(gright) else gright
+    mask = [0] * nat
+    for node in gmove:
+        mask[int(node)] = 1
     if mask[idxs[3]] == 0:
-        mask = [ 1-x for x in mask ]
-        
+        mask = [1 - x for x in mask]
     return mask
 
 
+def RotateBondMask(graph, bondpair):
+    """Mask atoms on the ``bondpair[0]`` side of a central bond.
 
-def RotateBondMask(graph,bondpair):
-    left = "%i"%(bondpair[0])
-    right = "%i"%(bondpair[1])
+    Parameters
+    ----------
+    graph : GraphSearch
+        Covalent graph with string node ids.
+    bondpair : sequence of int
+        Two 0-based atom indices ``(left, right)`` for the cut bond.
+
+    Returns
+    -------
+    list of int
+        Length ``N`` mask with ``1`` on the left-side component (including
+        ``left``).
+    """
+    left = "%i" % (bondpair[0],)
+    right = "%i" % (bondpair[1],)
     nat = len(graph.nodes)
-    gleft = []
-    gright = []
-    for n in graph.nodes:
-        if n == left:
-            gleft.append(int(n))
-        elif n == right:
-            gright.append(int(n))
-        else:
-            rleft = len(graph.FindMinPaths(left,n)[0])
-            rright = len(graph.FindMinPaths(right,n)[0])
-            if rleft < rright:
-                gleft.append(int(n))
-            else:
-                gright.append(int(n))
-    mask = [0]*nat
-    for i in gleft:
-        mask[i] = 1
-    
+    gright = graph.ComponentBeyondBond(left, right)
+    gleft = set(graph.nodes) - gright
+    mask = [0] * nat
+    for node in gleft:
+        mask[int(node)] = 1
     return mask
 
 

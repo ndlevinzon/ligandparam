@@ -87,9 +87,13 @@ class GraphSearch(object):
             raise Exception("Node %s is not in graph"%(snode))
         if tnode not in self.nodes:
             raise Exception("Node %s is not in graph"%(tnode))
-        allpaths = self._find(snode,tnode,path=[],
-                              visited=ddict(lambda: False),
-                              allpaths=[])
+        allpaths = self._find(
+            snode,
+            tnode,
+            path=None,
+            visited=None,
+            allpaths=None,
+        )
         if len(allpaths) > 0:
             if minsize > 2:
                 sizes = np.array([ len(path) for path in allpaths ],dtype=int)
@@ -161,9 +165,14 @@ class GraphSearch(object):
             raise Exception("Node %s is not in graph"%(snode))
         if tnode not in self.nodes:
             raise Exception("Node %s is not in graph"%(tnode))
-        allpaths = self._findmin(snode,tnode,path=[],
-                              visited=ddict(lambda: False),
-                              allpaths=[],minsize=minsize)
+        allpaths = self._findmin(
+            snode,
+            tnode,
+            path=None,
+            visited=None,
+            allpaths=None,
+            minsize=minsize,
+        )
         if len(allpaths) > 0:
             sizes = np.array([ len(path) for path in allpaths ],dtype=int)
             return [allpaths[x]
@@ -285,10 +294,47 @@ class GraphSearch(object):
         allpaths.sort()
         return allpaths
 
+
+    def ComponentBeyondBond(self, atom_in, atom_out):
+        """Return nodes on the ``atom_out`` side of the ``atom_in``–``atom_out`` bond.
+
+        Mirrors scission's ``component_beyond_bond``: BFS from ``atom_out``
+        without crossing ``atom_in``. Includes ``atom_out``. Runs in ``O(N+E)``.
+
+        Parameters
+        ----------
+        atom_in : str
+            Node on the blocked side of the cut bond.
+        atom_out : str
+            Node on the far side; search starts here.
+
+        Returns
+        -------
+        set of str
+            Nodes reachable from ``atom_out`` without passing through ``atom_in``.
+        """
+        if atom_in not in self.nodes:
+            raise Exception("Node %s is not in graph" % (atom_in,))
+        if atom_out not in self.nodes:
+            raise Exception("Node %s is not in graph" % (atom_out,))
+        visited = {atom_in}
+        stack = [atom_out]
+        component = set()
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.add(node)
+            for nbr in self.edges[node]:
+                if nbr not in visited:
+                    stack.append(nbr)
+        return component
+
                 
-    def _find(self,start,stop,path=[],
-              visited=ddict(lambda: False),
-              allpaths=[]):
+    def _find(self,start,stop,path=None,
+              visited=None,
+              allpaths=None):
         """Utility function that recursively traverses the graph to
         find paths.  One should instead use the FindAllPaths method,
         which uses this recursive algorithm, but which is harder to
@@ -303,16 +349,15 @@ class GraphSearch(object):
         stop : str
             The stopping node
 
-        path : list of str
+        path : list of str or None
             The current list of nodes in the path 
-            (should be set as [] when calling)
+            (``None`` starts a fresh path)
 
-        visited : dict of bool
+        visited : dict of bool or None
             Indicates if a node has already been used within the path
 
-        allpaths : list of list of str
+        allpaths : list of list of str or None
             The list of all paths found in the graph
-            (should be set to [] when calling)
         
         Returns
         -------
@@ -326,6 +371,13 @@ class GraphSearch(object):
         # Recursive Depth First Traversal with a boolean array used to avoid
         # revisiting a node twice
         #
+        if path is None:
+            path = []
+        if visited is None:
+            visited = ddict(lambda: False)
+        if allpaths is None:
+            allpaths = []
+
         visited[start]=True
         path.append(start)
         if start == stop:
@@ -352,9 +404,9 @@ class GraphSearch(object):
         return allpaths
 
  
-    def _findmin(self,start,stop,path=[],
-                 visited=ddict(lambda: False),
-                 allpaths=[],minsize=2):
+    def _findmin(self,start,stop,path=None,
+                 visited=None,
+                 allpaths=None,minsize=2):
         """Utility function that recursively traverses the graph to
         find paths.  One should instead use the FindAllPaths method,
         which uses this recursive algorithm, but which is harder to
@@ -369,16 +421,15 @@ class GraphSearch(object):
         stop : str
             The stopping node
 
-        path : list of str
+        path : list of str or None
             The current list of nodes in the path 
-            (should be set as [] when calling)
+            (``None`` starts a fresh path)
 
-        visited : dict of bool
+        visited : dict of bool or None
             Indicates if a node has already been used within the path
 
-        allpaths : list of list of str
+        allpaths : list of list of str or None
             The list of all paths found in the graph
-            (should be set to [] when calling)
         
         Returns
         -------
@@ -392,6 +443,13 @@ class GraphSearch(object):
         # Recursive Depth First Traversal with a boolean array used to avoid
         # revisiting a node twice
         #
+        if path is None:
+            path = []
+        if visited is None:
+            visited = ddict(lambda: False)
+        if allpaths is None:
+            allpaths = []
+
         visited[start]=True
         path.append(start)
         pathlen = len(path)
