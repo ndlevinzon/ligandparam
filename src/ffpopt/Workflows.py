@@ -16,8 +16,9 @@ When to use which entry point
 ``run_dihed_twist_workflow``
     Single-molecule path when you already have ``parm7`` / ``rst7`` (via
     ``ffpopt-PrepareInput.py`` → ``start.json``) and known rotatable central
-    bonds (``bond=["i,j", ...]``, 0-based). Use ``bytype=True`` if you need a
-    frcmod-writable global parameter set.
+    bonds (``bond=[(i, j), ...]``, **0-based** atom indices). CLI-style
+    ``"i,j"`` strings are still accepted for compatibility. Use
+    ``bytype=True`` if you need a frcmod-writable global parameter set.
 
 Requirements and caveats
 ------------------------
@@ -45,6 +46,11 @@ _LOG = logging.getLogger("ffpopt.workflows")
 
 PathLike = Union[str, Path]
 
+# Central bond of a proper dihedral as a pair of **0-based** atom indices
+# (ParmEd / ffpopt convention). Scission fit_torsions use 1-based indices;
+# convert at the boundary with :func:`bonds0_from_scission_fit_torsions`.
+BondPair0 = tuple[int, int]
+
 
 def _as_path(value: PathLike) -> Path:
     """Normalize path-like inputs to :class:`pathlib.Path`."""
@@ -54,6 +60,69 @@ def _as_path(value: PathLike) -> Path:
 def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
     """Return ``logger`` or the module logger for workflow progress messages."""
     return logger if logger is not None else _LOG
+
+
+def normalize_bond_pairs0(bond) -> list[BondPair0]:
+    """Normalize central bonds to 0-based ``(i, j)`` tuples.
+
+    Parameters
+    ----------
+    bond
+        Iterable of:
+
+        * ``(i, j)`` or ``[i, j]`` — **0-based** atom indices (preferred API)
+        * ``"i,j"`` — CLI string form (also **0-based**)
+
+    Returns
+    -------
+    list of tuple[int, int]
+        Central bond pairs for ffpopt scans / fits.
+
+    Raises
+    ------
+    TypeError, ValueError
+        If an entry is not a pair of integers or a ``"i,j"`` string.
+    """
+    if bond is None:
+        raise TypeError("bond must be an iterable of pairs or 'i,j' strings")
+    out: list[BondPair0] = []
+    for entry in bond:
+        if isinstance(entry, str):
+            parts = entry.split(",")
+            if len(parts) != 2:
+                raise ValueError(
+                    f"bond string must be 'i,j' (0-based); got {entry!r}"
+                )
+            out.append((int(parts[0]), int(parts[1])))
+            continue
+        try:
+            a, b = entry
+            out.append((int(a), int(b)))
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                "each bond must be a 0-based (i, j) pair or an 'i,j' string; "
+                f"got {entry!r}"
+            ) from exc
+    return out
+
+
+def bonds0_from_scission_fit_torsions(fit_torsions) -> list[BondPair0]:
+    """Map scission ``fit_torsions`` (1-based) to ffpopt central bonds (0-based).
+
+    Each record's ``fragment_rotatable_bond`` is a two-element list of
+    **1-based** fragment-local atom indices. Returns **0-based** pairs for
+    :func:`run_dihed_twist_workflow`.
+    """
+    bonds: list[BondPair0] = []
+    for record in fit_torsions:
+        pair = record["fragment_rotatable_bond"]
+        if len(pair) != 2:
+            raise ValueError(
+                "fragment_rotatable_bond must have two 1-based indices; "
+                f"got {pair!r}"
+            )
+        bonds.append((int(pair[0]) - 1, int(pair[1]) - 1))
+    return bonds
 
 
 def _parent_paths_from_args(
@@ -150,8 +219,8 @@ def _resolve_scans_and_params(mol, bonds, nprim: int, bytype: bool):
     mol : parmed.Structure
         Parsed amber topology. Used only for its ``dihedrals`` list and
         atom records.
-    bonds : list of list of int
-        Central-bond atom pairs as ``[[a, b], ...]`` (0-based indices).
+    bonds : list of tuple[int, int] or list of list of int
+        Central-bond atom pairs as ``[(a, b), ...]`` (**0-based** indices).
     nprim : int
         Number of primary cosine terms to fit per parameter family.
     bytype : bool
@@ -527,9 +596,10 @@ def run_dihed_twist_workflow(
     ----------
     inp : str
         Input JSON file (``ListOfStruct``). Only the first structure is used.
-    bond : list of str
-        Bonds to scan, each as ``"a,b"`` (0-based atom indices, central pair
-        of a proper dihedral). Same shape as repeated ``--bond`` on the CLI.
+    bond
+        Central bonds to scan. Preferred form: sequence of **0-based**
+        ``(i, j)`` pairs. CLI-style ``"i,j"`` strings are also accepted
+        (still 0-based). Each pair is the central bond of a proper dihedral.
     delta : int, optional
         Wavefront angle step (degrees). Default is 10.
     nprim : int, optional
@@ -629,9 +699,10 @@ def run_dihed_twist_workflow(
     model = std["model"]
 
     # SimpleNamespace mirroring the CLI's args — needed by los.SetArgs.
+    bonds0 = normalize_bond_pairs0(bond)
     args = SimpleNamespace(
         inp=inp,
-        bond=list(bond),
+        bond=[f"{a},{b}" for a, b in bonds0],  # string form for legacy SetArgs
         delta=delta,
         nprim=nprim,
         maxiter=maxiter,
@@ -651,7 +722,7 @@ def run_dihed_twist_workflow(
     mol = los.structs[0].ReadAmberParm()
     origparm = los.structs[0].data["parm"]
 
-    bonds_parsed = [[int(x) for x in b.split(",")] for b in args.bond]
+    bonds_parsed = list(bonds0)
     scans, params, s_template = _resolve_scans_and_params(
         mol, bonds_parsed, nprim=nprim, bytype=bytype
     )
@@ -806,7 +877,7 @@ def run_dihed_twist_workflow(
                 # Rebuild scans/params/s_template from just the survivors so
                 # the next iteration's fit no longer sees the converged ones.
                 kept_bonds = [
-                    [s.idxs[1], s.idxs[2]]
+                    (s.idxs[1], s.idxs[2])
                     for s in scans
                     if s.GetIdxStr() in still_off_idxs
                 ]
@@ -896,8 +967,8 @@ def _build_structure_image_map(frag_dir: Path, fit_torsions: list) -> dict:
     frag_dir : pathlib.Path
         One fragment's output directory.
     fit_torsions : list of dict
-        The fragment's ``fit_torsions.json`` payload (1-indexed atom
-        indices, per scission's convention).
+        The fragment's ``fit_torsions.json`` payload (**1-based** atom
+        indices). Converted to 0-based pairs for plot keys.
 
     Returns
     -------
@@ -1195,11 +1266,8 @@ def run_fragmented_dihed_twist_workflow(
         if not fragment.fit_torsions:
             log.info("[frag-twist] %s: no fit_torsions — skipping", fragment.fragment_id)
             continue
-        # fit_torsions are 1-indexed; ffpopt's bond= takes 0-indexed pairs.
-        bonds = [
-            "{0},{1}".format(*(i - 1 for i in t["fragment_rotatable_bond"]))
-            for t in fragment.fit_torsions
-        ]
+        # scission fit_torsions use 1-based fragment indices; ffpopt wants 0-based.
+        bonds = bonds0_from_scission_fit_torsions(fragment.fit_torsions)
         frag_dir = fragment.manifest_path.parent
         structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
         log.info(

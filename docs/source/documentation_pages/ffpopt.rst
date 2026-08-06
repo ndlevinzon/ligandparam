@@ -28,7 +28,11 @@ Call from an ``if __name__ == "__main__":`` guard (wavefront uses spawn-mode
 multiprocessing).
 
 Single-molecule twist (when you already have ``parm7`` / ``rst7`` and explicit
-bonds) is :func:`ffpopt.Workflows.run_dihed_twist_workflow`.
+bonds) is :func:`ffpopt.Workflows.run_dihed_twist_workflow`. Pass
+``bond=[(i, j), ...]`` with **0-based** atom indices (CLI ``"i,j"`` strings
+still work). Scission's ``fit_torsions`` use 1-based indices and are converted
+at the fragmented-workflow boundary via
+:func:`ffpopt.Workflows.bonds0_from_scission_fit_torsions`.
 
 ligandparam wrapper
 -------------------
