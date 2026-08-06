@@ -200,6 +200,7 @@ def find_rotatable_bonds(
     ligand: Ligand,
     include_rigid_single_bonds: bool = True,
     rotatable_bond_smarts: tuple[str, ...] = (),
+    graph: nx.Graph | None = None,
 ) -> list[tuple[int, int]]:
     """Identify acyclic single bonds eligible for torsion scans.
 
@@ -210,12 +211,13 @@ def find_rotatable_bonds(
             rigid by default.
         rotatable_bond_smarts: SMARTS override patterns that may nominate
             otherwise excluded bonds as torsion targets.
+        graph: Optional prebuilt molecular graph.
 
     Returns:
         Sorted normalized bond pairs considered rotatable.
     """
 
-    graph = build_graph(ligand)
+    graph = graph if graph is not None else build_graph(ligand)
     ring_edges = ring_bond_set(graph)
     smarts_matched_bonds = _match_rotatable_bond_smarts(ligand, rotatable_bond_smarts)
     rotatable: list[tuple[int, int]] = []
@@ -260,6 +262,7 @@ def enumerate_torsions(
             ligand,
             include_rigid_single_bonds=include_rigid_single_bonds,
             rotatable_bond_smarts=rotatable_bond_smarts,
+            graph=graph,
         )
     )
     torsions: list[TorsionDefinition] = []

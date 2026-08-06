@@ -107,6 +107,11 @@ class Ligand:
     mol2_path: Path
     lib_path: Path
     frcmod_path: Path
+    # Topology caches (filled lazily; not part of construction / equality).
+    _coordinates: dict[int, np.ndarray] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _graph: Any = field(default=None, init=False, repr=False, compare=False)
 
     def atom(self, atom_index: int) -> Atom:
         """Return a parent atom record by its one-based index.
@@ -124,11 +129,21 @@ class Ligand:
     def coordinates(self) -> dict[int, np.ndarray]:
         """Return parent coordinates keyed by one-based atom index.
 
-        Returns:
-            A mapping from parent atom index to a NumPy coordinate vector.
+        The mapping is built once and reused. Callers that mutate coordinates
+        (e.g. torsion screening) must ``.copy()`` individual arrays.
         """
 
-        return {atom.index: np.array(atom.coords, dtype=float) for atom in self.atoms}
+        if self._coordinates is None:
+            self._coordinates = {
+                atom.index: np.asarray(atom.coords, dtype=float) for atom in self.atoms
+            }
+        return self._coordinates
+
+    def clear_geometry_caches(self) -> None:
+        """Drop cached coordinates / graph after topology or coords change."""
+
+        self._coordinates = None
+        self._graph = None
 
 
 @dataclass(frozen=True)

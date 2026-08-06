@@ -10,12 +10,19 @@ from .models import Bond, Ligand
 def build_graph(ligand: Ligand) -> nx.Graph:
     """Construct a NetworkX graph view of the ligand.
 
+    The graph is cached on ``ligand`` because screening and torsion
+    enumeration rebuild topology repeatedly while coordinates change.
+
     Args:
         ligand: Parent ligand record.
 
     Returns:
         An undirected graph annotated with atom and bond metadata.
     """
+
+    cached = getattr(ligand, "_graph", None)
+    if cached is not None:
+        return cached
 
     graph = nx.Graph()
     for atom in ligand.atoms:
@@ -32,6 +39,7 @@ def build_graph(ligand: Ligand) -> nx.Graph:
             bond=bond,
             bond_type=bond.bond_type,
         )
+    ligand._graph = graph
     return graph
 
 

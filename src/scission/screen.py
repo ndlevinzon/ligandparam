@@ -172,19 +172,24 @@ def cap_direction(
     return np.array([1.0, 0.0, 0.0], dtype=float)
 
 
-def _build_cap_coordinates(ligand: Ligand, candidate: CandidateFragment, coordinates: dict[int, np.ndarray]) -> dict[str, np.ndarray]:
+def _build_cap_coordinates(
+    ligand: Ligand,
+    candidate: CandidateFragment,
+    coordinates: dict[int, np.ndarray],
+    graph: nx.Graph,
+) -> dict[str, np.ndarray]:
     """Generate trial cap coordinates for a screened fragment conformation.
 
     Args:
         ligand: Parent ligand record.
         candidate: Candidate fragment being screened.
         coordinates: Current coordinates for retained parent atoms.
+        graph: Prebuilt molecular graph (topology is fixed during a scan).
 
     Returns:
         Mapping from cap identifier to proposed cap coordinate.
     """
 
-    graph = build_graph(ligand)
     cap_coords: dict[str, np.ndarray] = {}
     for site in sorted(candidate.cap_sites, key=lambda s: (s.retained_atom, s.removed_atom)):
         retained = ligand.atom(site.retained_atom)
@@ -203,28 +208,27 @@ def _build_cap_coordinates(ligand: Ligand, candidate: CandidateFragment, coordin
 
 def _minimum_margin(
     ligand: Ligand,
-    graph: nx.Graph,
     retained_atoms: set[int],
     coordinates: dict[int, np.ndarray],
     caps: dict[str, np.ndarray],
     thresholds: ClashThresholds,
- ) -> tuple[float, dict[str, object] | None]:
+    distances: dict[int, dict[int, int]],
+) -> tuple[float, dict[str, object] | None]:
     """Measure the worst nonbonded margin among retained heavy atoms.
 
     Args:
         ligand: Parent ligand record.
-        graph: Molecular graph.
         retained_atoms: Parent atom indices retained in the fragment.
         coordinates: Coordinates for retained atoms in the current conformer.
         caps: Generated cap coordinates keyed by cap identifier.
         thresholds: Clash-threshold parameters.
+        distances: Precomputed shortest-path lengths on the retained subgraph.
 
     Returns:
         A tuple of the worst observed margin and optional detail for the most
         restrictive atom pair.
     """
 
-    distances = graph_distance_map(graph)
     entities: list[tuple[str | int, str, np.ndarray]] = []
     for atom_idx in sorted(retained_atoms):
         atom = ligand.atom(atom_idx)
@@ -273,6 +277,9 @@ def screen_candidate(
 ) -> ScreenResult:
     """Reject fragments whose sampled torsions introduce steric clashes.
 
+    Topology (graph / bond-path distances) is fixed for a candidate; only
+    Cartesian coordinates change across the torsion scan.
+
     Args:
         ligand: Parent ligand record.
         torsion: Torsion being preserved by the candidate.
@@ -295,13 +302,15 @@ def screen_candidate(
     side_from_c = _descendants(graph, d, c, retained)
     side_from_b = _descendants(graph, a, b, retained)
     rotating_side = side_from_c if len(side_from_c) <= len(side_from_b) else side_from_b
-    pivot1 = ligand.coordinates[b]
-    pivot2 = ligand.coordinates[c]
+    # Distances through the fragment (retained subgraph), not via cut-away atoms.
+    distances = graph_distance_map(graph.subgraph(retained))
+    original = ligand.coordinates
+    pivot1 = original[b]
+    pivot2 = original[c]
     axis = pivot2 - pivot1
     if np.linalg.norm(axis) == 0:
         return ScreenResult(False, -999.0, "zero_length_torsion_axis", None)
 
-    original = ligand.coordinates
     current_dihedral = _dihedral_angle(
         original[a],
         original[b],
@@ -317,8 +326,10 @@ def screen_candidate(
         for atom_idx in rotating_side:
             shifted = coords[atom_idx] - pivot
             coords[atom_idx] = rotation @ shifted + pivot
-        caps = _build_cap_coordinates(ligand, candidate, coords)
-        margin, detail = _minimum_margin(ligand, graph, retained, coords, caps, thresholds)
+        caps = _build_cap_coordinates(ligand, candidate, coords, graph)
+        margin, detail = _minimum_margin(
+            ligand, retained, coords, caps, thresholds, distances
+        )
         worst = min(worst, margin)
         if margin < 0:
             if detail is not None:
