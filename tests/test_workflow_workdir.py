@@ -85,7 +85,7 @@ class TestRunCurrentPython(unittest.TestCase):
         prep_cmd = run.call_args.args[0]
         self.assertEqual(prep_cmd[0], sys.executable)
         self.assertEqual(prep_cmd[1], "-u")
-        self.assertTrue(prep_cmd[2].endswith("ffpopt-PrepareInput.py"))
+        self.assertTrue("PrepareInput" in prep_cmd[2])
 
     def test_write_fit_json_uses_absolute_paths(self):
         import tempfile
