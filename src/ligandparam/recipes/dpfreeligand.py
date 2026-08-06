@@ -9,6 +9,7 @@ from ligandparam.io.orientations import (
     N_ORIENTATIONS_SO3_N28,
     legacy_euler_kwargs,
 )
+from ligandparam.recipes.dihed_options import apply_dihed_options, append_dihed_twist_stage
 from ligandparam.stages import (
     StageInitialize,
     StageDisplaceMol,
@@ -24,7 +25,6 @@ from ligandparam.stages import (
     StageMultiRespFit,
     StageUpdateCharge,
 )
-
 
 class DPFreeLigand(Recipe):
     """Parameterize a ligand with DeepMD minimization and multi-orientation RESP.
@@ -48,6 +48,10 @@ class DPFreeLigand(Recipe):
         Rerun Gaussian even if output logs already exist.
     orientation_protocol : {"so3_n28", "legacy_euler"}, optional
         Multi-RESP orientation set. Default ``so3_n28``.
+    dihed_correct : bool, optional
+        If True, append an ffpopt fragmented dihed-twist stage after Leap.
+    dihed_model : str, optional
+        High-level model for dihedral fitting. Default ``"qdpi2"``.
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
@@ -103,6 +107,7 @@ class DPFreeLigand(Recipe):
         if self.orientation_protocol == "so3_n28":
             for key in ("alpha", "beta", "gamma"):
                 kwargs.pop(key, None)
+        apply_dihed_options(self, kwargs)
         self.kwargs = kwargs
 
     def setup(self):
@@ -285,6 +290,13 @@ class DPFreeLigand(Recipe):
             StageLeap("Leap", main_input=nonminimized_mol2, cwd=self.cwd, in_frcmod=frcmod, out_lib=lib,
                       logger=self.logger, **self.kwargs),
         ]
+        append_dihed_twist_stage(
+            self.stages,
+            recipe=self,
+            mol2=nonminimized_mol2,
+            lib=lib,
+            frcmod=frcmod,
+        )
 
     @override
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:

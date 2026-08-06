@@ -136,6 +136,7 @@ sqm*
 /examples/04_MultiResp/*
 /examples/04_FromSmiles/*
 /examples/05_FromSDF/*
+/ffpopt-main/*
 
 # Allow specific files
 !/examples/01_LazyLigand/thiophenol.pdb

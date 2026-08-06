@@ -27,7 +27,9 @@ dependencies = [
   "MDAnalysis>2.7.0",
   "parmed",
   "rdkit",
-  "ase"
+  "ase",
+  "scipy",
+  "matplotlib",
 ]
 
 urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
@@ -38,6 +40,12 @@ ml = [
   "deepmd-kit",
   "tensorflow",
   "tblite"
+]
+
+dihed = [
+  # Fragmented twist also needs scission (FragmentMol) and AmberTools on PATH.
+  # Install scission separately into the same environment.
+  "ndfes",
 ]
 
 misc = [
@@ -55,6 +63,7 @@ docs = [
 
 all = [
   "ligandparam[ml]",
+  "ligandparam[dihed]",
   "ligandparam[misc]",
   "ligandparam[sage]",
   "ligandparam[docs]",
@@ -63,10 +72,37 @@ all = [
 [project.scripts]
 lighfix = "ligandparam.cli.cli_lighfix:lighfix"
 lig-getparam = "ligandparam.cli.ligandparam_getparam:main"
+lig-dihed-correct = "ligandparam.cli.lig_dihed_correct:main"
 smiles-to-pdb = "ligandparam.cli.smiles_to_pdb:main"
 lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
+"ffpopt-DihedScan.py" = "ffpopt.scripts:ffpopt_DihedScan"
+"ffpopt-Optimize.py" = "ffpopt.scripts:ffpopt_Optimize"
+"ffpopt-GenDihedFit.py" = "ffpopt.scripts:ffpopt_GenDihedFit"
+"ffpopt-DihedTwistWorkflow.py" = "ffpopt.scripts:ffpopt_DihedTwistWorkflow"
+"ffpopt-DihedWavefront.py" = "ffpopt.scripts:ffpopt_DihedWavefront"
+"ffpopt-PrepareInput.py" = "ffpopt.scripts:ffpopt_PrepareInput"
+"ffpopt-ConfSearch.py" = "ffpopt.scripts:ffpopt_ConfSearch"
+"ffpopt-RespFit.py" = "ffpopt.scripts:ffpopt_RespFit"
+"ffpopt-DeltaRespFit.py" = "ffpopt.scripts:ffpopt_DeltaRespFit"
+"ffpopt-CpeFit.py" = "ffpopt.scripts:ffpopt_CpeFit"
+"ffpopt-xyz2mol2.py" = "ffpopt.scripts:ffpopt_xyz2mol2"
+"ffpopt-DihedTwistAnimate.py" = "ffpopt.scripts:ffpopt_DihedTwistAnimate"
+"ffpopt-WavefrontAnimate.py" = "ffpopt.scripts:ffpopt_WavefrontAnimate"
+"ffpopt-FindSugarPuckers.py" = "ffpopt.scripts:ffpopt_FindSugarPuckers"
+"ffpopt-DeltaPuckerFit.py" = "ffpopt.scripts:ffpopt_DeltaPuckerFit"
+"ffpopt-NDimWavefront.py" = "ffpopt.scripts:ffpopt_NDimWavefront"
+"ffpopt-Json2Crds.py" = "ffpopt.scripts:ffpopt_Json2Crds"
+"ffpopt-JsonJoin.py" = "ffpopt.scripts:ffpopt_JsonJoin"
+"ffpopt-JsonSplit.py" = "ffpopt.scripts:ffpopt_JsonSplit"
+"ffpopt-Json2Img.py" = "ffpopt.scripts:ffpopt_Json2Img"
+"ffpopt-WavefrontToDP.py" = "ffpopt.scripts:ffpopt_WavefrontToDP"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ligandparam*", "ffpopt*"]
 
+[tool.setuptools.package-data]
+ffpopt = ["bin/*.py", "pkgdata/**/*", "GLOSSARY.md", "README.md"]
 
 [tool.ruff]
 line-length = 120

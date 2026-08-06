@@ -9,6 +9,7 @@ from ligandparam.io.orientations import (
     N_ORIENTATIONS_SO3_N28,
     legacy_euler_kwargs,
 )
+from ligandparam.recipes.dihed_options import apply_dihed_options, append_dihed_twist_stage
 from ligandparam.stages import (
     StageInitialize,
     StageNormalizeCharge,
@@ -23,7 +24,6 @@ from ligandparam.stages import (
     StageParmChk,
     StageLeap,
 )
-
 
 class FreeLigand(Recipe):
     """Parameterize a ligand with multi-orientation Gaussian RESP fitting.
@@ -49,9 +49,16 @@ class FreeLigand(Recipe):
     orientation_protocol : {"so3_n28", "legacy_euler"}, optional
         Multi-RESP orientation set. Default ``so3_n28`` (28 quaternion-packed
         orientations). ``legacy_euler`` restores the older alpha/beta grid.
+    dihed_correct : bool, optional
+        If True, append an ffpopt fragmented dihed-twist stage after Leap.
+        For interactive sessions after ``lig-getparam``, prefer the separate
+        ``lig-dihed-correct`` CLI instead.
+    dihed_model : str, optional
+        High-level model for dihedral fitting. Default ``"qdpi2"``.
+    dihed_maxiter : int, optional
+        Fit-then-rescan iterations. Default ``2``.
     nproc, mem : int, optional
-        Gaussian processor count and memory in GB.
-    gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
+        Gaussian processor count and memory in GB.    gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
         Gaussian environment overrides; otherwise environment variables are used.
     **kwargs
         Extra options forwarded to stages (for example ``logger``).
@@ -107,6 +114,7 @@ class FreeLigand(Recipe):
         if self.orientation_protocol == "so3_n28":
             for key in ("alpha", "beta", "gamma"):
                 kwargs.pop(key, None)
+        apply_dihed_options(self, kwargs)
         self.kwargs = kwargs
 
     def setup(self):
@@ -320,6 +328,13 @@ class FreeLigand(Recipe):
             StageLeap("Leap", main_input=nonminimized_mol2, cwd=self.cwd, in_frcmod=frcmod, out_lib=lib,
                       logger=self.logger, **self.kwargs),
         ]
+        append_dihed_twist_stage(
+            self.stages,
+            recipe=self,
+            mol2=nonminimized_mol2,
+            lib=lib,
+            frcmod=frcmod,
+        )
 
     @override
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:

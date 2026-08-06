@@ -63,6 +63,10 @@ pip install ".[docs]"   # Sphinx documentation build
 pip install ".[all]"    # everything above
 ```
 
+Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) package
+(plus `scission`). Install with `pip install -e ".[dihed]"`, add scission and
+the HL model stack, then run `lig-dihed-correct` after `lig-getparam`.
+
 Editable install for development:
 
 ```bash
@@ -141,6 +145,29 @@ by default. To reproduce the previous alpha/beta Euler grid, pass
 `orientation_protocol="legacy_euler"`. Both protocols use 28 Gaussian ESP jobs
 and feed the same multi-RESP → `parmchk2` → LEaP path (`.frcmod` / `.lib`).
 
+### Optional dihedral corrections (ffpopt)
+
+The ffpopt runtime package lives at [`src/ffpopt`](src/ffpopt/) (next to
+`ligandparam`). After `lig-getparam` finishes, run the **separate** CLI in the
+same session to fit torsions (fragmented dihed-twist → merged frcmod; the
+`.lib` is unchanged). You also need `scission` (FragmentMol) and AmberTools on
+`PATH`, plus the HL model stack (e.g. qdpi2):
+
+```bash
+lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model qdpi2 -n 10
+```
+
+Or pass explicit paths:
+
+```bash
+lig-dihed-correct --mol2 CHA3/CHA/chaps.mol2 --lib CHA3/CHA/chaps.lib --frcmod CHA3/CHA/chaps.frcmod
+```
+
+Python recipes can still append the stage with `dihed_correct=True`
+(`FreeLigand` / `LazyLigand` / `DPFreeLigand`). Prefer the standalone CLI when
+running interactively after `lig-getparam`.
+
 ---
 
 ## Command-line tools
@@ -150,12 +177,14 @@ Installed entry points (see `pyproject.toml`):
 | Command | Purpose |
 |---------|---------|
 | `lig-getparam` | Batch-run parameterization recipes |
+| `lig-dihed-correct` | ffpopt dihedral corrections on recipe mol2/lib/frcmod |
 | `smiles-to-pdb` | Convert a SMILES string to a 3D PDB |
 | `lighfix` | Fix ligand hydrogenation / bonding from PDB input |
 | `lig-to-sage` | Convert mol2 parameters toward OpenFF Sage |
 
 ```bash
 lig-getparam --help
+lig-dihed-correct --help
 smiles-to-pdb --help
 ```
 
@@ -193,14 +222,13 @@ make html
 ## Project layout
 
 ```text
-src/ligandparam/
-├── recipes/        # End-to-end parameterization workflows
-├── stages/         # Pipeline steps (Gaussian, RESP, Leap, …)
-├── io/             # Coordinate / Gaussian / Leap I/O helpers
-├── multiresp/      # Multi-orientation RESP utilities
-├── cli/            # Command-line entry points
-├── interfaces.py   # Wrappers for external binaries
-└── driver.py       # Stage orchestration
+src/
+├── ligandparam/    # Parameterization recipes, stages, CLI
+│   ├── recipes/
+│   ├── stages/     # Includes StageDihedTwistCorrection
+│   ├── cli/        # lig-getparam, lig-dihed-correct, …
+│   └── …
+└── ffpopt/         # Integrated torsion-optimization package
 ```
 
 ---

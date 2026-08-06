@@ -4,6 +4,7 @@ from typing import Optional, Union, Any
 from typing_extensions import override
 
 from ligandparam.parametrization import Recipe, apply_option_defaults
+from ligandparam.recipes.dihed_options import apply_dihed_options, append_dihed_twist_stage
 from ligandparam.stages import (
     StageInitialize,
     StageDisplaceMol,
@@ -14,7 +15,6 @@ from ligandparam.stages import (
     StageParmChk,
     StageLeap,
 )
-
 
 class LazyLigand(Recipe):
     """Parameterize a ligand with Gaussian minimization and single-orientation RESP.
@@ -38,6 +38,10 @@ class LazyLigand(Recipe):
         Rerun Gaussian even if output logs already exist.
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
+    dihed_correct : bool, optional
+        If True, append an ffpopt fragmented dihed-twist stage after Leap.
+    dihed_model : str, optional
+        High-level model for dihedral fitting. Default ``"qdpi2"``.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
         Gaussian environment overrides; otherwise environment variables are used.
     **kwargs
@@ -80,6 +84,7 @@ class LazyLigand(Recipe):
         for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
             setattr(self, opt, kwargs.pop(opt, None))
 
+        apply_dihed_options(self, kwargs)
         self.kwargs = kwargs
 
     def setup(self):
@@ -221,6 +226,13 @@ class LazyLigand(Recipe):
             StageLeap("Leap", main_input=nonminimized_mol2, cwd=self.cwd, in_frcmod=frcmod, out_lib=lib,
                       logger=self.logger, **self.kwargs),
         ]
+        append_dihed_twist_stage(
+            self.stages,
+            recipe=self,
+            mol2=nonminimized_mol2,
+            lib=lib,
+            frcmod=frcmod,
+        )
 
     @override
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
