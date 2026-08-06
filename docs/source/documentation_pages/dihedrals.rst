@@ -69,6 +69,24 @@ Avoid ``sander`` as the HL target: that compares the force field to itself.
 
 ``qdpi2`` remains available if you install the DeepMD / qdpi stack.
 
+geomeTRIC notes
+---------------
+
+Constrained dihedral scans keep the frozen torsion via geomeTRIC. If the
+optimizer fails twice to invert an IC step, upstream geomeTRIC tries a
+Cartesian recovery that **cannot** keep constraints and raises
+``Cannot continue a constrained optimization``. ffpopt runs geomeTRIC through
+``python -m ffpopt.geometric_compat``, which rebuilds the same constrained IC
+system instead of aborting.
+
+If opts are still unstable:
+
+* Prefer Python **3.11/3.12** over very new interpreters (e.g. 3.14)
+* Use a smaller wavefront angle step (``--delta 5``)
+* Keep ``--coordsys tric`` (default); do **not** switch to ``cart`` for
+  constrained scans
+* Last resort: ``--no-geometric-opt`` (ASE BFGS)
+
 Requirements
 ------------
 

@@ -410,7 +410,20 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
 
         _run_geometric_with_watchdog(cmds, tmplog)
         if not os.path.exists(tmpopt):
-            raise Exception(f"File not found: {tmpopt}")
+            log_hint = ""
+            try:
+                if os.path.exists(tmplog):
+                    with open(tmplog, "r", errors="replace") as fh:
+                        tail = fh.read()[-2000:]
+                    if tail.strip():
+                        log_hint = f"\n--- tail of {tmplog} ---\n{tail}"
+            except OSError:
+                pass
+            raise Exception(
+                f"File not found: {tmpopt} (geomeTRIC did not write an "
+                f"optimized geometry; often a constrained-IC recovery failure)."
+                f"{log_hint}"
+            )
 
         #subp.run(cmds)
         
@@ -628,7 +641,18 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
             traceback.print_exc()
             out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
     else:
-        out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
+        try:
+            out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
+        except Exception as e:
+            # geomeTRIC sometimes cannot recover its IC system under frozen
+            # dihedrals ("Cannot continue a constrained optimization; please
+            # implement constrained optimization in Cartesian coordinates").
+            # Fall back to ASE BFGS with the same constraints.
+            import traceback
+            print("\n\n\ngeomeTRIC GEOMETRY OPTIMIZATION FAILURE; falling back to ASE\n")
+            print(e)
+            traceback.print_exc()
+            out = GeomOpt_ASE(los,struct,constraints,restraints)
     return out
 
 

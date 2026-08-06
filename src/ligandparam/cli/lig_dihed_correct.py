@@ -84,6 +84,7 @@ def run_dihed_correct(
     model: str = "qdpi2",
     maxiter: int = 2,
     nprim: int = 3,
+    delta: int = 10,
     nproc: int = 1,
     geometric_opt: bool = True,
     skip_existing: bool = True,
@@ -107,6 +108,7 @@ def run_dihed_correct(
         model=model,
         maxiter=maxiter,
         nprim=nprim,
+        delta=delta,
         nproc=nproc,
         geometric_opt=geometric_opt,
         skip_existing=skip_existing,
@@ -167,11 +169,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--maxiter", type=int, default=2, help="Fit iterations (default: 2)")
     parser.add_argument("--nprim", type=int, default=3, help="Cosine primitives (default: 3)")
+    parser.add_argument(
+        "--delta",
+        type=int,
+        default=10,
+        help="Wavefront dihedral step in degrees (default: 10; try 5 if geomeTRIC is unstable)",
+    )
     parser.add_argument("-n", "--nproc", type=int, default=1, help="Wavefront parallelism")
     parser.add_argument(
         "--no-geometric-opt",
         action="store_true",
-        help="Disable geomeTRIC constrained optimization",
+        help=(
+            "Use ASE BFGS instead of geomeTRIC for constrained scans "
+            "(only if you intentionally want to skip geomeTRIC)."
+        ),
     )
     parser.add_argument(
         "--force",
@@ -218,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         maxiter=args.maxiter,
         nprim=args.nprim,
+        delta=args.delta,
         nproc=args.nproc,
         geometric_opt=not args.no_geometric_opt,
         skip_existing=not args.force,
