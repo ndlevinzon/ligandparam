@@ -583,6 +583,29 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
 
 
 
+def bare_potential_energy(struct):
+    """Return optimized energy excluding restraint penalty terms (eV).
+
+    Wavefront ranking wants the bare potential at the constrained/restrained
+    geometry. :func:`GeomOpt` already evaluates energy at the final point; when
+    restraints were active that value includes classical penalty terms, which
+    can be removed analytically without a second SCF.
+    """
+    if struct is None or "energy" not in struct.data or struct.data["energy"] is None:
+        raise ValueError("Missing energy from optimization output.")
+    ene = float(struct.data["energy"])
+    rests = getattr(struct, "restraints", None)
+    if rests is None or len(rests) == 0:
+        return ene
+    import numpy as np
+
+    crds = np.asarray(struct.data["positions"], dtype=float)
+    for rst in rests:
+        e2, _ = rst.GetValueAndGradients(crds)
+        ene -= float(e2)
+    return ene
+
+
 def GeomOpt_SinglePoint(los,struct,constraints=None,restraints=None):
     """ Perform a single point energy calculation without geometry optimization.
     

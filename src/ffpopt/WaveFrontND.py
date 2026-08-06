@@ -28,7 +28,7 @@ import geometric
 import ndfes
 
 from . Struct import ListOfStruct,Struct
-from . GeomOpt import GeomOpt, GeomOpt_SinglePoint
+from . GeomOpt import GeomOpt, bare_potential_energy
 from . Constraints import ConstraintList
 from . Restraints import RestraintList
 
@@ -230,7 +230,6 @@ class WavefrontNode(object):
 
     def calculate(self) -> None:
         """Calculate the energy of the atoms."""
-        import copy
         if not self.complete:
 
             #print("calculate node ",self.node_pkl)
@@ -254,14 +253,10 @@ class WavefrontNode(object):
                     rest = self.reslist.rests
 
                 self.opt_geom = GeomOpt(self.los, self.struct, constraints=cons, restraints=rest)
-                tgeom = copy.deepcopy( self.opt_geom )
-                tgeom.restraints = None
-                tgeom.constraints = None
-                out = GeomOpt_SinglePoint(self.los, tgeom)
-                if out is None or "energy" not in out.data:
-                    raise ValueError("Missing energy from optimization output.")
-                self.energy = np.round(out.data["energy"], 6)
-                self.forces = out.data.get("forces", self.forces)
+                # Opt energy already includes a final SCF; strip restraint
+                # penalties analytically (legacy path re-ran SinglePoint bare).
+                self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
+                self.forces = self.opt_geom.data.get("forces", self.forces)
                 self._write_checkpoint()
                 self.complete = True
                 

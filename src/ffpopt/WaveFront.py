@@ -8,7 +8,7 @@ from typing import Generator, Optional
 from contextlib import contextmanager
 from pathlib import Path
 #from ffpopt.GeomOpt import GeomOpt, GeomOpt_Sing
-from . GeomOpt import GeomOpt, GeomOpt_SinglePoint
+from . GeomOpt import GeomOpt, bare_potential_energy
 from matplotlib import pyplot as plt
 
 #from ffpopt.Options import StandardArgs
@@ -171,11 +171,8 @@ class WavefrontNode:
                 return
             try:
                 self.opt_geom = GeomOpt(self.los, self.struct, constraints=self.constraints)
-                out = GeomOpt_SinglePoint(self.los, self.opt_geom, constraints=self.constraints)
-                if out is None or "energy" not in out.data:
-                    raise ValueError("Missing energy from optimization output.")
-                self.energy = np.round(out.data["energy"], 6)
-                self.forces = out.data.get("forces", self.forces)
+                self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
+                self.forces = self.opt_geom.data.get("forces", self.forces)
                 self._write_checkpoint()
                 self.complete = True
             except Exception as e:
