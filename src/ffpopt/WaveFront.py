@@ -108,7 +108,16 @@ class WavefrontNode:
         The level of the node in the wavefront algorithm.
     
     """
-    def __init__(self, los: ListOfStruct, struct: Struct, con: Constraint, angle: float = None, level: int = None, node_id: int = None) -> None:
+    def __init__(
+        self,
+        los: ListOfStruct,
+        struct: Struct,
+        con: Constraint,
+        angle: float = None,
+        level: int = None,
+        node_id: int = None,
+        workdir: str | Path = ".",
+    ) -> None:
         self.los = los
         self.struct = struct
         self.energy = None
@@ -120,7 +129,12 @@ class WavefrontNode:
         self.level = level
         self.node_id = node_id
         #self.stdargs = stdargs
-        self.node_pkl = f"level_{self.level}_angle_{self.angle}_id_{self.node_id}_node.pckl"
+        # Keep node pickles beside the scan outputs (not process cwd) so
+        # fragmented workflows can avoid os.chdir with multiprocessing.
+        self.node_pkl = str(
+            Path(workdir)
+            / f"level_{self.level}_angle_{self.angle}_id_{self.node_id}_node.pckl"
+        )
         self.complete = False
         self.error = None
 
@@ -244,7 +258,8 @@ class WavefrontLevel:
 
     def add_node(self, #atoms: ase.Atoms, stdargs: StandardArgs,
                  los: ListOfStruct, struct: Struct,
-                 con: Constraint, angle: float = None):
+                 con: Constraint, angle: float = None,
+                 *, workdir: str | Path = "."):
         """Add a node to the level.
         
         This creates a new WavefrontNode with the given atoms, standard arguments, constraint, and angle.
@@ -259,6 +274,8 @@ class WavefrontLevel:
             The constraint to apply to the optimization.
         angle : float, optional
             The angle to optimize. If not provided, it will be set to the initial angle of the constraint.
+        workdir : path-like, optional
+            Directory for per-node pickle checkpoints. Default ``"."``.
         
         Returns
         -------
@@ -266,11 +283,15 @@ class WavefrontLevel:
         
         """
         node_id = len(self.nodes)
-        node = WavefrontNode(los=los,struct=struct,
-                             con=con,
-                             angle=angle,
-                             level=self.level_id,
-                             node_id=node_id)
+        node = WavefrontNode(
+            los=los,
+            struct=struct,
+            con=con,
+            angle=angle,
+            level=self.level_id,
+            node_id=node_id,
+            workdir=workdir,
+        )
         self.nodes.append(node)
         return node
 
@@ -352,6 +373,9 @@ class Wavefront:
         self.num_conformers = num_conformers
         self.level_energies = []
         self.checkpoint = checkpoint
+        # Sidecar node pickles live next to the checkpoint (absolute when
+        # ``checkpoint`` is absolute), not the process cwd.
+        self.workdir = str(Path(checkpoint).resolve().parent)
         self.restarted = []
         self.verbose = False
         self.convergence_threshold = convergence_threshold
@@ -393,6 +417,7 @@ class Wavefront:
 
         if checkpoint is not None:
             self.checkpoint = checkpoint
+            self.workdir = str(Path(checkpoint).resolve().parent)
 
         # Rebind the (possibly re-themed) calculator source onto every node. The
         # queue scheduler can leave incomplete nodes at any level, not just the
@@ -433,7 +458,13 @@ class Wavefront:
         dihedral_angles.sort()
         for angle in dihedral_angles[::stride]:
             print(angle)
-            new_starting_level.add_node(self.min_structures[angle], los, self.con, angle=angle)
+            new_starting_level.add_node(
+                self.min_structures[angle],
+                los,
+                self.con,
+                angle=angle,
+                workdir=self.workdir,
+            )
         self.min_energies = {}
         self.min_structures = {}
         self.min_nodes = {}
@@ -481,18 +512,24 @@ class Wavefront:
             add_ang = (360//self.delta//self.starting_nodes * i *self.delta)
             print(f"Adding starting node at angle: {self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360}")
             if self.init_check(self.struct, self.con, self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360):
-                self.levels[0].add_node(self.los, 
-                                        self.struct, 
-                                        self.con, 
-                                        angle=self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360)
+                self.levels[0].add_node(
+                    self.los,
+                    self.struct,
+                    self.con,
+                    angle=self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360,
+                    workdir=self.workdir,
+                )
             
             if self.num_conformers > 0:
                 for min_geom in min_geoms:
                     if self.init_check(min_geom, self.con, self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360):
-                        self.levels[0].add_node(self.los, min_geom, 
-                                                self.con, 
-                                                angle=self.nearest_angle(self.min_geom_ang + add_ang, self.delta) % 360)
-                        
+                        self.levels[0].add_node(
+                            self.los,
+                            min_geom,
+                            self.con,
+                            angle=self.nearest_angle(self.min_geom_ang + add_ang, self.delta) % 360,
+                            workdir=self.workdir,
+                        )
 
     def init_conformer(self, struct: Struct, con: Constraint, extra_con_in: list[int], angle_increment: float, iter_count: int = 0) -> GeomOpt:
         """Initialize a conformer based on the initial geometry optimization.
@@ -1022,14 +1059,20 @@ class Wavefront:
         next_level = self._get_or_create_level(node.level + 1)
         lower = self.nearest_angle(node.angle - self.delta, self.delta) % 360
         upper = self.nearest_angle(node.angle + self.delta, self.delta) % 360
-        lower_node = next_level.add_node(self.los,
-                                         node.opt_geom,
-                                         self.con,
-                                         angle=lower)
-        upper_node = next_level.add_node(self.los,
-                                         node.opt_geom,
-                                         self.con,
-                                         angle=upper)
+        lower_node = next_level.add_node(
+            self.los,
+            node.opt_geom,
+            self.con,
+            angle=lower,
+            workdir=self.workdir,
+        )
+        upper_node = next_level.add_node(
+            self.los,
+            node.opt_geom,
+            self.con,
+            angle=upper,
+            workdir=self.workdir,
+        )
         return [lower_node, upper_node]
 
     def sort_results(self) -> tuple[list[float], list[float], list[ase.Atoms]]:
@@ -1324,7 +1367,10 @@ def run_dihed_wavefront(
         if args.wf_max_levels < minlevels:
             args.wf_max_levels = int(minlevels)
 
-    checkpoint_path = Path(f"checkpoint_{Path(args.out).with_suffix('.pkl')}")
+    out_path = Path(args.out)
+    # Keep checkpoint / plot beside ``out`` so absolute ``out`` paths work
+    # without relying on process cwd (fragmented workflows).
+    checkpoint_path = out_path.parent / f"checkpoint_{out_path.with_suffix('.pkl').name}"
 
     if args.wf_alt_starting_checkpoint:
         starting_checkpoint_path = Path(args.wf_alt_starting_checkpoint)
@@ -1373,15 +1419,16 @@ def run_dihed_wavefront(
         print(f"Angle: {angle}, Energy: {energies[i]}")
     print(f"Wavefront scan completed. Results written to {args.out}.")
 
-    dat = Path(args.out).with_suffix(".dat")
+    dat = out_path.with_suffix(".dat")
     with open(dat, "w") as fh:
         for a, e, n in zip(angles, energies, energies_noshift):
             fh.write(f"{a} {e} {n}\n")
     print(f"Data written to {dat}.")
 
-    pickle.dump(wf_run, open(Path(args.out).with_suffix(".pkl"), "wb"))
-    print(f"Wavefront run saved to {Path(args.out).with_suffix('.pkl')}.")
-    wf_fname = f"wf_workflow_{Path(args.out).with_suffix('.png').name}"
+    pkl_path = out_path.with_suffix(".pkl")
+    pickle.dump(wf_run, open(pkl_path, "wb"))
+    print(f"Wavefront run saved to {pkl_path}.")
+    wf_fname = str(out_path.parent / f"wf_workflow_{out_path.with_suffix('.png').name}")
     plot_wavefront(wf_run.levels, delta=args.delta, filename=wf_fname)
     wf_run.print_summary()
     print(f"Wavefront plot saved as '{wf_fname}'.")

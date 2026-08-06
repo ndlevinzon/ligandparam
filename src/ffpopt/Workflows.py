@@ -35,11 +35,10 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 
 _LOG = logging.getLogger("ffpopt.workflows")
@@ -55,6 +54,19 @@ BondPair0 = tuple[int, int]
 def _as_path(value: PathLike) -> Path:
     """Normalize path-like inputs to :class:`pathlib.Path`."""
     return value if isinstance(value, Path) else Path(value)
+
+
+def _in_workdir(workdir: Optional[Path], name: PathLike) -> Path:
+    """Resolve ``name`` under ``workdir`` when relative; leave absolutes alone."""
+    path = _as_path(name)
+    if workdir is None or path.is_absolute():
+        return path
+    return workdir / path
+
+
+def _subprocess_cwd(workdir: Optional[Path]) -> Optional[str]:
+    """Return a ``cwd`` string for ``subprocess.run``, or ``None``."""
+    return None if workdir is None else str(workdir)
 
 
 def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
@@ -297,6 +309,7 @@ def _run_one_scan(
     out: str,
     skip_existing: bool,
     logger: logging.Logger | None = None,
+    workdir: Optional[Path] = None,
     **wf_kwargs,
 ):
     """ Run one wavefront scan via :func:`ffpopt.WaveFront.run_dihed_wavefront`.
@@ -316,6 +329,9 @@ def _run_one_scan(
         Whether to skip the scan when ``out`` is already on disk.
     logger
         Optional logger for progress messages.
+    workdir : pathlib.Path, optional
+        When set, relative ``inp`` / ``out`` paths are resolved under this
+        directory (absolute paths are left unchanged).
     **wf_kwargs
         Forwarded unchanged to :func:`ffpopt.WaveFront.run_dihed_wavefront`.
 
@@ -328,21 +344,23 @@ def _run_one_scan(
     from .WaveFront import run_dihed_wavefront
 
     log = _resolve_logger(logger)
-    if skip_existing and Path(out).exists():
-        log.info("[twist] %s exists — skipping.", out)
+    inp_path = str(_in_workdir(workdir, inp))
+    out_path = str(_in_workdir(workdir, out))
+    if skip_existing and Path(out_path).exists():
+        log.info("[twist] %s exists — skipping.", out_path)
         return None
 
     dihed_str = ",".join(str(i) for i in dihed_idxs)
     log.info(
         "[twist] scan: inp=%s model=%s dihed=%s out=%s",
-        inp,
+        inp_path,
         model,
         dihed_str,
-        out,
+        out_path,
     )
     return run_dihed_wavefront(
-        inp=inp,
-        out=out,
+        inp=inp_path,
+        out=out_path,
         dihed=dihed_str,
         model=model,
         **wf_kwargs,
@@ -358,6 +376,7 @@ def _write_fit_json(
     hl_prefix: str,
     ll_prefix: str,
     parm: str,
+    workdir: Optional[Path] = None,
 ) -> str:
     """ Write ``<citname>.fit.json`` for ``ffpopt-GenDihedFit.py``.
 
@@ -379,6 +398,10 @@ def _write_fit_json(
     parm : str
         Path to the current parm7 (origparm on the first iteration,
         ``<prev>.parm7`` thereafter).
+    workdir : pathlib.Path, optional
+        When set, the fit JSON is written under this directory. Profile
+        and output basenames stay relative so GenDihedFit can run with
+        ``cwd=workdir``.
 
     Returns
     -------
@@ -387,7 +410,8 @@ def _write_fit_json(
     """
     ss = copy.deepcopy(s_template)
     ss["output"] = citname + ".py"
-    ss["parm"] = parm
+    # Absolute parm so fit tools do not depend on process cwd.
+    ss["parm"] = str(_in_workdir(workdir, parm).resolve())
     ss["profiles"] = [
         {
             "hl": f"{hl_prefix}_{scan.GetIdxStr()}.json",
@@ -402,10 +426,10 @@ def _write_fit_json(
         "output": f"{citname}.frcmod",
         "systems": [ss],
     }
-    out_path = f"{citname}.fit.json"
+    out_path = _in_workdir(workdir, f"{citname}.fit.json")
     with open(out_path, "w") as fh:
         json.dump(datadict, fh, indent=4)
-    return out_path
+    return str(out_path)
 
 
 def _run_gendihedfit(
@@ -413,6 +437,7 @@ def _run_gendihedfit(
     nlmaxiter: int,
     skip_existing: bool,
     logger: logging.Logger | None = None,
+    workdir: Optional[Path] = None,
 ) -> None:
     """ Subprocess into ``ffpopt-GenDihedFit.py`` to produce ``<citname>.py``.
 
@@ -429,15 +454,20 @@ def _run_gendihedfit(
         If True and ``<citname>.py`` already exists, the call is skipped.
     logger
         Optional logger for progress messages.
+    workdir : pathlib.Path, optional
+        Directory containing the fit JSON; passed as ``subprocess`` ``cwd``.
     """
     log = _resolve_logger(logger)
-    if skip_existing and Path(f"{citname}.py").exists():
-        log.info("[twist] %s.py exists — skipping GenDihedFit.", citname)
+    py_out = _in_workdir(workdir, f"{citname}.py")
+    fit_json = f"{citname}.fit.json"
+    if skip_existing and py_out.exists():
+        log.info("[twist] %s exists — skipping GenDihedFit.", py_out)
         return
-    log.info("[twist] GenDihedFit → %s.py", citname)
+    log.info("[twist] GenDihedFit → %s", py_out)
     subprocess.run(
-        ["ffpopt-GenDihedFit.py", f"--nlmaxiter={nlmaxiter}", f"{citname}.fit.json"],
+        ["ffpopt-GenDihedFit.py", f"--nlmaxiter={nlmaxiter}", fit_json],
         check=True,
+        cwd=_subprocess_cwd(workdir),
     )
 
 
@@ -448,6 +478,7 @@ def _compare_per_bond(
     config,
     plot_dir=None,
     structure_images=None,
+    workdir: Optional[Path] = None,
 ):
     """ Run :func:`ffpopt.ScanAnalysis.compare_scan_files` for each scan.
 
@@ -474,6 +505,8 @@ def _compare_per_bond(
     structure_images : dict, optional
         Map from ``frozenset({a, b})`` (0-based central-bond atom indices)
         to a 2D structure image path. Default is None (no structure panel).
+    workdir : pathlib.Path, optional
+        When set, relative ``.dat`` paths are resolved under this directory.
 
     Returns
     -------
@@ -486,8 +519,8 @@ def _compare_per_bond(
     out = {}
     for scan in scans:
         idx = scan.GetIdxStr()
-        hl_path = f"{hl_prefix}_{idx}.dat"
-        ll_path = f"{ll_prefix}_{idx}.dat"
+        hl_path = str(_in_workdir(workdir, f"{hl_prefix}_{idx}.dat"))
+        ll_path = str(_in_workdir(workdir, f"{ll_prefix}_{idx}.dat"))
         plot_path = None
         if plot_dir is not None:
             plot_path = Path(plot_dir) / f"compare_{hl_prefix}_vs_{ll_prefix}_{idx}.png"
@@ -511,6 +544,7 @@ def _apply_fit_and_prepare(
     inp: str,
     skip_existing: bool,
     logger: logging.Logger | None = None,
+    workdir: Optional[Path] = None,
 ) -> None:
     """ Apply the fit script to ``origparm`` and rebuild the JSON input.
 
@@ -531,11 +565,16 @@ def _apply_fit_and_prepare(
     skip_existing : bool
         If True and both ``<citname>.parm7`` and ``<citname>.json`` already
         exist, both subprocess calls are skipped.
+    workdir : pathlib.Path, optional
+        Working directory for relative paths and ``subprocess`` ``cwd``.
     """
     log = _resolve_logger(logger)
-    parm_out = f"{citname}.parm7"
-    json_out = f"{citname}.json"
-    if skip_existing and Path(parm_out).exists() and Path(json_out).exists():
+    parm_out = _in_workdir(workdir, f"{citname}.parm7")
+    json_out = _in_workdir(workdir, f"{citname}.json")
+    py_script = _in_workdir(workdir, f"{citname}.py")
+    origparm_path = _in_workdir(workdir, origparm).resolve()
+    inp_path = _in_workdir(workdir, inp).resolve()
+    if skip_existing and parm_out.exists() and json_out.exists():
         log.info(
             "[twist] %s & %s exist — skipping apply+prepare.",
             parm_out,
@@ -543,17 +582,22 @@ def _apply_fit_and_prepare(
         )
         return
     log.info("[twist] applying fit → %s", parm_out)
-    subprocess.run(["python3", f"{citname}.py", origparm, parm_out], check=True)
+    subprocess.run(
+        ["python3", str(py_script), str(origparm_path), str(parm_out)],
+        check=True,
+        cwd=_subprocess_cwd(workdir),
+    )
     log.info("[twist] PrepareInput → %s", json_out)
     subprocess.run(
         [
             "ffpopt-PrepareInput.py",
             "--update",
-            f"--parm={parm_out}",
-            f"--crd={inp}",
-            f"--out={json_out}",
+            f"--parm={parm_out.resolve()}",
+            f"--crd={inp_path}",
+            f"--out={json_out.resolve()}",
         ],
         check=True,
+        cwd=_subprocess_cwd(workdir),
     )
 
 
@@ -577,6 +621,7 @@ def run_dihed_twist_workflow(
     convergence_mode: str = "drop",
     plot_comparisons: bool = False,
     structure_images: dict | None = None,
+    workdir: PathLike | None = None,
     logger: logging.Logger | None = None,
     **standard_kwargs,
 ) -> dict:
@@ -654,6 +699,11 @@ def run_dihed_twist_workflow(
         panel on each comparison plot. Used by
         :func:`run_fragmented_dihed_twist_workflow` to surface scission's
         per-torsion drawings. Default is None.
+    workdir : path-like, optional
+        Directory for relative inputs/outputs and subprocess ``cwd``. When
+        set, this workflow never calls ``os.chdir`` — paths are resolved
+        under ``workdir`` and shell-outs use ``subprocess(..., cwd=workdir)``.
+        Default is None (use the process cwd / relative paths as given).
     **standard_kwargs
         Forwarded to the wavefront. Accepts anything declared by
         :func:`ffpopt.Options.AddStandardOptions` (``model``, ``mfile``,
@@ -680,6 +730,7 @@ def run_dihed_twist_workflow(
             f"got {convergence_mode!r}"
         )
     log = _resolve_logger(logger)
+    wd = _as_path(workdir).resolve() if workdir is not None else None
 
     import argparse
     from types import SimpleNamespace
@@ -700,8 +751,9 @@ def run_dihed_twist_workflow(
 
     # SimpleNamespace mirroring the CLI's args — needed by los.SetArgs.
     bonds0 = normalize_bond_pairs0(bond)
+    inp_path = str(_in_workdir(wd, inp).resolve())
     args = SimpleNamespace(
-        inp=inp,
+        inp=inp_path,
         bond=[f"{a},{b}" for a, b in bonds0],  # string form for legacy SetArgs
         delta=delta,
         nprim=nprim,
@@ -720,7 +772,7 @@ def run_dihed_twist_workflow(
     los.structs = [los.structs[0]]
     los.SetArgs(args)
     mol = los.structs[0].ReadAmberParm()
-    origparm = los.structs[0].data["parm"]
+    origparm = str(_in_workdir(wd, los.structs[0].data["parm"]).resolve())
 
     bonds_parsed = list(bonds0)
     scans, params, s_template = _resolve_scans_and_params(
@@ -758,6 +810,7 @@ def run_dihed_twist_workflow(
             out=out,
             skip_existing=skip_existing,
             logger=log,
+            workdir=wd,
             **wf_kwargs,
         )
         results["scans"].append((hlname, scan.idxs, r))
@@ -772,17 +825,21 @@ def run_dihed_twist_workflow(
             out=out,
             skip_existing=skip_existing,
             logger=log,
+            workdir=wd,
             **wf_kwargs,
         )
         results["scans"].append(("orig", scan.idxs, r))
 
-    plot_dir = Path(".") if plot_comparisons else None
+    if plot_comparisons:
+        plot_dir = wd if wd is not None else Path(".")
+    else:
+        plot_dir = None
 
     # ---- 2b. Drop dihedrals that already agree (initial convergence) -----
     if skip_converged_initial:
         initial = _compare_per_bond(
             scans, hlname, "orig", compare_config,
-            plot_dir=plot_dir, structure_images=structure_images,
+            plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
         )
         results["initial_comparisons"] = initial
         kept_bonds = []
@@ -822,12 +879,17 @@ def run_dihed_twist_workflow(
             hl_prefix=hlname,
             ll_prefix=ll_prefix,
             parm=parm,
+            workdir=wd,
         )
         results["fit_jsons"].append(fit_json)
 
         # 3b. GenDihedFit → itNN.py. FUTURE: replace subprocess with API call.
         _run_gendihedfit(
-            citname, nlmaxiter=args.nlmaxiter, skip_existing=skip_existing, logger=log
+            citname,
+            nlmaxiter=args.nlmaxiter,
+            skip_existing=skip_existing,
+            logger=log,
+            workdir=wd,
         )
 
         # 3c. Apply fit + PrepareInput. FUTURE: replace subprocess with API calls.
@@ -837,20 +899,26 @@ def run_dihed_twist_workflow(
             inp=args.inp,
             skip_existing=skip_existing,
             logger=log,
+            workdir=wd,
         )
         results["iterations"].append(
-            {"parm": f"{citname}.parm7", "json": f"{citname}.json"}
+            {
+                "parm": str(_in_workdir(wd, f"{citname}.parm7")),
+                "json": str(_in_workdir(wd, f"{citname}.json")),
+            }
         )
 
         # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
         for scan in scans:
             out = f"{citname}_{scan.GetIdxStr()}.json"
             r = _run_one_scan(
-                inp=f"{citname}.json",
+                inp=str(_in_workdir(wd, f"{citname}.json")),
                 model="sander",
                 dihed_idxs=scan.idxs,
                 out=out,
                 skip_existing=skip_existing,
+                logger=log,
+                workdir=wd,
                 **wf_kwargs,
             )
             results["scans"].append((citname, scan.idxs, r))
@@ -859,7 +927,7 @@ def run_dihed_twist_workflow(
         if convergence_mode != "off":
             iter_cmp = _compare_per_bond(
                 scans, hlname, citname, compare_config,
-                plot_dir=plot_dir, structure_images=structure_images,
+                plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
             )
             results["iteration_comparisons"].append(
                 {"citname": citname, "comparisons": iter_cmp}
@@ -1013,6 +1081,7 @@ def _prepare_fragment_input(
     fragment,
     skip_existing: bool,
     logger: logging.Logger | None = None,
+    workdir: PathLike | None = None,
 ) -> str:
     """ Run ``ffpopt-PrepareInput.py`` on a scission fragment.
 
@@ -1025,13 +1094,18 @@ def _prepare_fragment_input(
         Fragment record exposing ``parm7_path``, ``rst7_path``, and
         ``fragment_id``.
     skip_existing : bool
-        If True and ``start.json`` already exists in the cwd, PrepareInput
+        If True and ``start.json`` already exists in ``workdir``, PrepareInput
         is skipped.
+    workdir : path-like, optional
+        Fragment directory. Defaults to ``fragment.manifest_path.parent``.
+        PrepareInput runs with ``subprocess(..., cwd=workdir)``; parm/crd/out
+        are passed as absolute paths so the parent process never needs
+        ``os.chdir``.
 
     Returns
     -------
     str
-        Always ``"start.json"`` (relative to the fragment directory).
+        Absolute path to ``start.json``.
     """
     if fragment.parm7_path is None or fragment.rst7_path is None:
         raise RuntimeError(
@@ -1039,20 +1113,29 @@ def _prepare_fragment_input(
             f"likely failed to run tleap. Check that AmberTools is on PATH."
         )
     log = _resolve_logger(logger)
-    if skip_existing and Path("start.json").exists():
-        log.info("[frag-twist] start.json exists — skipping PrepareInput")
-        return "start.json"
-    log.info("[frag-twist] PrepareInput → start.json (in %s)", Path.cwd())
+    frag_dir = (
+        _as_path(workdir).resolve()
+        if workdir is not None
+        else _as_path(fragment.manifest_path).parent.resolve()
+    )
+    start_json = frag_dir / "start.json"
+    parm7 = _as_path(fragment.parm7_path).resolve()
+    rst7 = _as_path(fragment.rst7_path).resolve()
+    if skip_existing and start_json.exists():
+        log.info("[frag-twist] %s exists — skipping PrepareInput", start_json)
+        return str(start_json)
+    log.info("[frag-twist] PrepareInput → %s (cwd=%s)", start_json, frag_dir)
     subprocess.run(
         [
             "ffpopt-PrepareInput.py",
-            f"--parm={fragment.parm7_path.name}",
-            f"--crd={fragment.rst7_path.name}",
-            "--out=start.json",
+            f"--parm={parm7}",
+            f"--crd={rst7}",
+            f"--out={start_json}",
         ],
         check=True,
+        cwd=str(frag_dir),
     )
-    return "start.json"
+    return str(start_json)
 
 
 def run_fragmented_dihed_twist_workflow(
@@ -1085,8 +1168,9 @@ def run_fragmented_dihed_twist_workflow(
     """ Fragment a ligand with scission, run the twist workflow on each fragment, then recombine.
 
     Drives ``scission`` (from FragmentMol) to break the parent ligand into
-    reduced fragments, runs :func:`run_dihed_twist_workflow` independently
-    inside each fragment directory, then merges the per-fragment fitted
+    reduced fragments, runs :func:`run_dihed_twist_workflow` per fragment
+    with ``workdir=frag_dir`` (absolute paths + subprocess ``cwd``; no
+    process-wide ``os.chdir``), then merges the per-fragment fitted
     DIHE terms back into a unified parent ``frcmod`` via
     ``scission.merge.merge_fragment_frcmods``. Like
     :func:`run_dihed_twist_workflow`, this must be called from inside an
@@ -1260,7 +1344,6 @@ def run_fragmented_dihed_twist_workflow(
 
     per_fragment_results = []
     fragment_dirs_for_merge = []
-    cwd = Path.cwd()
 
     for fragment in fragments_iter:
         if not fragment.fit_torsions:
@@ -1268,7 +1351,7 @@ def run_fragmented_dihed_twist_workflow(
             continue
         # scission fit_torsions use 1-based fragment indices; ffpopt wants 0-based.
         bonds = bonds0_from_scission_fit_torsions(fragment.fit_torsions)
-        frag_dir = fragment.manifest_path.parent
+        frag_dir = _as_path(fragment.manifest_path).parent.resolve()
         structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
         log.info(
             "[frag-twist] %s: %s bond(s) %s → running twist in %s",
@@ -1278,19 +1361,19 @@ def run_fragmented_dihed_twist_workflow(
             frag_dir,
         )
 
-        os.chdir(frag_dir)
-        try:
-            _prepare_fragment_input(
-                fragment, skip_existing=skip_existing, logger=log
-            )
-            twist_result = run_dihed_twist_workflow(
-                inp="start.json",
-                bond=bonds,
-                structure_images=structure_images or None,
-                **twist_kwargs,
-            )
-        finally:
-            os.chdir(cwd)
+        start_json = _prepare_fragment_input(
+            fragment,
+            skip_existing=skip_existing,
+            logger=log,
+            workdir=frag_dir,
+        )
+        twist_result = run_dihed_twist_workflow(
+            inp=start_json,
+            bond=bonds,
+            structure_images=structure_images or None,
+            workdir=frag_dir,
+            **twist_kwargs,
+        )
 
         per_fragment_results.append(
             {
