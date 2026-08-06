@@ -163,3 +163,5 @@ scission-main/
 
 localtest/
 ligparam.txt
+_patch_wavefront_ipc.py
+_patch_wavefrontnd_header.py

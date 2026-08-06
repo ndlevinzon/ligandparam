@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
 #
 # To launch this with MPI on amarel,
@@ -11,26 +12,23 @@
 # but on amarel this ends up launching multiple serial copies of the script
 # without using mpi.
 
-import copy, os, sys
+import copy
+import os
+import sys
 import pickle
 import numpy as np
 from pathlib import Path
 
-import json
-import logging
-from logging import FileHandler, NullHandler
 from typing import Generator, Optional
-from contextlib import contextmanager
-from matplotlib import pyplot as plt
 
-import ase
-import geometric
-import ndfes
-
-from . Struct import ListOfStruct,Struct
+from . Struct import ListOfStruct, Struct
 from . GeomOpt import GeomOpt, bare_potential_energy
 from . Constraints import ConstraintList
 from . Restraints import RestraintList
+
+
+# Per-process worker state (Pool initializer / MPI bcast).
+_WORKER: dict = {}
 
 
 def is_mpi_worker():
@@ -41,7 +39,7 @@ def is_mpi_worker():
     return size > 1 and rank > 0
 
 
-def GetGridNeighbors(bidx,grid,validbins=None):
+def GetGridNeighbors(bidx, grid, validbins=None):
     from ndfes.GridUtils import LinearPtsToMeshPts
     lol = []
     for idim in range(len(grid.dims)):
@@ -67,41 +65,47 @@ def GetGridNeighbors(bidx,grid,validbins=None):
     return newpts
 
 
+def _clear_los_calc(los: ListOfStruct) -> None:
+    calc = getattr(los, "calc", None)
+    if calc is not None:
+        try:
+            calc.reset()
+        except Exception:
+            pass
+        los.calc = None
+    if hasattr(los, "_ffpopt_calc_cache"):
+        los._ffpopt_calc_cache = None
 
-class ShowOriginFilter(logging.Filter):
-    def filter(self, record):
-        # prints to stderr so it's visible even if handlers format/trim messages
-        sys.stderr.write(
-            f"[LOG-ORIGIN] name={record.name} level={record.levelname} module={record.module} func={record.funcName}\n"
-        )
-        return True
 
-# attach to all existing StreamHandlers (console)
-root = logging.getLogger()
-for h in list(root.handlers) or [logging.StreamHandler()]:
-    if isinstance(h, logging.StreamHandler):
-        h.addFilter(ShowOriginFilter())
+def _init_worker(los, conlist, reslist, template_struct) -> None:
+    """Pool/MPI initializer: share los + templates once per worker."""
+    _clear_los_calc(los)
+    _WORKER["los"] = los
+    _WORKER["conlist"] = copy.deepcopy(conlist)
+    _WORKER["reslist"] = copy.deepcopy(reslist)
+    _WORKER["template"] = copy.deepcopy(template_struct)
+
+
+def _struct_from_coords(coords) -> Struct:
+    struct = copy.deepcopy(_WORKER["template"])
+    struct.Update(0.0, np.asarray(coords, dtype=float), None)
+    return struct
+
+
+def _run_node_job(job: dict) -> dict:
+    """Worker entry: slim rcs/coords job in → slim result out (no ``los``)."""
+    node = WavefrontNode.from_job(
+        job,
+        _WORKER["los"],
+        _WORKER["conlist"],
+        _WORKER["reslist"],
+    )
+    node.calculate()
+    return node.to_result()
 
 
 def _run_node(node: "WavefrontNode") -> "WavefrontNode":
-    """ Optimize a single node and return it.
-
-    This is the worker entry point submitted to the multiprocessing pool. It is
-    defined at module scope so it stays picklable under the ``spawn`` start
-    method.
-
-    Parameters
-    ----------
-    node : WavefrontNode
-        The node to optimize. Its calculator is rebuilt inside the worker.
-
-    Returns
-    -------
-    WavefrontNode
-        The same node with ``energy``, ``forces``, ``opt_geom`` and ``complete``
-        populated by :meth:`WavefrontNode.calculate`.
-
-    """
+    """In-process entry (serial path); mutates and returns ``node``."""
     node.calculate()
     return node
 
@@ -202,31 +206,78 @@ class WavefrontNode(object):
         s = "~".join( [ "%.2f"%(x) for x in self.rcs ] )
         return f"level_{self.level}_rcs_{s}_id_{self.node_id}_node.pckl"
 
+    @classmethod
+    def from_job(cls, job: dict, los, conlist, reslist) -> "WavefrontNode":
+        """Rebuild a node from a slim IPC job (rcs + coords; no pickled ``los``)."""
+        if job.get("coords") is not None:
+            struct = _struct_from_coords(job["coords"])
+        else:
+            struct = job["struct"]
+        node = cls(
+            los=los,
+            struct=struct,
+            conlist=conlist,
+            reslist=reslist,
+            rcs=list(job["rcs"]),
+            level=job["level"],
+            node_id=job["node_id"],
+        )
+        node.node_pkl = job["node_pkl"]
+        node.complete = bool(job.get("complete", False))
+        return node
 
-        
+    def to_job(self) -> dict:
+        """Slim payload for spawn/MPI workers: rcs + coords (not ``los``)."""
+        coords = np.asarray(self.struct.data["positions"], dtype=float)
+        return {
+            "rcs": list(self.rcs),
+            "coords": coords,
+            "level": self.level,
+            "node_id": self.node_id,
+            "node_pkl": self.node_pkl,
+            "complete": self.complete,
+        }
+
+    def to_result(self) -> dict:
+        """Slim result: energy + optimized coords (not ``los`` / full node)."""
+        coords = None
+        if self.opt_geom is not None:
+            coords = np.asarray(self.opt_geom.data["positions"], dtype=float)
+        return {
+            "energy": self.energy,
+            "forces": self.forces,
+            "coords": coords,
+            "complete": self.complete,
+            "error": self.error,
+            "active": self.active,
+        }
+
+    def apply_result(self, result: dict) -> None:
+        """Merge a slim worker result into this parent-side node."""
+        self.energy = result.get("energy")
+        if result.get("forces") is not None:
+            self.forces = result["forces"]
+        self.complete = bool(result.get("complete", self.complete))
+        self.error = result.get("error", self.error)
+        if "active" in result:
+            self.active = bool(result["active"])
+        coords = result.get("coords")
+        if coords is not None:
+            self.opt_geom = copy.deepcopy(self.struct)
+            self.opt_geom.Update(self.energy, coords, result.get("forces"))
+
     def replace_with_pickle(self) -> None:
-        """ Replace the node's data with data from a pickle file if it exists.
-        
-        This function checks if a pickle file exists for the node, and if so, it loads the data from the file
-        and replaces the node's data with the data from the file. This is useful for restarting calculations
-        that were previously interrupted. Especially useful for high-level nodes that take a long time to calculate.
-        
-        Parameters
-        ----------
-        None
-        
-        Returns
-        -------
-        None
-        
-        """
+        """Replace node fields from a sidecar pickle if present (restores ``los``)."""
         filename = Path(f"{self.node_pkl}")
         if filename.is_file():
             print("EXISTING NODE PICKLE", self.node_pkl)
+            los = self.los
             with open(filename, 'rb') as f:
                 loaded_node = pickle.load(f)
                 self.__dict__.update(loaded_node.__dict__)
-                print("Node data replaced with pickle data.")
+            if self.los is None:
+                self.los = los
+            print("Node data replaced with pickle data.")
 
     def calculate(self) -> None:
         """Calculate the energy of the atoms."""
@@ -267,28 +318,15 @@ class WavefrontNode(object):
 
 
     def _write_checkpoint(self) -> None:
-        """ Write the node's data to a pickle file.
-        
-        This function saves the node's data to a pickle file. This is useful for restarting calculations
-        that were previously interrupted.
-        
-        Parameters
-        ----------
-        None
-        
-        Returns
-        -------
-        None
-        
-        """
-        #import copy
-        #tmp = copy.deepcopy(self)
-        #if tmp.los.calc is not None:
-        #    tmp.los.calc = None
-        from pathlib import Path
+        """Write the node's data to a pickle file (without ``los``)."""
         print(f"Saving node {self.node_pkl}  (exists? {Path(self.node_pkl).is_file()})")
-        with open(self.node_pkl, 'wb') as f:
-            pickle.dump(self, f)
+        los = self.los
+        self.los = None
+        try:
+            with open(self.node_pkl, 'wb') as f:
+                pickle.dump(self, f)
+        finally:
+            self.los = los
 
     def cleanup(self) -> None:
         """Clean up the node's pickle file."""
@@ -765,7 +803,20 @@ class Wavefront(object):
         pool = None
         if self.nproc > 1:
             ctx = multiprocessing.get_context("spawn")
-            pool = ctx.Pool(processes=self.nproc)
+            template = self.los.structs[0] if getattr(self.los, "structs", None) else None
+            if template is None:
+                # Fall back: any completed node's struct, else first pending seed.
+                for level in self.levels:
+                    for n in level.nodes:
+                        template = n.struct
+                        break
+                    if template is not None:
+                        break
+            pool = ctx.Pool(
+                processes=self.nproc,
+                initializer=_init_worker,
+                initargs=(self.los, self.conlist, self.reslist, template),
+            )
 
         checkpoint_every = max(self.nproc, 1)
         try:
@@ -786,7 +837,7 @@ class Wavefront(object):
                         pending.extend(self._on_complete(node))
                         since_checkpoint += 1
                         break
-                    in_flight[pool.apply_async(_run_node, (node,))] = node
+                    in_flight[pool.apply_async(_run_node_job, (node.to_job(),))] = node
 
                 # Harvest finished workers; sleep briefly only when none are
                 # ready so the pool is not polled in a busy loop.
@@ -794,10 +845,10 @@ class Wavefront(object):
                     progressed = False
                     for async_result in list(in_flight):
                         if async_result.ready():
-                            del in_flight[async_result]
-                            updated = async_result.get()
-                            self._store_result(updated)
-                            pending.extend(self._on_complete(updated))
+                            node = in_flight.pop(async_result)
+                            result = async_result.get()
+                            node.apply_result(result)
+                            pending.extend(self._on_complete(node))
                             since_checkpoint += 1
                             progressed = True
                     if not progressed:
@@ -843,24 +894,37 @@ class Wavefront(object):
         TAG_RESULT = 2
         TAG_STOP = 3
 
+        # Broadcast shared worker state once (los + templates); tasks are slim.
+        if rank == 0:
+            template = self.los.structs[0] if getattr(self.los, "structs", None) else None
+            if template is None:
+                for level in self.levels:
+                    for n in level.nodes:
+                        template = n.struct
+                        break
+                    if template is not None:
+                        break
+            setup = (self.los, self.conlist, self.reslist, template)
+        else:
+            setup = None
+        setup = comm.bcast(setup, root=0)
+
         # ---------------------------------------------------------
         # WORKER LOGIC (Ranks 1 to N-1)
         # ---------------------------------------------------------
         if rank > 0:
+            _init_worker(*setup)
             while True:
                 status = MPI.Status()
                 # Block and wait for a task or stop signal from Rank 0
-                node = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
+                job = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
                 tag = status.Get_tag()
 
                 if tag == TAG_STOP:
                     break  # Exit the worker loop
 
-                # Execute the calculation
-                res = node.calculate()
-
-                # Send the completed node back to Rank 0
-                comm.send(node, dest=0, tag=TAG_RESULT)
+                result = _run_node_job(job)
+                comm.send(result, dest=0, tag=TAG_RESULT)
 
             # Workers return None, leaving the main process to handle results
             return None
@@ -883,11 +947,6 @@ class Wavefront(object):
         self._resume_queue = list(pending)
         self.save_checkpoint()
 
-        # If running purely in serial, we handle it sequentially
-        #if size == 1:
-            #return self._run_serial_fallback(pending) # You'd need to define this fallback
-            #raise Exception("calculate_mpi expected more than 1 mpi rank")
-
         checkpoint_every = max(size - 1, 1)
         since_checkpoint = 0
 
@@ -903,7 +962,6 @@ class Wavefront(object):
                     worker = idle_workers.pop()
                     node = pending.popleft()
 
-                    #print("pending loop",rank,node.node_pkl,Path(f"{node.node_pkl}").is_file(),node.complete,node.active)
                     node.replace_with_pickle()
 
                     if node.complete:
@@ -914,28 +972,22 @@ class Wavefront(object):
                         idle_workers.add(worker)
                         continue
 
-                    # Send node to the worker
-                    comm.send(node, dest=worker, tag=TAG_TASK)
+                    # Slim job: rcs + coords (not full node / los)
+                    comm.send(node.to_job(), dest=worker, tag=TAG_TASK)
                     in_flight[worker] = node
 
                 # 3. Harvest finished workers
                 if in_flight:
                     status = MPI.Status()
 
-                    # comm.recv is blocking. Since Rank 0 has nothing else to do 
-                    # but wait when the queue is dry or workers are full, this is efficient.
-                    updated_node = comm.recv(source=MPI.ANY_SOURCE, tag=TAG_RESULT, status=status)
+                    result = comm.recv(source=MPI.ANY_SOURCE, tag=TAG_RESULT, status=status)
                     worker = status.Get_source()
 
-                    # Mark worker as idle and clear flight record
-                    del in_flight[worker]
+                    node = in_flight.pop(worker)
                     idle_workers.add(worker)
 
-                    # Process the result
-                    self._store_result(updated_node)
-                    # on_complete may spawn new nodes
-                    new_nodes = self._on_complete(updated_node)
-                    #print("in_flight recv ",node.node_pkl," and spawns ",len(new_nodes)," new nodes")
+                    node.apply_result(result)
+                    new_nodes = self._on_complete(node)
                     pending.extend(new_nodes)
                     since_checkpoint += 1
 
@@ -1362,6 +1414,7 @@ class Wavefront(object):
                 counts[i, idx] += 1
 
         # Color map: 0=white, 1=orange, 2=red, 3=blue
+        from matplotlib import pyplot as plt
         from matplotlib.colors import ListedColormap
 
         cmap = ListedColormap(['white', 'orange', 'red', 'dodgerblue'])
