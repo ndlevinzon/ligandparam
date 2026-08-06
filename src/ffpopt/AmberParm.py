@@ -1,57 +1,60 @@
 #!/usr/bin/env python3
+"""Amber / ParmEd helpers used by ffpopt scans and torsion fits.
 
-from collections import defaultdict as ddict
+``CopyParm`` is the canonical shallow-copy helper. ligandparam's
+``multiresp.parmhelper`` re-exports it so both packages share one
+implementation.
+"""
+
 
 def parmed2ase(mol):
     from parmed import periodic_table
     import numpy as np
     import ase
-    import numpy as np
-    qs = np.array([ a.charge for a in mol.atoms ])
+
+    qs = np.array([a.charge for a in mol.atoms])
     qsum = sum(qs)
-    charge = int(round(sum([ a.charge for a in mol.atoms ])))
-    qs += (charge-qsum)/len(qs)
-    eles = [ periodic_table.Element[a.element]
-            for a in mol.atoms]
-    crds = np.array([ [ a.xx, a.xy, a.xz ] for a in mol.atoms ])
-    atlist = "".join( ["%s1"%(ele) for ele in eles ] )
-    
-    return ase.Atoms(atlist,positions=crds,charges=qs),charge
-    
+    charge = int(round(sum([a.charge for a in mol.atoms])))
+    qs += (charge - qsum) / len(qs)
+    eles = [periodic_table.Element[a.element] for a in mol.atoms]
+    crds = np.array([[a.xx, a.xy, a.xz] for a in mol.atoms])
+    atlist = "".join(["%s1" % (ele) for ele in eles])
+
+    return ase.Atoms(atlist, positions=crds, charges=qs), charge
 
 
 def parmed2graph(mol):
-    import parmed
-    import numpy as np
-    from . GraphSearch import GraphSearch
+    from .GraphSearch import GraphSearch
+
     edges = []
     for x in mol.bonds:
-        edges.append( "%i~%i"%(x.atom1.idx,x.atom2.idx) )
+        edges.append("%i~%i" % (x.atom1.idx, x.atom2.idx))
     return GraphSearch(edges)
-
 
 
 def bonds2graph(bonds):
-    from . GraphSearch import GraphSearch
+    from .GraphSearch import GraphSearch
+
     edges = []
     for x in bonds:
-        edges.append( "%i~%i"%(x[0],x[1]) )
+        edges.append("%i~%i" % (x[0], x[1]))
     return GraphSearch(edges)
 
 
-
-def CopyParm( parm ):
+def CopyParm(parm):
+    """Shallow-copy a ParmEd AmberParm, including coordinates and box."""
     import copy
+
     try:
         parm.remake_parm()
-    except:
+    except Exception:
         pass
-    p = copy.copy( parm )
-    p.coordinates = copy.copy( parm.coordinates )
-    p.box = copy.copy( parm.box )
+    p = copy.copy(parm)
+    p.coordinates = copy.copy(parm.coordinates)
+    p.box = copy.copy(parm.box)
     try:
-        p.hasbox = copy.copy( parm.hasbox )
-    except:
+        p.hasbox = copy.copy(parm.hasbox)
+    except Exception:
         p.hasbox = False
     return p
 

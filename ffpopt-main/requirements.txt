@@ -1,0 +1,9 @@
+cmake==3.30
+geometric
+mace-torch
+aimnet
+torchani
+fennol[cuda]
+ndfes
+mpi4py
+

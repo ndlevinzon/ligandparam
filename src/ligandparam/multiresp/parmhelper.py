@@ -149,32 +149,14 @@ def OpenParm( fname, xyz=None ):
             param.pointers["IFBOX"]=2
     return param
 
-def CopyParm( parm ):
-    """ Copy the parmed object 
-    
-    Parameters
-    ----------
-    parm : parmed object
-        The parmed object to copy
-    
-    Returns
-    -------
-    parmed object
-        The copied parmed object
+def CopyParm(parm):
+    """Copy a ParmEd AmberParm (coordinates and box included).
+
+    Canonical implementation lives in :func:`ffpopt.AmberParm.CopyParm`.
     """
-    import copy
-    try:
-        parm.remake_parm()
-    except:
-        pass
-    p = copy.copy( parm )
-    p.coordinates = copy.copy( parm.coordinates )
-    p.box = copy.copy( parm.box )
-    try:
-        p.hasbox = copy.copy( parm.hasbox )
-    except:
-        p.hasbox = False
-    return p
+    from ffpopt.AmberParm import CopyParm as _copy_parm
+
+    return _copy_parm(parm)
 
 def MakeUniqueBondParams( p, xlist, scale=1.0 ):
     """ Make unique bond parameters

@@ -30,6 +30,8 @@ dependencies = [
   "ase",
   "scipy",
   "matplotlib",
+  "networkx>=3.0",
+  "pyyaml>=6.0",
 ]
 
 urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
@@ -43,8 +45,8 @@ ml = [
 ]
 
 dihed = [
-  # Fragmented twist also needs scission (FragmentMol) and AmberTools on PATH.
-  # Install scission separately into the same environment.
+  # Fragmented twist uses integrated src/ffpopt + src/scission.
+  # Still needs AmberTools on PATH and an HL model stack (e.g. qdpi2).
   "ndfes",
 ]
 
@@ -73,6 +75,8 @@ all = [
 lighfix = "ligandparam.cli.cli_lighfix:lighfix"
 lig-getparam = "ligandparam.cli.ligandparam_getparam:main"
 lig-dihed-correct = "ligandparam.cli.lig_dihed_correct:main"
+lig-scission = "ligandparam.cli.lig_scission:main"
+scission = "scission.cli:main"
 smiles-to-pdb = "ligandparam.cli.smiles_to_pdb:main"
 lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
 "ffpopt-DihedScan.py" = "ffpopt.scripts:ffpopt_DihedScan"
@@ -99,10 +103,11 @@ lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["ligandparam*", "ffpopt*"]
+include = ["ligandparam*", "ffpopt*", "scission*"]
 
 [tool.setuptools.package-data]
 ffpopt = ["bin/*.py", "pkgdata/**/*", "GLOSSARY.md", "README.md"]
+scission = ["README.md"]
 
 [tool.ruff]
 line-length = 120

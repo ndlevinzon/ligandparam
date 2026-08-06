@@ -1,0 +1,8 @@
+MASS
+CA  12.01
+
+BOND
+CA-CA   310.0  1.53
+
+ANGLE
+CA-CA-CA  40.0  109.5

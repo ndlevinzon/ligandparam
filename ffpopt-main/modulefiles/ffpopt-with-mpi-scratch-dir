@@ -1,0 +1,87 @@
+#%Module1.0
+#
+proc ModulesHelp { } {
+    puts stderr "Activates the Mamba environment: ffpopt-tensorflow. This version sets variables to force openmpi to write temporary files to /scratch/\$USER/tmp rather than /tmp to avoid quota limits on clusters"
+}
+
+set base_path "/scratch/giese025/software/miniforge3/"
+set env_name  "ffpopt-tensorflow"
+set env_dir "${base_path}/envs/${env_name}"
+set pyver 3.12
+
+prepend-path PATH "${base_path}/bin"
+prepend-path PATH "${env_dir}/bin"
+
+prepend-path LD_LIBRARY_PATH "${env_dir}/lib"
+prepend-path LD_LIBRARY_PATH "${env_dir}/lib/stubs"
+prepend-path LD_LIBRARY_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/lib"
+
+prepend-path LIBRARY_PATH "${env_dir}/lib"
+prepend-path LIBRARY_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/lib"
+
+prepend-path C_INCLUDE_PATH "${env_dir}/include"
+prepend-path C_INCLUDE_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/include"
+
+prepend-path CPLUS_INCLUDE_PATH "${env_dir}/include"
+prepend-path CPLUS_INCLUDE_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/include"
+
+prepend-path PYTHONPATH "${env_dir}/lib/python${pyver}/site-packages"
+
+setenv XLA_FLAGS "--xla_gpu_cuda_data_dir=${env_dir}/targets/x86_64-linux"
+
+setenv OMP_NUM_THREADS 1
+setenv DP_INTRA_OP_PARALLELISM_THREADS 1
+setenv DP_INTER_OP_PARALLELISM_THREADS 1
+
+#
+# installed package env vars 
+#
+setenv AMBERHOME "${env_dir}"
+setenv QUICK_BASIS "${env_dir}/AmberTools/src/quick/basis"
+
+
+#################################################################################
+#
+# make openmpi write tmp files to /scratch/$USER/tmp rather than /tmp
+# Make sure /scratch/$USER/tmp exists
+#
+################################################################################
+set username [getenv USER "unknown"]
+set scrdir "/scratch/${username}"
+setenv PYTHONNOUSERSITE "1"
+setenv TMPDIR "${scrdir}/tmp"
+setenv TMP "${scrdir}/tmp"
+setenv TEMP "${scrdir}/tmp"
+setenv OMPI_MCA_orte_tmpdir_base "${scrdir}/tmp"
+setenv PRTE_MCA_prte_silence_shared_fs "1"
+setenv XDG_CACHE_HOME "${scrdir}/.cache"
+###############################################################################
+
+#
+# On the amarel cluster, you may need to set a constraint to prevent
+# mixing of different CPU architectures, which can sometimes cause
+# ELF errors using the conda-forge openmpi implementation.
+#
+#SBATCH --partition=main-redhat
+#SBATCH --ntasks=64
+#SBATCH --gres-flags=enforce-binding
+#SBATCH --export=ALL
+#SBATCH --time=2:00:00
+#SBATCH --mem-per-cpu=1800mb
+#
+# CHOOSE EXACTLY ONE OF THESE UNIFORM HARDWARE TARGETS:
+# -------------------------------------------------------------
+# Option 1: Emerald Rapids (Newest/Fastest, best for massive calculations)
+##SBATCH --constraint=emeraldrapids
+#
+# Option 2: Sapphire Rapids (Newer generation, high core counts)
+##SBATCH --constraint=sapphirerapids
+#
+# Option 3: Ice Lake (Standard modern architecture, excellent availability)
+##SBATCH --constraint=icelake
+#
+# Option 4: Cascade Lake (Older generation, but abundant node count)
+#SBATCH --constraint=cascadelake
+# -------------------------------------------------------------
+#
+

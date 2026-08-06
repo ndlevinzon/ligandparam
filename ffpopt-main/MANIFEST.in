@@ -1,0 +1,4 @@
+include src/python/scripts.py
+recursive-include src/python/bin *.py
+include src/python/lib/ffpopt/pkgdata/__init__.py
+include src/python/lib/ffpopt/pkgdata/qdpi/qdpi-2.0.pb

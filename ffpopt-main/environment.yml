@@ -1,0 +1,27 @@
+name: ffpopt
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+  - nodefaults
+dependencies:
+  - python=3.12
+  - dacase::ambertools-dac=25
+  - parmed
+  - ase
+  - openbabel
+  - geometric
+  - dpdata
+  - dftd3-python
+  - rdkit
+  - tblite
+  - tblite-python
+#  - torchmd-net
+  - simple-dftd3
+  - dftd3-python
+  - psi4
+  - conda-forge/label/libint_dev::libint
+  - mopac
+  - xgboost==3.0.0
+
+  

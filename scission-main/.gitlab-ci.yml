@@ -1,0 +1,26 @@
+image: python:3.12
+
+stages:
+  - docs
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+pages:
+  stage: docs
+  script:
+    - python -m pip install --upgrade pip
+    - python -m pip install -e ".[docs]"
+    - python -m sphinx -M html docs docs/_build -E -a
+    - rm -rf public
+    - mkdir -p public
+    - cp -r docs/_build/html/. public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

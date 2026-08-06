@@ -39,20 +39,7 @@ for key in ["OMP_NUM_THREADS","DP_INTRA_OP_PARALLELISM_THREADS","DP_INTER_OP_PAR
 from ase.calculators.calculator import Calculator, all_changes
 from collections import defaultdict as ddict
 
-def CopyParm( parm ):
-    import copy
-    try:
-        parm.remake_parm()
-    except:
-        pass
-    p = copy.copy( parm )
-    p.coordinates = copy.copy( parm.coordinates )
-    p.box = copy.copy( parm.box )
-    try:
-        p.hasbox = copy.copy( parm.hasbox )
-    except:
-        p.hasbox = False
-    return p
+from ffpopt.AmberParm import CopyParm
 
 
 class GenCalculator(Calculator):

@@ -1,0 +1,32 @@
+#%Module1.0
+proc ModulesHelp { } {
+    puts stderr "Activates the Mamba environment: ffpopt"
+}
+
+#
+# The PATH_TO_CONDA_BASE directory should contain:
+#
+# etc/profile.d/conda.sh
+# envs/ffpopt
+#
+
+set base_path "PATH_TO_CONDA_BASE"
+set env_name  "ffpopt"
+
+# Add mamba to PATH
+prepend-path PATH "$base_path/bin"
+
+# AmberTools / Quick
+setenv QUICK_BASIS "${base_path}/envs/${env_name}/AmberTools/src/quick/basis"
+
+# Use 'puts' to send commands to the shell for evaluation
+if { [ module-info mode load ] } {
+    puts stdout "eval \"\$(mamba shell hook --shell bash)\";"
+    puts stdout "source $base_path/etc/profile.d/conda.sh;"
+    puts stdout "mamba activate $env_name;"
+}
+
+if { [ module-info mode remove ] } {
+    puts stdout "mamba deactivate;"
+}
+

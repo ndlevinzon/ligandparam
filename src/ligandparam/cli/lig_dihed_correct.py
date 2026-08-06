@@ -11,7 +11,6 @@ Or pass explicit ``--mol2`` / ``--lib`` / ``--frcmod`` paths.
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 from ligandparam.log import get_logger, set_file_logger, set_stream_logger

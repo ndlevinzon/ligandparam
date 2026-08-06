@@ -130,10 +130,11 @@ calculation.
 
 ### scission (FragmentMol)
 
-**Definition.** External package that fragments a ligand Amber bundle and
-merges per-fragment frcmods by atom type.
+**Definition.** Integrated package under ``src/scission`` that fragments a
+ligand Amber bundle and merges per-fragment frcmods by atom type.
 
-**Detail.** Required only for `run_fragmented_dihed_twist_workflow`. Needs
-AmberTools (`tleap`) on `PATH` to build fragment `parm7`/`rst7`.
+**Detail.** Required for ``run_fragmented_dihed_twist_workflow`` and for the
+``lig-scission`` / ``scission`` CLIs. Needs AmberTools (``tleap``) on ``PATH``
+to build fragment ``parm7``/``rst7``.
 
-**Authoritative source.** `examples/scission-interface/run.py`
+**Authoritative source.** ``src/scission/`` ; ``examples/scission-interface/run.py``

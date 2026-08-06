@@ -1,0 +1,13 @@
+image: python:3.12
+
+pages:
+  stage: deploy
+  script:
+    - pip install --no-cache-dir "numpy<2" scipy matplotlib ase parmed geometric sphinx sphinx_rtd_theme
+    - export PYTHONPATH="$CI_PROJECT_DIR/src/python/lib:$PYTHONPATH"
+    - sphinx-build -b html -n docs public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

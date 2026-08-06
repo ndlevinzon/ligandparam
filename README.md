@@ -63,9 +63,11 @@ pip install ".[docs]"   # Sphinx documentation build
 pip install ".[all]"    # everything above
 ```
 
-Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) package
-(plus `scission`). Install with `pip install -e ".[dihed]"`, add scission and
-the HL model stack, then run `lig-dihed-correct` after `lig-getparam`.
+Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) and
+[`src/scission`](src/scission/) packages. Install with
+`pip install -e ".[dihed]"`, ensure AmberTools is on `PATH`, add the HL model
+stack, then run `lig-dihed-correct` (or `lig-scission` alone) after
+`lig-getparam`.
 
 Editable install for development:
 
@@ -145,27 +147,29 @@ by default. To reproduce the previous alpha/beta Euler grid, pass
 `orientation_protocol="legacy_euler"`. Both protocols use 28 Gaussian ESP jobs
 and feed the same multi-RESP → `parmchk2` → LEaP path (`.frcmod` / `.lib`).
 
-### Optional dihedral corrections (ffpopt)
+### Optional dihedral corrections (ffpopt + scission)
 
-The ffpopt runtime package lives at [`src/ffpopt`](src/ffpopt/) (next to
-`ligandparam`). After `lig-getparam` finishes, run the **separate** CLI in the
-same session to fit torsions (fragmented dihed-twist → merged frcmod; the
-`.lib` is unchanged). You also need `scission` (FragmentMol) and AmberTools on
-`PATH`, plus the HL model stack (e.g. qdpi2):
+Runtime packages live at [`src/ffpopt`](src/ffpopt/) and
+[`src/scission`](src/scission/) (next to `ligandparam`). After
+`lig-getparam` finishes, run torsion correction in the same session
+(fragmented dihed-twist → merged frcmod; the `.lib` is unchanged). You need
+AmberTools on `PATH` plus the HL model stack (e.g. qdpi2):
 
 ```bash
 lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32
 lig-dihed-correct -d CHA3 -r CHA --label chaps --model qdpi2 -n 10
 ```
 
-Or pass explicit paths:
+Fragment alone with scission (without fitting):
 
 ```bash
-lig-dihed-correct --mol2 CHA3/CHA/chaps.mol2 --lib CHA3/CHA/chaps.lib --frcmod CHA3/CHA/chaps.frcmod
+lig-scission fragment -d CHA3 -r CHA --label chaps
+# or the upstream-style CLI:
+scission fragment --mol2 ... --lib ... --frcmod ... --outdir frags
 ```
 
 Python recipes can still append the stage with `dihed_correct=True`
-(`FreeLigand` / `LazyLigand` / `DPFreeLigand`). Prefer the standalone CLI when
+(`FreeLigand` / `LazyLigand` / `DPFreeLigand`). Prefer the standalone CLIs when
 running interactively after `lig-getparam`.
 
 ---
@@ -178,6 +182,7 @@ Installed entry points (see `pyproject.toml`):
 |---------|---------|
 | `lig-getparam` | Batch-run parameterization recipes |
 | `lig-dihed-correct` | ffpopt dihedral corrections on recipe mol2/lib/frcmod |
+| `lig-scission` / `scission` | Fragment a ligand (or merge fragment frcmods) |
 | `smiles-to-pdb` | Convert a SMILES string to a 3D PDB |
 | `lighfix` | Fix ligand hydrogenation / bonding from PDB input |
 | `lig-to-sage` | Convert mol2 parameters toward OpenFF Sage |
@@ -185,6 +190,7 @@ Installed entry points (see `pyproject.toml`):
 ```bash
 lig-getparam --help
 lig-dihed-correct --help
+lig-scission --help
 smiles-to-pdb --help
 ```
 
@@ -226,9 +232,10 @@ src/
 ├── ligandparam/    # Parameterization recipes, stages, CLI
 │   ├── recipes/
 │   ├── stages/     # Includes StageDihedTwistCorrection
-│   ├── cli/        # lig-getparam, lig-dihed-correct, …
+│   ├── cli/        # lig-getparam, lig-dihed-correct, lig-scission, …
 │   └── …
-└── ffpopt/         # Integrated torsion-optimization package
+├── ffpopt/         # Integrated torsion-optimization package
+└── scission/       # Integrated ligand fragmentation package
 ```
 
 ---

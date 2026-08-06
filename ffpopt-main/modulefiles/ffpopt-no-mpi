@@ -1,0 +1,42 @@
+#%Module1.0
+#
+proc ModulesHelp { } {
+    puts stderr "Activates the Mamba environment: ffpopt-tensorflow. This version works anywhere as long as you dont use mpi. For mpi, see ffpopt-with-mpi-scratch-dir"
+}
+
+set base_path "/scratch/giese025/software/miniforge3/"
+set env_name  "ffpopt-tensorflow"
+set env_dir "${base_path}/envs/${env_name}"
+set pyver 3.12
+
+prepend-path PATH "${base_path}/bin"
+prepend-path PATH "${env_dir}/bin"
+
+prepend-path LD_LIBRARY_PATH "${env_dir}/lib"
+prepend-path LD_LIBRARY_PATH "${env_dir}/lib/stubs"
+prepend-path LD_LIBRARY_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/lib"
+
+prepend-path LIBRARY_PATH "${env_dir}/lib"
+prepend-path LIBRARY_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/lib"
+
+prepend-path C_INCLUDE_PATH "${env_dir}/include"
+prepend-path C_INCLUDE_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/include"
+
+prepend-path CPLUS_INCLUDE_PATH "${env_dir}/include"
+prepend-path CPLUS_INCLUDE_PATH "${env_dir}/lib/python${pyver}/site-packages/deepmd/include"
+
+prepend-path PYTHONPATH "${env_dir}/lib/python${pyver}/site-packages"
+
+setenv XLA_FLAGS "--xla_gpu_cuda_data_dir=${env_dir}/targets/x86_64-linux"
+
+setenv OMP_NUM_THREADS 1
+setenv DP_INTRA_OP_PARALLELISM_THREADS 1
+setenv DP_INTER_OP_PARALLELISM_THREADS 1
+
+#
+# installed package env vars 
+#
+setenv AMBERHOME "${env_dir}"
+setenv QUICK_BASIS "${env_dir}/AmberTools/src/quick/basis"
+
+

@@ -23,8 +23,8 @@ Requirements and caveats
 ------------------------
 * Call either workflow from an ``if __name__ == "__main__":`` guard. The
   wavefront scan uses ``spawn``-mode multiprocessing.
-* Fragmented mode requires the ``scission`` package and AmberTools (``tleap``)
-  on ``PATH``.
+* Fragmented mode requires the integrated ``scission`` package
+  (``src/scission``) and AmberTools (``tleap``) on ``PATH``.
 * High-level ``model`` values (e.g. ``qdpi2``, ``mace``) need the matching
   ffpopt install group (tensorflow / pytorch).
 """
@@ -1001,8 +1001,9 @@ def run_fragmented_dihed_twist_workflow(
         from scission.merge import merge_fragment_frcmods
     except ImportError as e:
         raise ImportError(
-            "run_fragmented_dihed_twist_workflow requires the 'scission' "
-            "package (FragmentMol). Install it into this env first."
+            "run_fragmented_dihed_twist_workflow requires the integrated "
+            "'scission' package (src/scission). Reinstall ligandparam "
+            "(pip install -e .) so scission is on PYTHONPATH."
         ) from e
 
     config = fragment_config if fragment_config is not None else FragmentConfig()

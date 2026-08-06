@@ -136,7 +136,10 @@ sqm*
 /examples/04_MultiResp/*
 /examples/04_FromSmiles/*
 /examples/05_FromSDF/*
-/ffpopt-main/*
+
+/ffpopt-main/*  # SRC ffpopt
+/scission-main/*  # SRC scission
+
 
 # Allow specific files
 !/examples/01_LazyLigand/thiophenol.pdb
