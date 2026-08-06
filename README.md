@@ -60,18 +60,25 @@ pip install .
 ### Optional extras
 
 ```bash
-pip install ".[ml]"     # DeepMD / SQM / tblite (xtb) related workflows
+pip install ".[tblite]" # GFN2-xTB for lig-dihed-correct --model xtb
 pip install ".[dihed]"  # extras useful for dihedral fitting (e.g. ndfes)
+pip install ".[ml]"     # DeepMD (install TensorFlow via conda on HPC)
 pip install ".[sage]"   # OpenFF Sage conversion
 pip install ".[docs]"   # Sphinx documentation build
-pip install ".[all]"    # everything above
+pip install ".[all]"    # everything above (still needs TF from conda on many HPCs)
 ```
 
 Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) and
 [`src/scission`](src/scission/) packages (installed with the package). Use
-`pip install -e ".[dihed]"`, keep AmberTools on `PATH`, install an HL model
-stack (e.g. `tblite` for `--model xtb`), then run `lig-dihed-correct` (or
-`lig-scission` alone) after `lig-getparam`.
+`pip install -e ".[dihed,tblite]"`, keep AmberTools on `PATH`, then run
+`lig-dihed-correct` (or `lig-scission` alone) after `lig-getparam`.
+
+For DeepMD recipes, prefer conda on HPC (pip TensorFlow often has no wheel):
+
+```bash
+conda install -c conda-forge tensorflow deepmd-kit
+pip install -e ".[ml]"
+```
 
 Editable install for development:
 

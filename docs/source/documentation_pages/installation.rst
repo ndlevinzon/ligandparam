@@ -26,15 +26,21 @@ Optional extras
 
 .. code-block:: bash
 
-    pip install ".[ml]"     # DeepMD / SQM / tblite (xtb) related workflows
+    pip install ".[tblite]" # GFN2-xTB (lig-dihed-correct --model xtb)
     pip install ".[dihed]"  # extras useful for dihedral fitting (e.g. ndfes)
+    pip install ".[ml]"     # DeepMD (use conda for TensorFlow on HPC)
     pip install ".[sage]"   # OpenFF Sage conversion
     pip install ".[docs]"   # Sphinx documentation build
     pip install ".[all]"
 
-``lig-dihed-correct`` with ``--model xtb`` typically needs ``tblite``
-(``pip install tblite`` or ``".[ml]"``). Heavier HL models (``qdpi2``,
-``mace``, …) need their corresponding ML stacks; see :doc:`dihedrals`.
+``lig-dihed-correct --model xtb`` needs ``tblite`` (``pip install ".[tblite]"``).
+DeepMD recipes need TensorFlow; on HPC install it from conda, not pip::
+
+    conda install -c conda-forge tensorflow deepmd-kit
+    pip install -e ".[ml]"
+
+Heavier HL models (``qdpi2``, ``mace``, …) need their corresponding stacks;
+see :doc:`dihedrals`.
 
 External tools
 --------------

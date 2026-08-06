@@ -38,15 +38,21 @@ urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
 
 [project.optional-dependencies]
 
+# GFN2-xTB via tblite (lig-dihed-correct --model xtb). Prefer this on HPC.
+tblite = [
+  "tblite",
+]
+
+# DeepMD-assisted recipes (DPLigand / DPFreeLigand). Install TensorFlow
+# from conda-forge on HPC — pip wheels are often unavailable there:
+#   conda install -c conda-forge tensorflow deepmd-kit
 ml = [
   "deepmd-kit",
-  "tensorflow",
-  "tblite"
 ]
 
 dihed = [
   # Fragmented twist uses integrated src/ffpopt + src/scission.
-  # Still needs AmberTools on PATH and an HL model stack (e.g. qdpi2).
+  # Still needs AmberTools on PATH and an HL model stack (e.g. xtb/tblite).
   "ndfes",
 ]
 
@@ -64,6 +70,7 @@ docs = [
 ]
 
 all = [
+  "ligandparam[tblite]",
   "ligandparam[ml]",
   "ligandparam[dihed]",
   "ligandparam[misc]",
