@@ -764,9 +764,8 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
             out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
         except Exception as e:
             # geomeTRIC sometimes cannot recover its IC system under frozen
-            # dihedrals ("Cannot continue a constrained optimization; please
-            # implement constrained optimization in Cartesian coordinates").
-            # Fall back to ASE BFGS with the same constraints.
+            # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
+            # watchdog, …). Fall back to ASE BFGS with the same constraints.
             import traceback
             print("\n\n\ngeomeTRIC GEOMETRY OPTIMIZATION FAILURE; falling back to ASE\n")
             print(e)
