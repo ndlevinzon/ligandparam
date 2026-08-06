@@ -54,6 +54,7 @@ dihed = [
   # Fragmented twist uses integrated src/ffpopt + src/scission.
   # Still needs AmberTools on PATH and an HL model stack (e.g. xtb/tblite).
   "ndfes",
+  "geometric",  # geomeTRIC optimizer used by ffpopt WaveFront scans
 ]
 
 misc = [

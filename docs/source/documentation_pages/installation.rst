@@ -27,7 +27,7 @@ Optional extras
 .. code-block:: bash
 
     pip install ".[tblite]" # GFN2-xTB (lig-dihed-correct --model xtb)
-    pip install ".[dihed]"  # extras useful for dihedral fitting (e.g. ndfes)
+    pip install ".[dihed]"  # ndfes + geometric (required by ffpopt WaveFront)
     pip install ".[ml]"     # DeepMD (use conda for TensorFlow on HPC)
     pip install ".[sage]"   # OpenFF Sage conversion
     pip install ".[docs]"   # Sphinx documentation build

@@ -61,7 +61,7 @@ pip install .
 
 ```bash
 pip install ".[tblite]" # GFN2-xTB for lig-dihed-correct --model xtb
-pip install ".[dihed]"  # extras useful for dihedral fitting (e.g. ndfes)
+pip install ".[dihed]"  # ndfes + geometric (geomeTRIC) for lig-dihed-correct
 pip install ".[ml]"     # DeepMD (install TensorFlow via conda on HPC)
 pip install ".[sage]"   # OpenFF Sage conversion
 pip install ".[docs]"   # Sphinx documentation build
