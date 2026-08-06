@@ -137,8 +137,8 @@ sqm*
 /examples/04_FromSmiles/*
 /examples/05_FromSDF/*
 
-/ffpopt-main/*  # SRC ffpopt
-/scission-main/*  # SRC scission
+ffpopt-main/*  # SRC ffpopt
+scission-main/*  # SRC scission
 
 
 # Allow specific files
