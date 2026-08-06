@@ -100,8 +100,9 @@ class GenCalculator(Calculator):
             mlp = DPModel(model)
             self.calc = QDpi2Calculator(mlp,self.charge,**kwargs)
         elif self.mode == "XTB":
-            from tblite.ase import TBLite
-            self.calc = TBLite(method="GFN2-xTB",charge=self.charge,verbosity=-1)
+            from .tblite_scf import make_tblite_calculator
+
+            self.calc = make_tblite_calculator(charge=self.charge)
         elif "MACE" in self.mode:
             from mace.calculators import MACECalculator
             import importlib
@@ -327,9 +328,16 @@ class GenCalculator(Calculator):
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
-        atoms.calc =  self.calc
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
+        if self.mode == "XTB":
+            from .tblite_scf import run_tblite_with_scf_retries
+
+            energy, forces, self.calc = run_tblite_with_scf_retries(
+                atoms, self.calc
+            )
+        else:
+            atoms.calc = self.calc
+            energy = atoms.get_potential_energy()
+            forces = atoms.get_forces()
         self.results['energy'] = energy
         self.results['free_energy'] = energy
         self.results['forces'] = forces
@@ -473,11 +481,12 @@ class QDpi2Calculator(Calculator):
     nolabel=True
     
     def __init__(self,dpmodel,charge,**kwargs):
-        from tblite.ase import TBLite
+        from .tblite_scf import make_tblite_calculator
+
         self.dpmodel = dpmodel
         self.charge = charge
         #self.xtbcalc = XTBCalculator(charge=charge,method="GFN2-xTB")
-        self.xtbcalc = TBLite(method="GFN2-xTB",charge=self.charge,verbosity=-1)
+        self.xtbcalc = make_tblite_calculator(charge=self.charge)
         Calculator.__init__(self,**kwargs)
         
     def calculate(self,
@@ -486,6 +495,8 @@ class QDpi2Calculator(Calculator):
                   system_changes=all_changes):
         import numpy as np
         import ase
+        from .tblite_scf import run_tblite_with_scf_retries
+
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
@@ -502,9 +513,7 @@ class QDpi2Calculator(Calculator):
         
         atlist = "".join( ["%s1"%(ele) for ele in eles ] )
         atoms = ase.Atoms(atlist,positions=crds,charges=qs)
-        atoms.calc =  self.xtbcalc
-        e2 = atoms.get_potential_energy()
-        f2 = atoms.get_forces()
+        e2, f2, self.xtbcalc = run_tblite_with_scf_retries(atoms, self.xtbcalc)
 
         energy = e + e2
         forces = f + f2
