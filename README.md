@@ -272,10 +272,10 @@ git push origin --tags
 
 ## Authors
 
-- [Zeke Piskulich (York Lab)](mailto:piskulichz@gmail.com)
-- [German P. Barletta (York Lab)](https://github.com/pgbarletta)
-- [Timothy J. Giese (York Lab)]
-- [Nate Levinzon (Cheatham Lab)](mailto:ndlevinzon@gmail.com)
+- [Zeke Piskulich (York Lab)](https://theory.rutgers.edu/profile.php?people_id=399)
+- [German P. Barletta (York Lab)](https://theory.rutgers.edu/profile.php?people_id=407)
+- [Timothy J. Giese (York Lab)](https://theory.rutgers.edu/profile.php?people_id=3)
+- [Nate Levinzon (Cheatham Lab)](https://people.utah.edu/basic.hml?eid=273961099)
 
 ---
 
