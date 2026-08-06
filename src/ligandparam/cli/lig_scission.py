@@ -17,49 +17,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from ligandparam.io.amber_bundle import resolve_getparam_bundle
 from scission.cli import main as scission_main
-
-
-def _resolve_getparam_bundle(
-    *,
-    cwd: Path,
-    data_cwd: Path,
-    resname: str,
-    label: str | None,
-) -> tuple[Path, Path, Path, Path]:
-    """Return ``(work_dir, mol2, lib, frcmod)`` under a lig-getparam layout."""
-    work_dir = (cwd / data_cwd / resname).resolve()
-    if not work_dir.is_dir():
-        raise FileNotFoundError(f"Working directory does not exist: {work_dir}")
-
-    stem = label or resname
-    cand_mol2 = work_dir / f"{stem}.mol2"
-    cand_lib = work_dir / f"{stem}.lib"
-    cand_frcmod = work_dir / f"{stem}.frcmod"
-
-    if not cand_mol2.is_file() and label is None:
-        mol2s = sorted(
-            p
-            for p in work_dir.glob("*.mol2")
-            if ".initial." not in p.name
-            and ".centered." not in p.name
-            and ".resp." not in p.name
-            and not p.name.startswith("final_")
-        )
-        if len(mol2s) == 1:
-            cand_mol2 = mol2s[0]
-            stem = cand_mol2.stem
-            cand_lib = work_dir / f"{stem}.lib"
-            cand_frcmod = work_dir / f"{stem}.frcmod"
-
-    missing = [p for p in (cand_mol2, cand_lib, cand_frcmod) if not p.is_file()]
-    if missing:
-        raise FileNotFoundError(
-            "Could not find ligandparam outputs in "
-            f"{work_dir}. Missing: {', '.join(p.name for p in missing)}. "
-            "Pass --label or explicit --mol2/--lib/--frcmod."
-        )
-    return work_dir, cand_mol2, cand_lib, cand_frcmod
 
 
 def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
@@ -82,27 +41,26 @@ def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
     if known.mol2 is not None and known.lib is not None and known.frcmod is not None:
         return argv
 
-    work_dir, mol2, lib, frcmod = _resolve_getparam_bundle(
+    bundle = resolve_getparam_bundle(
         cwd=Path.cwd(),
         data_cwd=known.data_cwd,
         resname=known.resname,
         label=known.label,
     )
-    outdir = known.outdir or (work_dir / f"{mol2.stem}.scission_fragments")
+    outdir = known.outdir or (bundle.work_dir / f"{bundle.stem}.scission_fragments")
 
-    expanded = [
+    return [
         "fragment",
         "--mol2",
-        str(mol2),
+        str(bundle.mol2),
         "--lib",
-        str(lib),
+        str(bundle.lib),
         "--frcmod",
-        str(frcmod),
+        str(bundle.frcmod),
         "--outdir",
         str(outdir),
         *remaining,
     ]
-    return expanded
 
 
 def main(argv: list[str] | None = None) -> int:

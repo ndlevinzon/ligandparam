@@ -122,11 +122,11 @@ class StageDihedTwistCorrection(AbstractStage):
         self.out_frcmod.parent.mkdir(parents=True, exist_ok=True)
 
         result = run_fragmented_dihed_twist_workflow(
-            mol2=str(self.in_mol2.resolve()),
-            lib=str(self.in_lib.resolve()),
-            frcmod=str(self.in_frcmod.resolve()),
-            out_dir=str(self.out_dir.resolve()),
-            merged_frcmod=str(self.out_frcmod.resolve()),
+            mol2=self.in_mol2.resolve(),
+            lib=self.in_lib.resolve(),
+            frcmod=self.in_frcmod.resolve(),
+            out_dir=self.out_dir.resolve(),
+            merged_frcmod=self.out_frcmod.resolve(),
             model=self.model,
             maxiter=self.maxiter,
             nprim=self.nprim,
@@ -135,6 +135,7 @@ class StageDihedTwistCorrection(AbstractStage):
             geometric_opt=self.geometric_opt,
             skip_existing=self.skip_existing,
             rotatable_bond_smarts=self.rotatable_bond_smarts,
+            logger=self.logger,
         )
         self.logger.info(
             "Dihed twist complete: merged_frcmod=%s fragments=%s",

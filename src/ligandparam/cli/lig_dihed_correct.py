@@ -13,72 +13,18 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from ligandparam.io.amber_bundle import AmberLigandBundle, resolve_getparam_bundle
 from ligandparam.log import get_logger, set_file_logger, set_stream_logger
 from ligandparam.stages.ffpopt_dihed import StageDihedTwistCorrection
 
 
-def _resolve_bundle(
-    *,
-    cwd: Path,
-    data_cwd: Path | None,
-    resname: str | None,
-    label: str | None,
-    mol2: Path | None,
-    lib: Path | None,
-    frcmod: Path | None,
-) -> tuple[Path, Path, Path, Path]:
-    """Return ``(work_dir, mol2, lib, frcmod)`` from CLI arguments."""
-    if mol2 is not None and lib is not None and frcmod is not None:
-        work_dir = mol2.resolve().parent
-        return work_dir, mol2.resolve(), lib.resolve(), frcmod.resolve()
-
-    if data_cwd is None or resname is None:
-        raise ValueError(
-            "Provide either (--mol2, --lib, --frcmod) or (--data_cwd and --resname)."
-        )
-
-    work_dir = (cwd / data_cwd / resname).resolve()
-    if not work_dir.is_dir():
-        raise FileNotFoundError(f"Working directory does not exist: {work_dir}")
-
-    stem = label or resname
-    cand_mol2 = work_dir / f"{stem}.mol2"
-    cand_lib = work_dir / f"{stem}.lib"
-    cand_frcmod = work_dir / f"{stem}.frcmod"
-
-    if not cand_mol2.is_file() and label is None:
-        # Fall back to a unique non-ancillary mol2 in the directory.
-        mol2s = sorted(
-            p
-            for p in work_dir.glob("*.mol2")
-            if ".initial." not in p.name
-            and ".centered." not in p.name
-            and ".resp." not in p.name
-            and not p.name.startswith("final_")
-        )
-        if len(mol2s) == 1:
-            cand_mol2 = mol2s[0]
-            stem = cand_mol2.stem
-            cand_lib = work_dir / f"{stem}.lib"
-            cand_frcmod = work_dir / f"{stem}.frcmod"
-
-    missing = [p for p in (cand_mol2, cand_lib, cand_frcmod) if not p.is_file()]
-    if missing:
-        raise FileNotFoundError(
-            "Could not find ligandparam outputs in "
-            f"{work_dir}. Missing: {', '.join(str(p.name) for p in missing)}. "
-            "Pass --label (input stem used by the recipe) or explicit "
-            "--mol2/--lib/--frcmod."
-        )
-    return work_dir, cand_mol2, cand_lib, cand_frcmod
-
-
 def run_dihed_correct(
     *,
-    mol2: Path,
-    lib: Path,
-    frcmod: Path,
-    work_dir: Path,
+    bundle: AmberLigandBundle | None = None,
+    mol2: Path | None = None,
+    lib: Path | None = None,
+    frcmod: Path | None = None,
+    work_dir: Path | None = None,
     out_frcmod: Path | None = None,
     out_dir: Path | None = None,
     model: str = "qdpi2",
@@ -94,15 +40,26 @@ def run_dihed_correct(
     """Execute :class:`StageDihedTwistCorrection` on an Amber ligand bundle."""
     if logger is None:
         logger = get_logger()
-    out_frcmod = out_frcmod or work_dir / f"{mol2.stem}.dihed.frcmod"
-    out_dir = out_dir or work_dir / f"{mol2.stem}.dihed_fragments"
+    if bundle is None:
+        if mol2 is None or lib is None or frcmod is None or work_dir is None:
+            raise ValueError(
+                "Provide bundle= or all of mol2, lib, frcmod, and work_dir"
+            )
+        bundle = AmberLigandBundle(
+            mol2=Path(mol2),
+            lib=Path(lib),
+            frcmod=Path(frcmod),
+            work_dir=Path(work_dir),
+        )
+    out_frcmod = out_frcmod or bundle.work_dir / f"{bundle.stem}.dihed.frcmod"
+    out_dir = out_dir or bundle.work_dir / f"{bundle.stem}.dihed_fragments"
 
     stage = StageDihedTwistCorrection(
         "DihedTwist",
-        main_input=mol2,
-        cwd=work_dir,
-        in_lib=lib,
-        in_frcmod=frcmod,
+        main_input=bundle.mol2,
+        cwd=bundle.work_dir,
+        in_lib=bundle.lib,
+        in_frcmod=bundle.frcmod,
         out_frcmod=out_frcmod,
         out_dir=out_dir,
         model=model,
@@ -198,11 +155,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
-    cwd = Path.cwd()
 
     try:
-        work_dir, mol2, lib, frcmod = _resolve_bundle(
-            cwd=cwd,
+        bundle = resolve_getparam_bundle(
+            cwd=Path.cwd(),
             data_cwd=args.data_cwd,
             resname=args.resname,
             label=args.label,
@@ -214,16 +170,18 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))
 
     if args.logger == "file":
-        logger = set_file_logger(work_dir / f"{mol2.stem}.dihed.log")
+        logger = set_file_logger(bundle.work_dir / f"{bundle.stem}.dihed.log")
     else:
         logger = set_stream_logger()
 
-    logger.info("lig-dihed-correct: mol2=%s lib=%s frcmod=%s", mol2, lib, frcmod)
+    logger.info(
+        "lig-dihed-correct: mol2=%s lib=%s frcmod=%s",
+        bundle.mol2,
+        bundle.lib,
+        bundle.frcmod,
+    )
     result = run_dihed_correct(
-        mol2=mol2,
-        lib=lib,
-        frcmod=frcmod,
-        work_dir=work_dir,
+        bundle=bundle,
         out_frcmod=args.out_frcmod,
         out_dir=args.out_dir,
         model=args.model,
