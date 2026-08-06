@@ -367,6 +367,11 @@ def _run_geometric_with_watchdog(
 def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     """ Perform a geometry optimization using the GEOMETRIC program.
 
+    By default runs geomeTRIC **in-process** with a persistent ASE calculator
+    cached on ``los`` (avoids spawning ``python -m ffpopt.geometric_compat``
+    per call). Set ``FFPOPT_GEOMETRIC_SUBPROCESS=1`` to restore the legacy
+    subprocess + watchdog path.
+
     Parameters
     ----------
     los : ffpopt.Struct.ListOfStruct
@@ -391,142 +396,101 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     import copy
     import ase.io
     from . constants import AU_PER_ELECTRON_VOLT
-    from . Options import argparse2geometric
+    from . Options import argparse2geometric, configure_geometric_logging, GetStandardOptions
     from . Constraints import ConstraintList
-    #from . Constraints import constraints2ase
     from . Restraints import RestraintList
     from . Constraints import ApplyConstraints
-    #from . Constraints import constraints2info,constraints2ase
     from . Struct import ListOfStruct
+    from . geometric_inprocess import (
+        get_persistent_calc,
+        run_geometric_inprocess,
+        use_geometric_subprocess,
+    )
     from tempfile import mkstemp
-    import os
-    import sys
     from pathlib import Path
-    import subprocess as subp
 
-    
-    if True:
+    tmpfile_loc = "./tmpfiles"
+    if not Path(tmpfile_loc).is_dir():
+        os.makedirs(tmpfile_loc, exist_ok=True)
 
-        tmpfile_loc = "./tmpfiles"
-        if not Path(tmpfile_loc).is_dir():
-            os.makedirs(tmpfile_loc, exist_ok=True)
-        
-        fd,tmpxyz = mkstemp(dir=tmpfile_loc,prefix="tmp.",suffix=".xyz")
-        if not os.isatty(fd):  # Check if fd is still valid
-            os.close(fd)
+    fd,tmpxyz = mkstemp(dir=tmpfile_loc,prefix="tmp.",suffix=".xyz")
+    if not os.isatty(fd):  # Check if fd is still valid
+        os.close(fd)
 
-        tmpbase = str(Path(tmpxyz).with_suffix(""))
-        tmpopt  = tmpbase + "_optim.xyz"
-        tmplog  = tmpbase + ".log"
-        tmpcons = tmpbase + ".cons.inp"
-        tmpdir  = tmpbase + ".tmp"
-        tmprst  = tmpbase + ".rst.inp"
-        tmpjson = tmpbase + ".json"
+    tmpbase = str(Path(tmpxyz).with_suffix(""))
+    tmpopt  = tmpbase + "_optim.xyz"
+    tmplog  = tmpbase + ".log"
+    tmpcons = tmpbase + ".cons.inp"
+    tmpdir  = tmpbase + ".tmp"
+    tmpjson = tmpbase + ".json"
 
-        origatoms = struct.GetASEAtoms()
-        myatoms = copy.deepcopy(origatoms)
+    origatoms = struct.GetASEAtoms()
+    myatoms = copy.deepcopy(origatoms)
 
-        reslist = None
-        if struct.restraints is not None:
-            if len(struct.restraints.rests) > 0:
-                reslist = copy.deepcopy(struct.restraints)
-                if restraints is not None:
-                    for b in restraints:
-                        found=False
-                        for a in reslist.rests:
-                            if a.is_same(b):
-                                a.value=b.value
-                                found=True
-                        if not found:
-                            reslist.rests.append(b)
-        
-        if reslist is None and restraints is not None:
-            reslist = RestraintList( copy.deepcopy(restraints) )
-        
-        conslist = None
-        if struct.constraints is not None:
-            if len(struct.constraints) > 0:
-                conslist = copy.deepcopy(struct.constraints)
-                
-                # print("GEOMETRIC",len(conslist))
-                # for ia,a in enumerate(conslist.cons):
-                #     print(ia,str(a))
-                # print("constraints",len(constraints))
-                # for ia,a in enumerate(constraints):
-                #     print(ia,str(a))
-                    
-                if constraints is not None:
-                    for b in constraints:
-                        found=False
-                        for a in conslist.cons:
-                            if a.is_same(b):
-                                a.value = b.value
-                                found=True
-                        if not found:
-                            #print("appending",str(b))
-                            conslist.cons.append(b)
-                            
-        if conslist is None and constraints is not None:
-            conslist = ConstraintList( copy.deepcopy(constraints) )
-            #for c in conslist:
-            #    print(str(c))
+    reslist = None
+    if struct.restraints is not None:
+        if len(struct.restraints.rests) > 0:
+            reslist = copy.deepcopy(struct.restraints)
+            if restraints is not None:
+                for b in restraints:
+                    found=False
+                    for a in reslist.rests:
+                        if a.is_same(b):
+                            a.value=b.value
+                            found=True
+                    if not found:
+                        reslist.rests.append(b)
 
-        cons = None
-        if conslist is not None:
-            cons = conslist.FillConstraints(myatoms,force=False)
-            origcons = conslist.FillConstraints(myatoms,force=True)
-        #if cons is not None or reslist is not None:
-            myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph()) #,rests=reslist.rests)
-            #if cons is not None:
-            #    newcons = conslist.FillConstraints(myatoms,force=True)
-            #    for ic in range(len(cons)):
-            #        print(ic,str(origcons[ic]),str(newcons[ic]),cons[ic].value)
+    if reslist is None and restraints is not None:
+        reslist = RestraintList( copy.deepcopy(restraints) )
 
+    conslist = None
+    if struct.constraints is not None:
+        if len(struct.constraints) > 0:
+            conslist = copy.deepcopy(struct.constraints)
 
+            if constraints is not None:
+                for b in constraints:
+                    found=False
+                    for a in conslist.cons:
+                        if a.is_same(b):
+                            a.value = b.value
+                            found=True
+                    if not found:
+                        conslist.cons.append(b)
+
+    if conslist is None and constraints is not None:
+        conslist = ConstraintList( copy.deepcopy(constraints) )
+
+    cons = None
+    if conslist is not None:
+        cons = conslist.FillConstraints(myatoms,force=False)
+        origcons = conslist.FillConstraints(myatoms,force=True)
+        myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph())
+
+    if conslist is not None:
+        with open(tmpcons, "w") as fh:
+            fh.write("$set\n")
+            for line in conslist.to_geometric():
+                fh.write("%s\n" % (line))
+
+    ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
+
+    if use_geometric_subprocess():
+        # Legacy path: spawn geometric_compat + watchdog.
         mystruct = copy.deepcopy(struct)
         if conslist is not None:
             mystruct.constraints = None
             mystruct.data["constraints"] = []
-
         if reslist is not None:
             mystruct.restraints = reslist
             mystruct.data["restraints"] = reslist.to_list_of_dict()
-
-        mylos = ListOfStruct( [mystruct] )
+        mylos = ListOfStruct([mystruct])
         mylos.save(tmpjson)
-        
-        cmds = argparse2geometric(tmpjson,los.args)
-        cmds.append( tmpxyz )
-        #cmds = [ "-W", "ignore::FutureWarning" ] + cmds
-
+        cmds = argparse2geometric(tmpjson, los.args)
+        cmds.append(tmpxyz)
         if conslist is not None:
             cmds.append(tmpcons)
-            fh = open(tmpcons,"w")
-            fh.write("$set\n")
-            clines = conslist.to_geometric()
-            for line in clines:
-                fh.write("%s\n"%(line))
-            fh.close()
-
-        ase.io.write(tmpxyz,myatoms, format='xyz', parallel=False)
-
-        #print("cmds=",cmds,file=sys.stderr)
-        #print(" ".join(cmds),file=sys.stderr)
-
-        # try:
-        #     # Open the file in read mode ('r' is the default)
-        #     with open(tmpxyz, 'r') as file:
-        #         # Iterate through each line in the file object
-        #         for line in file:
-        #             # Use rstrip() to remove the trailing newline character for clean output
-        #             print(line.rstrip())
-        # except FileNotFoundError:
-        #     print(f"Error: The file '{filename}' was not found.")
-        # except Exception as e:
-        #     print(f"An error occurred: {e}")
-        
-        #print("CUDA_VISIBLE_DEVICES=",os.environ.get("CUDA_VISIBLE_DEVICES"),file=sys.stderr)
-
         _run_geometric_with_watchdog(cmds, tmplog, activity_dir=tmpdir)
         if not os.path.exists(tmpopt):
             log_hint = ""
@@ -543,55 +507,78 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
                 f"optimized geometry; often a constrained-IC recovery failure)."
                 f"{log_hint}"
             )
-
-        #subp.run(cmds)
-        
-        out = ase.io.read(tmpopt,index='-1',parallel=False)
-        out.set_initial_charges( myatoms.get_initial_charges() )
-        keys = [ key for key in out.info ]
+        out_atoms = ase.io.read(tmpopt, index="-1", parallel=False)
+        out_atoms.set_initial_charges(myatoms.get_initial_charges())
+        keys = [key for key in out_atoms.info]
         ene = float(keys[-1]) / AU_PER_ELECTRON_VOLT()
-        crd = out.get_positions()
-        #frc = out.get_forces()
+        crd = out_atoms.get_positions()
         frc = None
-        out = copy.deepcopy(struct)
-        out.Update(ene,crd,frc)
+    else:
+        calc = get_persistent_calc(los, struct, reslist=reslist)
+        geo = GetStandardOptions(los.args).get("geometric", {})
+        log_ini = configure_geometric_logging(
+            getattr(los.args, "geometric_ini", None)
+        )
+        if getattr(los.args, "geometric_ini", None) is not None:
+            if len(str(los.args.geometric_ini)) == 0:
+                log_ini = ""
+        result = run_geometric_inprocess(
+            myatoms,
+            calc,
+            prefix=tmpbase,
+            constraints_path=tmpcons if conslist is not None else None,
+            coordsys=geo.get("coordsys", "tric"),
+            maxiter=int(geo.get("maxiter", getattr(los.args, "geometric_maxiter", 500))),
+            converge=geo.get("converge", getattr(los.args, "geometric_converge", "set GAU")),
+            enforce=float(geo.get("enforce", getattr(los.args, "geometric_enforce", 0.0))),
+            log_ini=log_ini if log_ini else None,
+        )
+        crd = result["coords"]
+        if result["energy_ha"] is not None:
+            ene = result["energy_ha"] / AU_PER_ELECTRON_VOLT()
+        else:
+            myatoms.set_positions(crd)
+            myatoms.calc = calc
+            ene = myatoms.get_potential_energy()
+        frc = None
 
+    out = copy.deepcopy(struct)
+    out.Update(ene,crd,frc)
 
-        if True:
-            from . Constraints import FillConstraints
-            if cons is not None:
-                cvals = FillConstraints(out,cons,force=True)
-                ovals = FillConstraints(origatoms,cons,force=True)
-                for i in range(len(cvals)):
-                    print("Constraint %2i tgt=%9.2f opt=%9.2f orig=%9.2f"%\
-                          ( i+1, cons[i].value, cvals[i].value, ovals[i].value ) )
-            
-        if True:
-            if reslist is not None:
-                ocrd = origatoms.get_positions()
-                for i in range(len(reslist)):
-                    val = reslist[i].GetCrdValue(crd)
-                    oval = reslist[i].GetCrdValue(ocrd)
-                    print("Restraint  %2i tgt=%9.2f obs=%9.2f orig=%9.2f"%\
-                          ( i+1, reslist[i].value, val, oval ) )
-            
-        
+    if True:
+        from . Constraints import FillConstraints
         if cons is not None:
-            out.constraints = ConstraintList( cons )
-            out.data["constraints"] = out.constraints.to_list_of_dict()
+            cvals = FillConstraints(out,cons,force=True)
+            ovals = FillConstraints(origatoms,cons,force=True)
+            for i in range(len(cvals)):
+                print("Constraint %2i tgt=%9.2f opt=%9.2f orig=%9.2f"%\
+                      ( i+1, cons[i].value, cvals[i].value, ovals[i].value ) )
 
+    if True:
         if reslist is not None:
-            out.restraints = reslist
-            out.data["restraints"] = out.restraints.to_list_of_dict()
-            
-        for f in [tmpxyz,tmpopt,tmplog,tmpcons]:
-            if os.path.exists(f):
-                os.remove(f)
+            ocrd = origatoms.get_positions()
+            for i in range(len(reslist)):
+                val = reslist[i].GetCrdValue(crd)
+                oval = reslist[i].GetCrdValue(ocrd)
+                print("Restraint  %2i tgt=%9.2f obs=%9.2f orig=%9.2f"%\
+                      ( i+1, reslist[i].value, val, oval ) )
 
-        if os.path.isdir(tmpdir):
-            import shutil
-            shutil.rmtree(tmpdir)
-    
+    if cons is not None:
+        out.constraints = ConstraintList( cons )
+        out.data["constraints"] = out.constraints.to_list_of_dict()
+
+    if reslist is not None:
+        out.restraints = reslist
+        out.data["restraints"] = out.restraints.to_list_of_dict()
+
+    for f in [tmpxyz,tmpopt,tmplog,tmpcons,tmpjson]:
+        if os.path.exists(f):
+            os.remove(f)
+
+    if os.path.isdir(tmpdir):
+        import shutil
+        shutil.rmtree(tmpdir)
+
     return out
 
 
