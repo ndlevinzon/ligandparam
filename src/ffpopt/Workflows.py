@@ -93,11 +93,39 @@ def _run_current_python(
     Bare ``python3`` on HPC often resolves to a system interpreter without
     ParmEd / ffpopt, which breaks generated fit scripts (``it01.py``, …).
     """
+    import os
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
     subprocess.run(
-        [sys.executable, str(script), *args],
+        [sys.executable, "-u", str(script), *args],
         check=True,
         cwd=cwd,
+        env=env,
     )
+
+
+def _run_fit_script_inprocess(
+    script: PathLike,
+    iparm: PathLike,
+    oparm: PathLike,
+) -> None:
+    """Apply a GenDihedFit ``itNN.py`` script in-process (no nested python).
+
+    Avoids silent hangs / wrong-interpreter failures from shelling out to
+    ``python3``. Progress prints from the generated script go to this process.
+    """
+    import runpy
+
+    script = str(Path(script).resolve())
+    iparm = str(Path(iparm).resolve())
+    oparm = str(Path(oparm).resolve())
+    old_argv = sys.argv[:]
+    sys.argv = [script, iparm, oparm]
+    try:
+        runpy.run_path(script, run_name="__main__")
+    finally:
+        sys.argv = old_argv
 
 
 def _run_ffpopt_bin(
@@ -638,13 +666,11 @@ def _apply_fit_and_prepare(
             json_out,
         )
         return
-    log.info("[twist] applying fit → %s", parm_out)
-    _run_current_python(
-        py_script,
-        str(origparm_path),
-        str(parm_out.resolve()),
-        cwd=_subprocess_cwd(workdir),
-    )
+    log.info("[twist] applying fit → %s (in-process: %s)", parm_out, py_script)
+    sys.stdout.flush()
+    _run_fit_script_inprocess(py_script, origparm_path, parm_out.resolve())
+    log.info("[twist] fit script finished → %s", parm_out.resolve())
+    sys.stdout.flush()
     log.info("[twist] PrepareInput → %s", json_out)
     _run_ffpopt_bin(
         "ffpopt-PrepareInput.py",

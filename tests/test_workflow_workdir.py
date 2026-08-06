@@ -54,19 +54,22 @@ class TestPrepareFragmentNoChdir(unittest.TestCase):
         self.assertEqual(kwargs["cwd"], str(frag_dir))
         cmd = run.call_args.args[0]
         self.assertEqual(cmd[0], sys.executable)
-        self.assertTrue(cmd[1].endswith("ffpopt-PrepareInput.py"))
+        self.assertEqual(cmd[1], "-u")
+        self.assertTrue(cmd[2].endswith("ffpopt-PrepareInput.py"))
         self.assertTrue(any(a.startswith("--parm=") for a in cmd))
         self.assertTrue(any(a.startswith("--out=") and "start.json" in a for a in cmd))
 
 
 class TestRunCurrentPython(unittest.TestCase):
-    def test_apply_fit_uses_sys_executable(self):
+    def test_apply_fit_uses_inprocess_script(self):
         from ffpopt.Workflows import _apply_fit_and_prepare
 
         wd = Path("/tmp/fragB")
-        with patch("ffpopt.Workflows.subprocess.run") as run, patch.object(
-            Path, "exists", return_value=False
-        ), patch.object(Path, "is_file", return_value=True), patch(
+        with patch("ffpopt.Workflows._run_fit_script_inprocess") as apply, patch(
+            "ffpopt.Workflows.subprocess.run"
+        ) as run, patch.object(Path, "exists", return_value=False), patch.object(
+            Path, "is_file", return_value=True
+        ), patch(
             "ffpopt.Workflows._ffpopt_bin_script", return_value="/fake/PrepareInput.py"
         ):
             _apply_fit_and_prepare(
@@ -76,10 +79,13 @@ class TestRunCurrentPython(unittest.TestCase):
                 skip_existing=False,
                 workdir=wd,
             )
-        self.assertGreaterEqual(run.call_count, 2)
-        fit_cmd = run.call_args_list[0].args[0]
-        self.assertEqual(fit_cmd[0], sys.executable)
-        self.assertTrue(str(fit_cmd[1]).endswith("it01.py"))
+        apply.assert_called_once()
+        self.assertEqual(apply.call_args.args[0].name, "it01.py")
+        run.assert_called_once()  # PrepareInput only
+        prep_cmd = run.call_args.args[0]
+        self.assertEqual(prep_cmd[0], sys.executable)
+        self.assertEqual(prep_cmd[1], "-u")
+        self.assertTrue(prep_cmd[2].endswith("ffpopt-PrepareInput.py"))
 
     def test_write_fit_json_uses_absolute_paths(self):
         import tempfile

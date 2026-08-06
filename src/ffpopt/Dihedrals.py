@@ -1729,7 +1729,9 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
     fh.write("if args.iparm == args.oparm:\n")
     fh.write("    raise Exception(\"The 2 filenames must be different\")\n\n")
     
-    fh.write("p = load_file( args.iparm )\n\n")
+    fh.write("print(f\"[fit-apply] loading {args.iparm}\", flush=True)\n")
+    fh.write("p = load_file( args.iparm )\n")
+    fh.write("print(f\"[fit-apply] loaded {len(p.atoms)} atoms, {len(p.dihedrals)} dihedrals\", flush=True)\n\n")
     
 
     #if not bytype:
@@ -1745,18 +1747,23 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
             
 
     fh.write("\n\n")
-    for dfcn in dfcns:
+    n_ops = len(dfcns)
+    fh.write(f"print(\"[fit-apply] updating {n_ops} dihedral(s)\", flush=True)\n")
+    for idfcn, dfcn in enumerate(dfcns):
         allmasks = [ [ ":%s@%s"%("{rname}",p.atoms[idx].name)
                        for idx in dfcn.idxs ] ]
 
         for masks in allmasks:
             mstr = ",".join(["f\"%s\""%(mask) for mask in masks])
+            fh.write(f"print(\"[fit-apply]   {idfcn+1}/{n_ops} delete+add {mstr}\", flush=True)\n")
             fh.write(f"deleteDihedral(p,{mstr}).execute()\n")
             for prim in dfcn.prims:
                 fh.write(f"addDihedral(p,{mstr},{prim.fc},{prim.per},{prim.phase},scee,scnb).execute()\n")
             fh.write("\n\n")
 
+    fh.write("print(f\"[fit-apply] saving {args.oparm}\", flush=True)\n")
     fh.write("p.save(args.oparm,overwrite=True)\n")
+    fh.write("print(\"[fit-apply] done\", flush=True)\n")
     fh.close()
 
     
