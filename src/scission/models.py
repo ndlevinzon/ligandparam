@@ -115,6 +115,7 @@ class Ligand:
     _frag_topology: Any = field(default=None, init=False, repr=False, compare=False)
     _rotatable_bonds_cache: Any = field(default=None, init=False, repr=False, compare=False)
     _ring_edges: Any = field(default=None, init=False, repr=False, compare=False)
+    _rdkit_mol: Any = field(default=None, init=False, repr=False, compare=False)
 
     def atom(self, atom_index: int) -> Atom:
         """Return a parent atom record by its one-based index.
@@ -150,6 +151,7 @@ class Ligand:
         self._frag_topology = None
         self._rotatable_bonds_cache = None
         self._ring_edges = None
+        self._rdkit_mol = None
 
 
 @dataclass(frozen=True)

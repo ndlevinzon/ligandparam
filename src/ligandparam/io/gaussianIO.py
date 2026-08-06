@@ -166,6 +166,9 @@ class GaussianReader:
     def check_complete(self):
         """Check whether the Gaussian calculation finished normally.
 
+        Scans a short tail of the log (Normal termination is near EOF) instead
+        of reading every line of large multi-orientation ESP outputs.
+
         Returns
         -------
         bool
@@ -173,11 +176,17 @@ class GaussianReader:
         """
         if not self.filename.exists():
             return False
-        with open(self.filename, 'r') as f:
-            for line in f:
-                if "Normal termination" in line:
-                    return True
-        return False
+        marker = b"Normal termination"
+        try:
+            with open(self.filename, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                # Normal termination is written near EOF; avoid full-file scans
+                # across ~28 orientation logs.
+                f.seek(max(0, size - 16384))
+                return marker in f.read()
+        except OSError:
+            return False
     
     def read_log(self):
         """Read the Gaussian log archive and extract final geometry.

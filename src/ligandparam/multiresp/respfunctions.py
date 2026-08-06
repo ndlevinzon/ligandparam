@@ -227,6 +227,41 @@ def WriteArray8(fh,arr):
 
 
 
+# Compiled once — ReadGauEsp is called for every multi-RESP orientation log.
+_ATOMIC_CENTER_LINE = None
+_FIT_CENTER_LINE = None
+_ESP_LINE = None
+
+
+def _gau_esp_regexes():
+    global _ATOMIC_CENTER_LINE, _FIT_CENTER_LINE, _ESP_LINE
+    if _ATOMIC_CENTER_LINE is None:
+        import re
+
+        _ATOMIC_CENTER_LINE = re.compile(
+            r" +Atomic Center[ 0-9]+ is at +([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6})"
+        )
+        _FIT_CENTER_LINE = re.compile(
+            r" +ESP Fit Center[ 0-9]+ is at +([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6})"
+        )
+        _ESP_LINE = re.compile(r"[ 0-9]+ Fit +([\-\.0-9]+)")
+    return _ATOMIC_CENTER_LINE, _FIT_CENTER_LINE, _ESP_LINE
+
+
+def _coords_after_is_at(line: str):
+    """Parse ``is at  x y z`` without a regex when the line shape is standard."""
+    idx = line.find("is at")
+    if idx < 0:
+        return None
+    try:
+        vals = [float(tok) for tok in line[idx + 5 :].split()]
+    except ValueError:
+        return None
+    if len(vals) != 3:
+        return None
+    return vals
+
+
 def ReadGauEsp(fname):
     """ Read the ESP from a Gaussian output file
     
@@ -241,46 +276,53 @@ def ReadGauEsp(fname):
         The coordinates of the atoms
     
     """
-    import re
     import os
-    import sys
-
-    #sys.stderr.write( "ReadGauEsp %s\n"%(fname))
-
 
     if not os.path.exists(fname):
         raise Exception("ReadGauEsp file not found: %s"%(fname))
-    
-    fh = open(fname,"r")
-    
+
+    atomic_center_line, fit_center_line, esp_line = _gau_esp_regexes()
+
     crds=[]
     pts=[]
     esp=[]
 
-    atomic_center_line = re.compile(r" +Atomic Center[ 0-9]+ is at +([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6})")
-    fit_center_line = re.compile(r" +ESP Fit Center[ 0-9]+ is at +([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6}) *([\-0-9]{1,3}\.[0-9]{6})")
-    esp_line = re.compile(r"[ 0-9]+ Fit +([\-\.0-9]+)")
-
-    for line in fh:
-        m = atomic_center_line.match(line)
-        if m is not None:
-            crds.extend( [ float( m.group(1) ), float( m.group(2) ), float( m.group(3) ) ] )
-            continue
-        m = fit_center_line.match(line)
-        if m is not None:
-            pts.extend( [ float( m.group(1) ), float( m.group(2) ), float( m.group(3) ) ] )
-            continue
-        m = esp_line.match(line)
-        if m is not None:
-            esp.append( float( m.group(1) ) )
-            continue
+    with open(fname, "r") as fh:
+        for line in fh:
+            # Substring gates avoid three regex matches on every log line
+            # (× ~28 orientation files in FreeLigand multi-RESP).
+            if "Atomic Center" in line:
+                vals = _coords_after_is_at(line)
+                if vals is None:
+                    m = atomic_center_line.match(line)
+                    if m is not None:
+                        vals = [float(m.group(1)), float(m.group(2)), float(m.group(3))]
+                if vals is not None:
+                    crds.extend(vals)
+                continue
+            if "ESP Fit Center" in line:
+                vals = _coords_after_is_at(line)
+                if vals is None:
+                    m = fit_center_line.match(line)
+                    if m is not None:
+                        vals = [float(m.group(1)), float(m.group(2)), float(m.group(3))]
+                if vals is not None:
+                    pts.extend(vals)
+                continue
+            if " Fit " in line:
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == "Fit":
+                    try:
+                        esp.append(float(parts[-1]))
+                        continue
+                    except ValueError:
+                        pass
+                m = esp_line.match(line)
+                if m is not None:
+                    esp.append(float(m.group(1)))
+                    continue
     if len(pts) != 3*len(esp):
         raise Exception("# pts (%i) != # esp values (%i) in %s"%(len(pts)//3,len(esp),fname))
-   
-    #sys.stderr.write("crds=%s\n"%(str(len(crds))))
-    #sys.stderr.write("pts=%s\n"%(str(len(pts))))
-    #sys.stderr.write("esp=%s\n"%(str(len(esp))))
-    #exit(1)
 
     return crds,pts,esp
 

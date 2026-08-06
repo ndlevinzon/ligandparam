@@ -123,14 +123,58 @@ def _pick_terminal_neighbor(graph: nx.Graph, center: int, other: int) -> int | N
     return sorted(candidates, key=lambda atom_idx: _neighbor_rank(graph, center, atom_idx, other))[0]
 
 
+# Process-wide compiled SMARTS (pattern -> query + :1/:2 query indices).
+_COMPILED_CENTRAL_BOND_SMARTS: dict[str, tuple] = {}
+
+
 def _build_rdkit_mol(ligand: Ligand) -> "Chem.Mol":
-    """Build an RDKit molecule from the in-memory ligand topology."""
+    """Build an RDKit molecule from the in-memory ligand topology (cached)."""
 
     if Chem is None:
         raise ValueError(
             "RDKit is required when rotatable_bond_smarts are configured."
         )
-    return build_rdkit_mol(ligand.atoms, ligand.bonds)
+    cached = getattr(ligand, "_rdkit_mol", None)
+    if cached is not None:
+        return cached
+    mol = build_rdkit_mol(ligand.atoms, ligand.bonds)
+    ligand._rdkit_mol = mol
+    return mol
+
+
+def _compiled_central_bond_smarts(pattern: str):
+    """Compile and cache a ``:1``/``:2`` central-bond SMARTS query."""
+
+    hit = _COMPILED_CENTRAL_BOND_SMARTS.get(pattern)
+    if hit is not None:
+        return hit
+    if Chem is None:
+        raise ValueError("RDKit is required for SMARTS matching.")
+    query = Chem.MolFromSmarts(pattern)
+    if query is None:
+        raise ValueError(f"Invalid rotatable bond SMARTS pattern: {pattern}")
+    atom_map_to_query_idx: dict[int, int] = {}
+    for atom in query.GetAtoms():
+        atom_map_num = atom.GetAtomMapNum()
+        if atom_map_num:
+            atom_map_to_query_idx[atom_map_num] = atom.GetIdx()
+    if set(atom_map_to_query_idx) != {1, 2}:
+        raise ValueError(
+            "Rotatable bond SMARTS patterns must map the central bond atoms "
+            f"as :1 and :2: {pattern}"
+        )
+    query_bond = query.GetBondBetweenAtoms(
+        atom_map_to_query_idx[1],
+        atom_map_to_query_idx[2],
+    )
+    if query_bond is None:
+        raise ValueError(
+            "Rotatable bond SMARTS mapped atoms :1 and :2 must be directly bonded: "
+            f"{pattern}"
+        )
+    hit = (query, atom_map_to_query_idx[1], atom_map_to_query_idx[2])
+    _COMPILED_CENTRAL_BOND_SMARTS[pattern] = hit
+    return hit
 
 
 def _match_rotatable_bond_smarts(
@@ -144,33 +188,13 @@ def _match_rotatable_bond_smarts(
     mol = _build_rdkit_mol(ligand)
     matched_bonds: set[tuple[int, int]] = set()
     for pattern in rotatable_bond_smarts:
-        query = Chem.MolFromSmarts(pattern)
-        if query is None:
-            raise ValueError(f"Invalid rotatable bond SMARTS pattern: {pattern}")
-        atom_map_to_query_idx: dict[int, int] = {}
-        for atom in query.GetAtoms():
-            atom_map_num = atom.GetAtomMapNum()
-            if atom_map_num:
-                atom_map_to_query_idx[atom_map_num] = atom.GetIdx()
-        if set(atom_map_to_query_idx) != {1, 2}:
-            raise ValueError(
-                "Rotatable bond SMARTS patterns must map the central bond atoms "
-                f"as :1 and :2: {pattern}"
-            )
-        query_bond = query.GetBondBetweenAtoms(
-            atom_map_to_query_idx[1],
-            atom_map_to_query_idx[2],
-        )
-        if query_bond is None:
-            raise ValueError(
-                "Rotatable bond SMARTS mapped atoms :1 and :2 must be directly bonded: "
-                f"{pattern}"
-            )
+        query, q1, q2 = _compiled_central_bond_smarts(pattern)
         for match in mol.GetSubstructMatches(query, uniquify=True):
-            atom1 = match[atom_map_to_query_idx[1]] + 1
-            atom2 = match[atom_map_to_query_idx[2]] + 1
+            atom1 = match[q1] + 1
+            atom2 = match[q2] + 1
             matched_bonds.add(tuple(sorted((atom1, atom2))))
     return matched_bonds
+
 
 
 def match_central_bond_smarts(
