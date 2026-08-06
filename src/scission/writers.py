@@ -52,28 +52,6 @@ def _atom_name_map(mol: "Chem.Mol") -> dict[str, int]:
     return mapping
 
 
-def _rdkit_bond_type(bond_type: str) -> "Chem.BondType":
-    """Translate stored bond labels into RDKit bond types.
-
-    Args:
-        bond_type: Bond label stored in the source topology.
-
-    Returns:
-        The corresponding RDKit bond type.
-    """
-
-    normalized = bond_type.lower()
-    if normalized in {"1", "1.0", "single", "am"}:
-        return Chem.BondType.SINGLE
-    if normalized in {"2", "2.0"}:
-        return Chem.BondType.DOUBLE
-    if normalized in {"3", "3.0"}:
-        return Chem.BondType.TRIPLE
-    if normalized == "ar":
-        return Chem.BondType.AROMATIC
-    return Chem.BondType.SINGLE
-
-
 def _load_fragment_rdkit_mol(mol2_path: Path) -> "Chem.Mol | None":
     """Rebuild a fragment MOL2 file as an RDKit molecule for drawing.
 
@@ -88,32 +66,10 @@ def _load_fragment_rdkit_mol(mol2_path: Path) -> "Chem.Mol | None":
         return None
 
     from .io import parse_mol2
+    from .rdkit_mol import build_rdkit_mol
 
     _, atoms, bonds = parse_mol2(mol2_path)
-    editable = Chem.RWMol()
-    for atom in atoms:
-        rd_atom = Chem.Atom(atom.element)
-        rd_atom.SetFormalCharge(0)
-        rd_idx = editable.AddAtom(rd_atom)
-        editable.GetAtomWithIdx(rd_idx).SetProp("_TriposAtomName", atom.name)
-
-    aromatic_atoms: set[int] = set()
-    for bond in bonds:
-        atom1 = bond.atom1 - 1
-        atom2 = bond.atom2 - 1
-        editable.AddBond(atom1, atom2, _rdkit_bond_type(bond.bond_type))
-        if bond.bond_type.lower() == "ar":
-            aromatic_atoms.add(atom1)
-            aromatic_atoms.add(atom2)
-
-    mol = editable.GetMol()
-    for atom_idx in aromatic_atoms:
-        mol.GetAtomWithIdx(atom_idx).SetIsAromatic(True)
-    for bond in mol.GetBonds():
-        if bond.GetBondType() == Chem.BondType.AROMATIC:
-            bond.SetIsAromatic(True)
-    Chem.SanitizeMol(mol)
-    return mol
+    return build_rdkit_mol(atoms, bonds)
 
 
 def _highlight_for_torsion(mol: "Chem.Mol", torsion_label: str) -> tuple[list[int], list[int]]:
@@ -168,36 +124,45 @@ def _write_fragment_drawings(
             warnings.append("RDKit not installed; skipping 2D fragment drawings.")
         return None, {}
 
-    mol = _load_fragment_rdkit_mol(mol2_path)
-    if mol is None:
-        if warnings is not None:
-            warnings.append(f"Unable to load {mol2_path.name} into RDKit; skipping 2D fragment drawings.")
-        return None, {}
+    try:
+        mol = _load_fragment_rdkit_mol(mol2_path)
+        if mol is None:
+            if warnings is not None:
+                warnings.append(
+                    f"Unable to load {mol2_path.name} into RDKit; skipping 2D fragment drawings."
+                )
+            return None, {}
 
-    AllChem.Compute2DCoords(mol)
-    overview_image_path = fragment_dir / "fragment_2d.svg"
-    torsion_image_paths: dict[str, Path] = {}
+        AllChem.Compute2DCoords(mol)
+        overview_image_path = fragment_dir / "fragment_2d.svg"
+        torsion_image_paths: dict[str, Path] = {}
 
-    drawer = Draw.MolDraw2DSVG(900, 600)
-    drawer.DrawMolecule(mol, legend=f"{fragment_id} | charge={fragment_net_charge:.3f}")
-    drawer.FinishDrawing()
-    overview_image_path.write_text(drawer.GetDrawingText())
-
-    for torsion_label in assigned_torsions:
-        atom_ids, bond_ids = _highlight_for_torsion(mol, torsion_label)
         drawer = Draw.MolDraw2DSVG(900, 600)
-        options = drawer.drawOptions()
-        options.addAtomIndices = False
-        drawer.DrawMolecule(
-            mol,
-            highlightAtoms=atom_ids,
-            highlightBonds=bond_ids,
-            legend=f"{torsion_label} | charge={fragment_net_charge:.3f}",
-        )
+        drawer.DrawMolecule(mol, legend=f"{fragment_id} | charge={fragment_net_charge:.3f}")
         drawer.FinishDrawing()
-        out_path = fragment_dir / f"torsion_{_safe_name(torsion_label)}.svg"
-        out_path.write_text(drawer.GetDrawingText())
-        torsion_image_paths[torsion_label] = out_path
+        overview_image_path.write_text(drawer.GetDrawingText())
+
+        for torsion_label in assigned_torsions:
+            atom_ids, bond_ids = _highlight_for_torsion(mol, torsion_label)
+            drawer = Draw.MolDraw2DSVG(900, 600)
+            options = drawer.drawOptions()
+            options.addAtomIndices = False
+            drawer.DrawMolecule(
+                mol,
+                highlightAtoms=atom_ids,
+                highlightBonds=bond_ids,
+                legend=f"{torsion_label} | charge={fragment_net_charge:.3f}",
+            )
+            drawer.FinishDrawing()
+            out_path = fragment_dir / f"torsion_{_safe_name(torsion_label)}.svg"
+            out_path.write_text(drawer.GetDrawingText())
+            torsion_image_paths[torsion_label] = out_path
+    except Exception as exc:
+        if warnings is not None:
+            warnings.append(
+                f"Skipping 2D fragment drawings for {mol2_path.name}: {exc}"
+            )
+        return None, {}
 
     return overview_image_path, torsion_image_paths
 

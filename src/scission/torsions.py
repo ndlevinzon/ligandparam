@@ -10,6 +10,8 @@ try:
 except ImportError:  # pragma: no cover
     Chem = None
 
+from .rdkit_mol import build_rdkit_mol
+
 
 def _is_single_bond(bond_type: str) -> bool:
     """Return whether a bond label should count as a single bond.
@@ -121,21 +123,6 @@ def _pick_terminal_neighbor(graph: nx.Graph, center: int, other: int) -> int | N
     return sorted(candidates, key=lambda atom_idx: _neighbor_rank(graph, center, atom_idx, other))[0]
 
 
-def _rdkit_bond_type(bond_type: str) -> "Chem.BondType":
-    """Translate stored bond labels into RDKit bond types."""
-
-    normalized = bond_type.lower()
-    if normalized in {"1", "1.0", "single", "am"}:
-        return Chem.BondType.SINGLE
-    if normalized in {"2", "2.0"}:
-        return Chem.BondType.DOUBLE
-    if normalized in {"3", "3.0"}:
-        return Chem.BondType.TRIPLE
-    if normalized == "ar":
-        return Chem.BondType.AROMATIC
-    return Chem.BondType.SINGLE
-
-
 def _build_rdkit_mol(ligand: Ligand) -> "Chem.Mol":
     """Build an RDKit molecule from the in-memory ligand topology."""
 
@@ -143,28 +130,7 @@ def _build_rdkit_mol(ligand: Ligand) -> "Chem.Mol":
         raise ValueError(
             "RDKit is required when rotatable_bond_smarts are configured."
         )
-    editable = Chem.RWMol()
-    aromatic_atoms: set[int] = set()
-    for atom in ligand.atoms:
-        rd_atom = Chem.Atom(atom.element)
-        rd_atom.SetFormalCharge(0)
-        rd_idx = editable.AddAtom(rd_atom)
-        editable.GetAtomWithIdx(rd_idx).SetProp("_TriposAtomName", atom.name)
-    for bond in ligand.bonds:
-        atom1 = bond.atom1 - 1
-        atom2 = bond.atom2 - 1
-        editable.AddBond(atom1, atom2, _rdkit_bond_type(bond.bond_type))
-        if bond.bond_type.lower() == "ar":
-            aromatic_atoms.add(atom1)
-            aromatic_atoms.add(atom2)
-    mol = editable.GetMol()
-    for atom_idx in aromatic_atoms:
-        mol.GetAtomWithIdx(atom_idx).SetIsAromatic(True)
-    for bond in mol.GetBonds():
-        if bond.GetBondType() == Chem.BondType.AROMATIC:
-            bond.SetIsAromatic(True)
-    Chem.SanitizeMol(mol)
-    return mol
+    return build_rdkit_mol(ligand.atoms, ligand.bonds)
 
 
 def _match_rotatable_bond_smarts(
