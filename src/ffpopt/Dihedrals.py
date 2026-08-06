@@ -1321,6 +1321,125 @@ class FitInputType(object):
         fmod.write(self.output)
     
 
+def _fitted_dihed_idxs(system):
+    """All 0-based dihedral index tuples currently being fit for ``system``."""
+    idxs = []
+    for pinst in system.pinstances:
+        for di in pinst.dihedidxs:
+            idxs.append(list(di))
+    return idxs
+
+
+def _analytical_fitted_torsion_kcal(system, ang_tables_for_geom):
+    """Sum Amber-style torsion energies (kcal/mol) for one geometry.
+
+    ``ang_tables_for_geom[ipinst][idihed]`` are dihedral angles in degrees,
+    precomputed at fixed LL coordinates. Force constants come from each
+    ``ParamType.dfcns`` (updated by :meth:`FitInputType.set_params`).
+    """
+    e = 0.0
+    for ipinst, pinst in enumerate(system.pinstances):
+        dfcns = pinst.ptype.dfcns
+        if dfcns is None:
+            continue
+        for iang, _idxs in enumerate(pinst.dihedidxs):
+            e += float(dfcns.CptEne(ang_tables_for_geom[ipinst][iang]))
+    return e
+
+
+def build_fixed_geometry_ll_cache(system, args):
+    """One-time LL base energies (fitted torsions deleted) + dihedral angles.
+
+    When only torsion force constants change, the non-fitted MM energy at a
+    fixed geometry is constant. Cache that base once (single-point with the
+    fitted dihedrals deleted), then each NL iteration adds analytical torsion
+    terms — avoiding parm7 rewrite + ``GeomOpt`` per geometry per step.
+    """
+    import os
+    import numpy as np
+    from tempfile import mkstemp
+    from . AmberParm import CopyParm
+    from . constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+
+    kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
+
+    fitted = _fitted_dihed_idxs(system)
+    p = CopyParm(system.mol)
+    if fitted:
+        DeleteDihedrals(p, fitted)
+
+    fd, path = mkstemp(dir=".", prefix="tmp.", suffix=".parm7")
+    if not os.isatty(fd):
+        os.close(fd)
+    p.save(path, overwrite=True, format="amber")
+
+    profiles = []
+    try:
+        for prof in system.profiles:
+            prof.losll.SetArgs(args)
+            prof.losll.calc = None
+            base_kcal = []
+            angles = []
+            for struct in prof.losll.structs:
+                t = struct.copy()
+                t.data["parm"] = path
+                t.constraints = None
+                t.restraints = None
+                t.data["constraints"] = []
+                t.data["restraints"] = []
+                g = t.GetASEAtoms()
+                g.calc = prof.losll.BuildCalc(t)
+                e_ev = float(g.get_potential_energy())
+                base_kcal.append(e_ev * kcal_per_ev)
+
+                atoms = struct.GetASEAtoms()
+                geom_angs = []
+                for pinst in system.pinstances:
+                    geom_angs.append(
+                        [float(atoms.get_dihedral(*idxs)) for idxs in pinst.dihedidxs]
+                    )
+                angles.append(geom_angs)
+
+            profiles.append(
+                {
+                    "base_kcal": np.asarray(base_kcal, dtype=float),
+                    "angles": angles,
+                }
+            )
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+        for prof in system.profiles:
+            prof.losll.calc = None
+
+    return {"profiles": profiles}
+
+
+def ll_energies_kcal_from_cache(system, sys_cache):
+    """Fixed-geometry LL energies (kcal): base + analytical fitted torsions."""
+    import numpy as np
+
+    out = []
+    for iprof, prof_cache in enumerate(sys_cache["profiles"]):
+        base = prof_cache["base_kcal"]
+        angs = prof_cache["angles"]
+        ll = np.empty(len(base), dtype=float)
+        for igeom in range(len(base)):
+            ll[igeom] = base[igeom] + _analytical_fitted_torsion_kcal(
+                system, angs[igeom]
+            )
+        out.append(ll)
+    return out
+
+
+def use_dihed_fit_reopt() -> bool:
+    """True when ``FFPOPT_DIHED_FIT_REOPT=1`` restores legacy GeomOpt-per-iter."""
+    import os
+
+    raw = os.environ.get("FFPOPT_DIHED_FIT_REOPT", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def DihedFitObjFcn(x,self):
     """ Objective function for fitting dihedral parameters.
     
@@ -1342,73 +1461,138 @@ def DihedFitObjFcn(x,self):
     
     """
     import numpy as np
-    from . GeomOpt import GeomOpt
     from . constants import AU_PER_KCAL_PER_MOL
     from . constants import AU_PER_ELECTRON_VOLT
-    from tempfile import mkstemp
     import os
     
     KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
   
-    
     chisq = 0
-
     it = self.iteration
-    
     self.set_params(x)
-    for isys,s in enumerate(self.systems):
+
+    if use_dihed_fit_reopt():
+        return _DihedFitObjFcn_reopt(x, self, KCAL_PER_EV)
+
+    if getattr(self, "_ll_cache", None) is None:
+        self._ll_cache = []
+        for s in self.systems:
+            # args live on each profile's los after NonlinearSolve SetArgs
+            args = s.profiles[0].losll.args if s.profiles else None
+            self._ll_cache.append(build_fixed_geometry_ll_cache(s, args))
+
+    for isys, s in enumerate(self.systems):
+        sys_cache = self._ll_cache[isys]
+        ll_by_prof = ll_energies_kcal_from_cache(s, sys_cache)
+
+        for iprof, prof in enumerate(s.profiles):
+            llene = np.asarray(ll_by_prof[iprof], dtype=float)
+            hlene = np.array(
+                [struct.data["energy"] * KCAL_PER_EV for struct in prof.loshl],
+                dtype=float,
+            )
+
+            llene = llene - np.amin(llene)
+            hlene = hlene - np.amin(hlene)
+
+            d = hlene - llene
+            llene = llene + np.mean(d)
+            d = hlene - llene
+            mychisq = float(np.dot(d, d))
+            chisq += mychisq
+
+            hlene = hlene - np.amin(hlene)
+            llene = llene - np.amin(llene)
+
+            if prof.name is None or prof.plots is None:
+                continue
+            elif len(prof.plots) == 0:
+                continue
+
+            ang_tables = sys_cache["profiles"][iprof]["angles"]
+            for pname in prof.plots:
+                pinst = s.find_pinstance(pname)
+                if pinst is None:
+                    continue
+                try:
+                    ipinst = s.pinstances.index(pinst)
+                except ValueError:
+                    ipinst = next(
+                        (i for i, c in enumerate(s.pinstances)
+                         if c.ptype.name == pinst.ptype.name),
+                        None,
+                    )
+                if ipinst is None:
+                    continue
+
+                for idihed, idxs in enumerate(pinst.dihedidxs):
+                    angs = [ang_tables[igeom][ipinst][idihed]
+                            for igeom in range(len(ang_tables))]
+                    data = []
+                    for i in range(len(angs)):
+                        data.append([angs[i], hlene[i], llene[i]])
+                    data = sorted(data, key=lambda row: row[0])
+
+                    idxsname = "-".join([f"{i}" for i in idxs])
+                    fname = f"mfit.{prof.name}.{idxsname}.{it:04d}.dat"
+                    with open(fname, "w") as fh:
+                        fh.write("# %25.14f\n" % (mychisq))
+                        for row in data:
+                            fh.write("%20.10e %20.10e %20.10e\n" % (row[0], row[1], row[2]))
+
+    self.iteration += 1
+    return chisq
+
+
+def _DihedFitObjFcn_reopt(x, self, KCAL_PER_EV):
+    """Legacy NL objective: rewrite parm7 and GeomOpt every geometry."""
+    import numpy as np
+    from . GeomOpt import GeomOpt
+    from tempfile import mkstemp
+    import os
+
+    chisq = 0
+    it = self.iteration
+
+    for isys, s in enumerate(self.systems):
         p = s.make_new_parm()
-        
-        fd,path = mkstemp(dir=".",prefix="tmp.",suffix=".parm7")
-        if not os.isatty(fd):  # Check if fd is still valid
+
+        fd, path = mkstemp(dir=".", prefix="tmp.", suffix=".parm7")
+        if not os.isatty(fd):
             os.close(fd)
-        
-        #p.save("tmp.parm7",overwrite=True)
-        #s.stdargs.calc = s.stdargs.MakeCalc(parm="tmp.parm7")
 
-        p.save(path,overwrite=True,format="amber")    
-        #s.stdargs.calc = s.stdargs.MakeCalc(parm=path)
-        #if os.path.exists(path):
-        #    os.remove(path)
+        p.save(path, overwrite=True, format="amber")
 
-        
-
-        
-
-        for iprof,prof in enumerate(s.profiles):
+        for iprof, prof in enumerate(s.profiles):
             llene = []
             hlene = []
             prof.losll.calc = None
 
             for igeom in range(len(prof.losll)):
-                #atoms = prof.llatoms[igeom].copy()
-                #cons = prof.llcons[igeom]
-                #print("cons=",igeom,cons)
-                #atoms = GeomOpt(atoms,s.stdargs,constraints=cons)
                 inpstruct = prof.losll.structs[igeom].copy()
                 inpstruct.data["parm"] = path
-                sout = GeomOpt( prof.losll, inpstruct )
-                hlene.append( prof.loshl.structs[igeom].data["energy"] * KCAL_PER_EV )
-                llene.append( sout.data["energy"] * KCAL_PER_EV )
-                prof.losll.structs[igeom].Update\
-                    ( sout.get_potential_energy(),
-                      sout.get_positions(),
-                      sout.get_forces())
-                #prof.llatoms[igeom].set_positions( atoms.get_positions() )
-                
-            llene  = np.array(llene)
+                sout = GeomOpt(prof.losll, inpstruct)
+                hlene.append(prof.loshl.structs[igeom].data["energy"] * KCAL_PER_EV)
+                llene.append(sout.data["energy"] * KCAL_PER_EV)
+                prof.losll.structs[igeom].Update(
+                    sout.data["energy"],
+                    sout.data["positions"],
+                    sout.data.get("forces"),
+                )
+
+            llene = np.array(llene)
             llene -= np.amin(llene)
-            
-            hlene  = np.array(hlene)
+
+            hlene = np.array(hlene)
             hlene -= np.amin(hlene)
-            
-            d = hlene-llene
+
+            d = hlene - llene
             llene += np.mean(d)
-            d = hlene-llene
-            mychisq = np.dot(d,d)
-            
+            d = hlene - llene
+            mychisq = np.dot(d, d)
+
             chisq += mychisq
-            
+
             hlene -= np.amin(hlene)
             llene -= np.amin(llene)
 
@@ -1421,33 +1605,29 @@ def DihedFitObjFcn(x,self):
                 pinst = s.find_pinstance(pname)
                 if pinst is None:
                     continue
-                            
+
                 for idxs in pinst.dihedidxs:
                     angs = []
                     for struct in prof.losll:
                         atoms = struct.GetASEAtoms()
-                        ang = atoms.get_dihedral( *idxs )
+                        ang = atoms.get_dihedral(*idxs)
                         angs.append(ang)
                     data = []
                     for i in range(len(angs)):
-                        data.append( [angs[i],hlene[i],llene[i]] )
-                        #print("ang=",i,angs[i])
-                    data = sorted(data,key=lambda x: x[0])
-                
-                    idxsname = "-".join( [ f"{i}" for i in idxs] )
+                        data.append([angs[i], hlene[i], llene[i]])
+                    data = sorted(data, key=lambda row: row[0])
+
+                    idxsname = "-".join([f"{i}" for i in idxs])
                     fname = f"mfit.{prof.name}.{idxsname}.{it:04d}.dat"
-                    fh = open(fname,"w")
-                    fh.write("# %25.14f\n"%(mychisq))
-                    for x in data:
-                        fh.write("%20.10e %20.10e %20.10e\n"%(x[0],x[1],x[2]))
-                    fh.close()
+                    with open(fname, "w") as fh:
+                        fh.write("# %25.14f\n" % (mychisq))
+                        for row in data:
+                            fh.write("%20.10e %20.10e %20.10e\n" % (row[0], row[1], row[2]))
         if os.path.exists(path):
             os.remove(path)
 
     self.iteration += 1
     return chisq
-
-                
 
 
 def NonlinearSolve(args,finp):
@@ -1483,6 +1663,13 @@ def NonlinearSolve(args,finp):
     for s in finp.systems:
         for p in s.profiles:
             p.losll.SetArgs(args)
+
+    # Build fixed-geometry LL cache once before COBYLA (skipped if reopt mode).
+    finp._ll_cache = None
+    if not use_dihed_fit_reopt():
+        finp._ll_cache = [
+            build_fixed_geometry_ll_cache(s, args) for s in finp.systems
+        ]
     
     res = minimize( DihedFitObjFcn, x, args=(finp,),
                     method='COBYLA',
@@ -1495,8 +1682,6 @@ def NonlinearSolve(args,finp):
     print(res)
 
     finp.set_params(res.x)
-
-
 
 def WriteParmedScript(fname,p,dfcns): #,bytype):
     """ Write a Parmed script to modify dihedral parameters in a Parm object.
