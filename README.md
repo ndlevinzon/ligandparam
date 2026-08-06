@@ -19,8 +19,9 @@
 - **Composable stages** to add, remove, or reorder steps without forking the package
 - **Gaussian integration** for geometry optimization and ESP / RESP charge fitting
 - **Amber tooling** via Antechamber, `parmchk2`, and LEaP (`mol2` / `frcmod` / `lib`)
-- **CLI utilities** for batch parameterization, SMILES -> PDB, and related prep tasks
-- **Optional extras** for DeepMD / SQM minimization and OpenFF Sage conversion
+- **Integrated ffpopt + scission** for optional post-hoc dihedral corrections (`lig-dihed-correct`, `lig-scission`)
+- **CLI utilities** for batch parameterization, fragmentation, SMILES -> PDB, and related prep tasks
+- **Optional extras** for DeepMD / SQM / tblite, dihedral tooling, and OpenFF Sage conversion
 
 ---
 
@@ -57,17 +58,18 @@ pip install .
 ### Optional extras
 
 ```bash
-pip install ".[ml]"     # DeepMD / SQM-related workflows
+pip install ".[ml]"     # DeepMD / SQM / tblite (xtb) related workflows
+pip install ".[dihed]"  # extras useful for dihedral fitting (e.g. ndfes)
 pip install ".[sage]"   # OpenFF Sage conversion
 pip install ".[docs]"   # Sphinx documentation build
 pip install ".[all]"    # everything above
 ```
 
 Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) and
-[`src/scission`](src/scission/) packages. Install with
-`pip install -e ".[dihed]"`, ensure AmberTools is on `PATH`, add the HL model
-stack, then run `lig-dihed-correct` (or `lig-scission` alone) after
-`lig-getparam`.
+[`src/scission`](src/scission/) packages (installed with the package). Use
+`pip install -e ".[dihed]"`, keep AmberTools on `PATH`, install an HL model
+stack (e.g. `tblite` for `--model xtb`), then run `lig-dihed-correct` (or
+`lig-scission` alone) after `lig-getparam`.
 
 Editable install for development:
 
@@ -153,12 +155,15 @@ Runtime packages live at [`src/ffpopt`](src/ffpopt/) and
 [`src/scission`](src/scission/) (next to `ligandparam`). After
 `lig-getparam` finishes, run torsion correction in the same session
 (fragmented dihed-twist → merged frcmod; the `.lib` is unchanged). You need
-AmberTools on `PATH` plus the HL model stack (e.g. qdpi2):
+AmberTools on `PATH` plus an HL model stack (e.g. `xtb` via tblite, or `qdpi2`):
 
 ```bash
 lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32
-lig-dihed-correct -d CHA3 -r CHA --label chaps --model qdpi2 -n 10
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10
 ```
+
+Use ``--model qdpi2`` (or ``mace``, …) if that stack is installed; ``xtb``
+only needs ``tblite``.
 
 Fragment alone with scission (without fitting):
 
@@ -208,7 +213,8 @@ Runnable examples live under [`examples/`](examples/):
 | `04_FromSmiles` | SMILES -> PDB prep |
 | `05_FromSDF` | Working from SDF libraries |
 
-More walkthroughs are in the [documentation examples](https://ligandparam.readthedocs.io/en/latest/).
+Sphinx also documents example 07 (dihedral correction after `lig-getparam`);
+see the [documentation examples](https://ligandparam.readthedocs.io/en/latest/).
 
 ---
 
@@ -256,7 +262,7 @@ Issues and pull requests are welcome.
 2. Commit the bump, then tag it:
 
 ```bash
-git tag 1.0.2
+git tag 1.4.0
 git push origin --tags
 ```
 

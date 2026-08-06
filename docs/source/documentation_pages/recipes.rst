@@ -9,8 +9,18 @@ Multi-orientation recipes (:class:`~ligandparam.recipes.FreeLigand`,
 quaternion orientation pack. Pass ``orientation_protocol="legacy_euler"`` for
 the historical Euler grid.
 
-Additional recipes such as :class:`~ligandparam.recipes.DPLigand`,
-:class:`~ligandparam.recipes.DPFreeLigand`, and
+Optional torsion correction
+---------------------------
+
+:class:`~ligandparam.recipes.FreeLigand`,
+:class:`~ligandparam.recipes.LazyLigand`, and
+:class:`~ligandparam.recipes.DPFreeLigand` accept ``dihed_correct=True`` to
+append :class:`~ligandparam.stages.ffpopt_dihed.StageDihedTwistCorrection`
+after Leap. For interactive sessions, prefer the separate
+``lig-dihed-correct`` CLI after ``lig-getparam`` (see :doc:`dihedrals` and
+:doc:`cli`).
+
+Additional recipes such as :class:`~ligandparam.recipes.DPLigand` and
 :class:`~ligandparam.recipes.SQMLigand` are exported from
 :mod:`ligandparam.recipes` even when they are not listed below.
 

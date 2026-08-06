@@ -26,7 +26,7 @@ import ligandparam
 
 project = 'ligandparam'
 copyright = '2024, Zeke Piskulich'
-author = 'Zeke Piskulich'
+author = 'Zeke Piskulich, Nate Levinzon, et al.'
 
 # The full version, including alpha/beta/rc tags\
 version = ligandparam.__version__

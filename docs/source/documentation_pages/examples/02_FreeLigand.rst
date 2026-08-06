@@ -61,6 +61,12 @@ To reproduce the older Euler alpha/beta grid instead of quaternion sampling:
 
    FreeLigand(..., orientation_protocol="legacy_euler")
 
+After parameterization, optional torsion correction (same session)::
+
+   lig-dihed-correct -d <data_cwd> -r <resname> --label <input_stem> --model xtb
+
+See :doc:`../dihedrals` and :doc:`07_DihedCorrect`.
+
 Full code
 ---------
 

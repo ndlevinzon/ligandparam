@@ -17,6 +17,7 @@ Currently, the following examples are available:
    ./examples/04_FromSmiles.rst
    ./examples/05_FromSDF.rst
    ./examples/06_CreatingNewRecipes.rst
+   ./examples/07_DihedCorrect.rst
 
 .. toctree::
     :maxdepth: 2

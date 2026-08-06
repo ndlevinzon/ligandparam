@@ -12,7 +12,7 @@ from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
 CLI (installed with ligandparam):
 
 ```bash
-lig-dihed-correct -d CHA3 -r CHA --label chaps
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb
 ```
 
 Fragmentation is provided by the integrated ``src/scission`` package (also

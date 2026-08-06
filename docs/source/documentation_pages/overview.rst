@@ -7,6 +7,24 @@ ligands and residues for Amber MD. Recipes such as
 :class:`~ligandparam.recipes.LazyLigand` assemble a pipeline; each stage wraps
 a concrete step (Gaussian ESP, RESP fitting, Leap, …).
 
+Repository layout
+-----------------
+
+As of version **1.4**, the installable tree under ``src/`` is:
+
+.. code-block:: text
+
+   src/
+   ├── ligandparam/   # recipes, stages, CLI (lig-getparam, …)
+   ├── ffpopt/        # torsion / dihedral fitting (lig-dihed-correct)
+   └── scission/      # ligand fragmentation (lig-scission / scission)
+
+``ligandparam`` owns parameterization (charges, typing, baseline
+``frcmod`` / ``lib``). ``ffpopt`` + ``scission`` own optional **post-hoc**
+torsion correction on that Amber triplet. Upstream source trees
+``ffpopt-main/`` and ``scission-main/`` remain for docs and examples; the
+runtime packages used after ``pip install`` are the ones under ``src/``.
+
 Multi-orientation RESP
 ----------------------
 
@@ -19,3 +37,14 @@ count and feed the same multi-RESP → ``parmchk2`` → LEaP path.
 
 See :mod:`ligandparam.io.orientations` and the :doc:`recipes` / :doc:`examples`
 sections for details.
+
+Optional dihedral corrections
+-----------------------------
+
+After a recipe finishes, you typically have ``{label}.mol2``,
+``{label}.lib``, and ``{label}.frcmod``. Run :doc:`dihedrals` (CLI
+``lig-dihed-correct``) to fragment with scission, fit torsions against a
+high-level model (for example ``xtb`` or ``qdpi2``), and write a merged
+``{label}.dihed.frcmod``. The ``lib`` is left unchanged.
+
+See also :doc:`cli`, :doc:`ffpopt`, and :doc:`scission`.
