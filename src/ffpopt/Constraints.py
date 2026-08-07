@@ -655,11 +655,11 @@ def has_nonbonded_clash(positions, bonds, min_dist=0.8):
     Parameters
     ----------
     positions : array-like, shape (N, 3)
-        Cartesian coordinates (Å).
+        Cartesian coordinates (Ang).
     bonds : sequence of pair
         Covalent bonds as ``[i, j]`` or ``(i, j)`` (0-based).
     min_dist : float
-        Clash threshold in Å.
+        Clash threshold in Ang.
 
     Returns
     -------

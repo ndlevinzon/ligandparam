@@ -147,7 +147,7 @@ def run_geometric_inprocess(
     Returns
     -------
     dict
-        ``coords`` (Å, ndarray), ``energy_ha`` (Hartree or None),
+        ``coords`` (Ang, ndarray), ``energy_ha`` (Hartree or None),
         ``progress`` (geometric Molecule trajectory).
     """
     from .geometric_compat import apply_geometric_compat_patches
@@ -202,7 +202,7 @@ def run_geometric_inprocess(
 
 
 def read_last_optim_xyz(prefix: PathLike) -> Optional[np.ndarray]:
-    """Return last-frame coordinates (Å) from ``{prefix}_optim.xyz``, if any."""
+    """Return last-frame coordinates (Ang) from ``{prefix}_optim.xyz``, if any."""
     path = Path(str(prefix) + "_optim.xyz")
     if not path.is_file():
         return None

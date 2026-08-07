@@ -297,7 +297,7 @@ class WavefrontNode:
                 myatoms.get_positions(), self.struct.data["bonds"], min_dist=min_dist
             )
             if clashed:
-                print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Å (< {min_dist} Å)")
+                print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Ang (< {min_dist} Ang)")
                 return "clash_precheck"
         except Exception as e:
             print(f"Precheck failed due to error: {e}")
@@ -691,7 +691,7 @@ class Wavefront:
             myatoms.get_positions(), struct.data["bonds"], min_dist=0.8
         )
         if clashed:
-            print(f"Warning: Distance between atom {i} and atom {j} is {dist:.3f} Å (< 0.8 Å)")
+            print(f"Warning: Distance between atom {i} and atom {j} is {dist:.3f} Ang (< 0.8 Ang)")
             print(f"Ommitting this node due to close proximity of atoms.")
             return False
         return True

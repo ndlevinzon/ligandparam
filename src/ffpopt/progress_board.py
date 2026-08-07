@@ -207,7 +207,7 @@ def format_job_board(
     for jid in ids:
         e = jobs[jid]
         status = str(e.get("status") or "?")
-        stage = str(e.get("stage") or "—")
+        stage = str(e.get("stage") or "-")
         detail = str(e.get("detail") or "")
         if e.get("error") and status == "failed":
             detail = (detail + " | " if detail else "") + str(e["error"])[:40]
@@ -216,16 +216,16 @@ def format_job_board(
         counts[key] = counts.get(key, 0) + 1
 
     if not ids:
-        lines.append(row("(none)", "—", "—", empty_hint))
+        lines.append(row("(none)", "-", "-", empty_hint))
 
     lines.append(sep)
     summary = (
-        f" {counts['done']} done · {counts['running']} running · "
-        f"{counts['queued']} queued · {counts['skipped']} skipped · "
+        f" {counts['done']} done | {counts['running']} running | "
+        f"{counts['queued']} queued | {counts['skipped']} skipped | "
         f"{counts['failed']} failed"
     )
     if counts["other"]:
-        summary += f" · {counts['other']} other"
+        summary += f" | {counts['other']} other"
     lines.append(summary)
     if log_root_hint:
         lines.append(f" {detail_hint_label}: {log_root_hint}")

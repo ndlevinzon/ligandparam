@@ -41,7 +41,7 @@ class FragmentProgressStore(JobProgressStore):
             path,
             collection_key="fragments",
             id_header="Fragment",
-            title="Fragment dihedral twist — live status",
+            title="Fragment dihedral twist - live status",
             empty_hint="no fragments registered yet",
             detail_hint_label="Per-fragment detail logs",
         )
@@ -57,7 +57,7 @@ class FragmentProgressStore(JobProgressStore):
         """Mark a fragment as queued before workers start."""
         detail = f"{bonds} bond(s)"
         if frag_dir:
-            detail = f"{detail} · {frag_dir}"
+            detail = f"{detail} | {frag_dir}"
         super().register(
             fragment_id,
             status="queued",
@@ -93,7 +93,7 @@ class FragmentProgressStore(JobProgressStore):
 def format_fragment_board(
     fragments: Mapping[str, Mapping[str, Any]],
     *,
-    title: str = "Fragment dihedral twist — live status",
+    title: str = "Fragment dihedral twist - live status",
     log_root_hint: str | None = None,
 ) -> str:
     """Format ``{id: {status, stage, detail, ...}}`` as a fixed-width board."""

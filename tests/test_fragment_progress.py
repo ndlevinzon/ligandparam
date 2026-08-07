@@ -25,7 +25,7 @@ class TestFragmentProgressStore(unittest.TestCase):
                 "frag_a",
                 status="running",
                 stage="hl_scan",
-                detail="model=xtb · 2 bond(s)",
+                detail="model=xtb | 2 bond(s)",
             )
             snap = store.snapshot()
             self.assertEqual(snap["frag_a"]["status"], "running")

@@ -2,7 +2,7 @@
 
 
 def _ase_fmax(atoms) -> float:
-    """Max atomic force magnitude (eV/Å)."""
+    """Max atomic force magnitude (eV/Ang)."""
     import numpy as np
 
     forces = atoms.get_forces()
@@ -12,7 +12,7 @@ def _ase_fmax(atoms) -> float:
 def _ase_loose_fmax(strict_tol: float) -> float:
     """Soft-accept threshold for ASE when strict fmax is not met.
 
-    Override with ``FFPOPT_ASE_LOOSE_FMAX`` (eV/Å). Default is
+    Override with ``FFPOPT_ASE_LOOSE_FMAX`` (eV/Ang). Default is
     ``max(3 * ase_opt_tol, 0.05)``.
     """
     import os
@@ -183,21 +183,21 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
             break
         if fmax <= loose_tol:
             sys.stderr.write(
-                f"[ffpopt] ASE {name} soft-accept fmax={fmax:.4g} eV/Å "
+                f"[ffpopt] ASE {name} soft-accept fmax={fmax:.4g} eV/Ang "
                 f"(strict={strict_tol:.4g}, loose={loose_tol:.4g})\n"
             )
             accepted = True
             accepted_how = f"{name}-soft"
             break
         sys.stderr.write(
-            f"[ffpopt] ASE {name} not tight (fmax={fmax:.4g} eV/Å); "
+            f"[ffpopt] ASE {name} not tight (fmax={fmax:.4g} eV/Ang); "
             f"continuing with next optimizer\n"
         )
 
     if not accepted:
         raise RuntimeError(
             f"ASE geometry optimization failed to reach loose fmax "
-            f"{loose_tol:.4g} eV/Å (best fmax={best_fmax:.4g})"
+            f"{loose_tol:.4g} eV/Ang (best fmax={best_fmax:.4g})"
         )
 
     ene = myatoms.get_potential_energy()

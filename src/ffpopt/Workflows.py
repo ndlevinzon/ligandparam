@@ -995,7 +995,7 @@ def run_dihed_twist_workflow(
     }
 
     # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
-    _prog("hl_scan", f"model={model} · {len(scans)} bond(s)")
+    _prog("hl_scan", f"model={model} | {len(scans)} bond(s)")
     results["scans"].extend(
         _run_scans_for_bonds(
             scans,
@@ -1011,7 +1011,7 @@ def run_dihed_twist_workflow(
     )
 
     # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
-    _prog("orig_scan", f"sander reference · {len(scans)} bond(s)")
+    _prog("orig_scan", f"sander reference | {len(scans)} bond(s)")
     results["scans"].extend(
         _run_scans_for_bonds(
             scans,
@@ -1108,7 +1108,7 @@ def run_dihed_twist_workflow(
         )
 
         # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
-        _prog(f"rescan/{citname}", f"sander · {len(scans)} bond(s)")
+        _prog(f"rescan/{citname}", f"sander | {len(scans)} bond(s)")
         results["scans"].extend(
             _run_scans_for_bonds(
                 scans,
@@ -1460,7 +1460,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
     _set(
         status="running",
         stage="prepare",
-        detail=f"{len(bonds)} bond(s) · wf_nproc={job['wf_nproc']}",
+        detail=f"{len(bonds)} bond(s) | wf_nproc={job['wf_nproc']}",
         bonds=len(bonds),
         log_path=str(frag_log_path),
     )

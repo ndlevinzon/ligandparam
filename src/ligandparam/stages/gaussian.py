@@ -55,7 +55,7 @@ def _run_gaussian_rotation_job(payload: dict) -> dict:
             status_path,
             collection_key="orientations",
             id_header="Angle",
-            title="Gaussian orientation ESP — live status",
+            title="Gaussian orientation ESP - live status",
         )
 
     def _set(**kwargs):
@@ -63,13 +63,13 @@ def _run_gaussian_rotation_job(payload: dict) -> dict:
             store.update(job_id, **kwargs)
 
     if not force and GaussianReader(log_path).check_complete():
-        _set(status="skipped", stage="finished", detail=f"already complete · {out_log}")
+        _set(status="skipped", stage="finished", detail=f"already complete | {out_log}")
         return {"in_com": in_com, "status": "skipped", "job_id": job_id}
 
     _set(
         status="running",
         stage="gaussian",
-        detail=f"{out_log} · %NProc={payload.get('job_nproc', '?')}",
+        detail=f"{out_log} | %NProc={payload.get('job_nproc', '?')}",
         log_path=str(log_path),
     )
     try:
@@ -91,7 +91,7 @@ def _run_gaussian_rotation_job(payload: dict) -> dict:
         )
         if not dry_run and not GaussianReader(log_path).check_complete():
             raise RuntimeError(f"Gaussian did not complete normally: {log_path}")
-        _set(status="done", stage="finished", detail=f"ok · {out_log}")
+        _set(status="done", stage="finished", detail=f"ok | {out_log}")
         return {"in_com": in_com, "status": "ok", "job_id": job_id}
     except Exception as exc:
         _set(
@@ -784,7 +784,7 @@ class StageGaussianRotation(AbstractStage):
             status_path,
             collection_key="orientations",
             id_header="Angle",
-            title="Gaussian orientation ESP — live status",
+            title="Gaussian orientation ESP - live status",
             empty_hint="no orientations registered yet",
             detail_hint_label="Per-orientation Gaussian logs",
         )
@@ -801,7 +801,7 @@ class StageGaussianRotation(AbstractStage):
                     job_id,
                     status="skipped",
                     stage="finished",
-                    detail=f"already complete · {out_log.name}",
+                    detail=f"already complete | {out_log.name}",
                     log_path=str(out_log),
                 )
                 self.logger.info(f"Skipping complete {out_log.name}")
@@ -810,7 +810,7 @@ class StageGaussianRotation(AbstractStage):
                 job_id,
                 status="queued",
                 stage="queued",
-                detail=f"{out_log.name} · %NProc={job_nproc}",
+                detail=f"{out_log.name} | %NProc={job_nproc}",
                 log_path=str(out_log),
             )
             pending.append(
