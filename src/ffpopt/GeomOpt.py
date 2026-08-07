@@ -1,8 +1,43 @@
 #!/usr/bin/env python3
 
 
+def _ase_fmax(atoms) -> float:
+    """Max atomic force magnitude (eV/Å)."""
+    import numpy as np
+
+    forces = atoms.get_forces()
+    return float(np.sqrt((forces ** 2).sum(axis=1).max()))
+
+
+def _ase_loose_fmax(strict_tol: float) -> float:
+    """Soft-accept threshold for ASE when strict fmax is not met.
+
+    Override with ``FFPOPT_ASE_LOOSE_FMAX`` (eV/Å). Default is
+    ``max(3 * ase_opt_tol, 0.05)``.
+    """
+    import os
+
+    raw = os.environ.get("FFPOPT_ASE_LOOSE_FMAX", "").strip()
+    if raw:
+        return float(raw)
+    return max(3.0 * float(strict_tol), 0.05)
+
+
+def _ase_optimizer_classes():
+    """Ordered ASE optimizers for difficult constrained cases."""
+    from ase.optimize import BFGS, FIRE, LBFGS
+
+    return (("BFGS", BFGS), ("LBFGS", LBFGS), ("FIRE", FIRE))
+
+
 def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
-    """ Perform a geometry optimization using the ASE BFGS optimizer.
+    """ Perform a geometry optimization using ASE (BFGS → LBFGS → FIRE).
+
+    Tries BFGS first, then LBFGS and FIRE from the best geometry so far.
+    Accepts a soft-converged result when ``fmax`` is below
+    :func:`_ase_loose_fmax` even if the strict ``ase_opt_tol`` was missed —
+    important for frozen-dihedral wavefront nodes that otherwise die after
+    geomeTRIC already nearly relaxed the structure.
     
     Parameters
     ----------
@@ -26,128 +61,147 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
         os.environ["OMP_NUM_THREADS"] = "1"
  
     import copy
-    import ase.io
+    import sys
     from . Constraints import ConstraintList
     from . Restraints import RestraintList
-    #from . Constraints import constraints2ase
     from . Constraints import ApplyConstraints, to_ase
-    import sys
-    
-    if True:
-        
-        from ase.optimize import BFGS
 
-        reslist = None
-        if struct.restraints is not None:
-            if len(struct.restraints.rests) > 0:
-                reslist = copy.deepcopy(struct.restraints)
-                if restraints is not None:
-                    for b in restraints:
-                        found=False
-                        for a in reslist.rests:
-                            if a.is_same(b):
-                                a.value=b.value
-                                found=True
-                        if not found:
-                            reslist.rests.append(b)
-        
-        if reslist is None and restraints is not None:
-            reslist = RestraintList( copy.deepcopy(restraints) )
+    reslist = None
+    if struct.restraints is not None:
+        if len(struct.restraints.rests) > 0:
+            reslist = copy.deepcopy(struct.restraints)
+            if restraints is not None:
+                for b in restraints:
+                    found=False
+                    for a in reslist.rests:
+                        if a.is_same(b):
+                            a.value=b.value
+                            found=True
+                    if not found:
+                        reslist.rests.append(b)
 
-        #print(reslist.to_list_of_dict())
+    if reslist is None and restraints is not None:
+        reslist = RestraintList( copy.deepcopy(restraints) )
 
-        origatoms = struct.GetASEAtoms()
-        myatoms = struct.GetASEAtoms()
-        myatoms.calc=los.BuildRestrainedCalc(struct,reslist=reslist)
-        calc = myatoms.calc
+    origatoms = struct.GetASEAtoms()
+    myatoms = struct.GetASEAtoms()
+    myatoms.calc=los.BuildRestrainedCalc(struct,reslist=reslist)
+    calc = myatoms.calc
 
-        conslist = None
-        if struct.constraints is not None:
-            if len(struct.constraints) > 0:
-                conslist = copy.deepcopy(struct.constraints)
-                if constraints is not None:
-                    for b in constraints:
-                        found=False
-                        for a in conslist.cons:
-                            if a.is_same(b):
-                                a.value = b.value
-                                found=True
-                        if not found:
-                            conslist.cons.append(b)
-                            
-        if conslist is None and constraints is not None:
-            conslist = ConstraintList( copy.deepcopy(constraints) )
-            
-        # asecons = None
-        # cons = None
-        # if conslist is not None:
-        #     cons = conslist.FillConstraints(myatoms)
-        #     myatoms = ApplyConstraints(myatoms,cons)
-        #     #asecons = constraints2ase(cons)
-        #     asecons = to_ase(cons)
+    conslist = None
+    if struct.constraints is not None:
+        if len(struct.constraints) > 0:
+            conslist = copy.deepcopy(struct.constraints)
+            if constraints is not None:
+                for b in constraints:
+                    found=False
+                    for a in conslist.cons:
+                        if a.is_same(b):
+                            a.value = b.value
+                            found=True
+                    if not found:
+                        conslist.cons.append(b)
 
+    if conslist is None and constraints is not None:
+        conslist = ConstraintList( copy.deepcopy(constraints) )
 
-
-        asecons = None
-        cons = None
-        if conslist is not None:
-            cons = conslist.FillConstraints(myatoms,force=False)
-            origcons = conslist.FillConstraints(myatoms,force=True)
-        #if cons is not None or reslist is not None:
-            myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph()) #,rests=reslist.rests,k=1)
-            if cons is not None:
-                asecons = to_ase(cons)
-                #newcons = conslist.FillConstraints(myatoms,force=True)
-                #for ic in range(len(cons)):
-                #    print(ic,str(origcons[ic]),str(newcons[ic]),cons[ic].value)
-
-
-            
-    
-        del myatoms.constraints
-        myatoms.set_constraint( asecons )
-        myatoms.calc = calc
-        myatoms.calc.reset()
-        logfile = sys.stderr
-        #if los.args.geometric_ini is None:
-        #    logfile = os.devnull
-        #    if len(los.args.geometric_ini) > 0:
-        #        logfile = los.args.geometric_ini
-        optimizer = BFGS(myatoms,logfile=logfile)
-        optimizer.run(fmax=los.args.ase_opt_tol,steps=los.args.geometric_maxiter)
-        
-        ene = myatoms.get_potential_energy()
-        crd = myatoms.get_positions()
-        frc = myatoms.get_forces()
-        out = copy.deepcopy(struct)
-        out.Update(ene,crd,frc)
-                                           
-
-        if True:
-            from . Constraints import FillConstraints
-            if cons is not None:
-                cvals = FillConstraints(out,cons,force=True)
-                ovals = FillConstraints(origatoms,cons,force=True)
-                for i in range(len(cvals)):
-                    print("Constraint %2i tgt=%9.2f opt=%9.2f orig=%9.2f"%\
-                          ( i+1, cons[i].value, cvals[i].value, ovals[i].value ) )
-            
-        if True:
-            if reslist is not None:
-                ocrd = origatoms.get_positions()
-                for i in range(len(reslist)):
-                    val = reslist[i].GetCrdValue(crd)
-                    oval = reslist[i].GetCrdValue(ocrd)
-                    print("Restraint  %2i tgt=%9.2f obs=%9.2f orig=%9.2f"%\
-                          ( i+1, reslist[i].value, val, oval ) )
-            
-
+    asecons = None
+    cons = None
+    if conslist is not None:
+        cons = conslist.FillConstraints(myatoms,force=False)
+        origcons = conslist.FillConstraints(myatoms,force=True)
+        myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph())
         if cons is not None:
-            out.constraints = ConstraintList( cons )
-            out.data["constraints"] = out.constraints.to_list_of_dict()
+            asecons = to_ase(cons)
+
+    del myatoms.constraints
+    myatoms.set_constraint( asecons )
+    myatoms.calc = calc
+    myatoms.calc.reset()
+    logfile = sys.stderr
+
+    strict_tol = float(los.args.ase_opt_tol)
+    loose_tol = _ase_loose_fmax(strict_tol)
+    max_steps = int(los.args.geometric_maxiter)
+    best_fmax = float("inf")
+    accepted = False
+    accepted_how = None
+
+    for name, OptCls in _ase_optimizer_classes():
+        try:
+            myatoms.calc.reset()
+        except Exception:
+            pass
+        optimizer = OptCls(myatoms, logfile=logfile)
+        try:
+            converged = bool(optimizer.run(fmax=strict_tol, steps=max_steps))
+        except Exception as exc:
+            sys.stderr.write(
+                f"[ffpopt] ASE {name} raised ({type(exc).__name__}: {exc}); "
+                f"trying next optimizer\n"
+            )
+            continue
+        try:
+            fmax = _ase_fmax(myatoms)
+        except Exception:
+            fmax = best_fmax
+        if fmax < best_fmax:
+            best_fmax = fmax
+        if converged or fmax <= strict_tol:
+            accepted = True
+            accepted_how = name
+            break
+        if fmax <= loose_tol:
+            sys.stderr.write(
+                f"[ffpopt] ASE {name} soft-accept fmax={fmax:.4g} eV/Å "
+                f"(strict={strict_tol:.4g}, loose={loose_tol:.4g})\n"
+            )
+            accepted = True
+            accepted_how = f"{name}-soft"
+            break
+        sys.stderr.write(
+            f"[ffpopt] ASE {name} not tight (fmax={fmax:.4g} eV/Å); "
+            f"continuing with next optimizer\n"
+        )
+
+    if not accepted:
+        raise RuntimeError(
+            f"ASE geometry optimization failed to reach loose fmax "
+            f"{loose_tol:.4g} eV/Å (best fmax={best_fmax:.4g})"
+        )
+
+    ene = myatoms.get_potential_energy()
+    crd = myatoms.get_positions()
+    frc = myatoms.get_forces()
+    out = copy.deepcopy(struct)
+    out.Update(ene,crd,frc)
+    if accepted_how is not None:
+        out.data["ase_opt_recovery"] = accepted_how
+
+    if True:
+        from . Constraints import FillConstraints
+        if cons is not None:
+            cvals = FillConstraints(out,cons,force=True)
+            ovals = FillConstraints(origatoms,cons,force=True)
+            for i in range(len(cvals)):
+                print("Constraint %2i tgt=%9.2f opt=%9.2f orig=%9.2f"%\
+                      ( i+1, cons[i].value, cvals[i].value, ovals[i].value ) )
+
+    if True:
         if reslist is not None:
-            out.restraints = reslist
-            out.data["restraints"] = out.restraints.to_list_of_dict()
+            ocrd = origatoms.get_positions()
+            for i in range(len(reslist)):
+                val = reslist[i].GetCrdValue(crd)
+                oval = reslist[i].GetCrdValue(ocrd)
+                print("Restraint  %2i tgt=%9.2f obs=%9.2f orig=%9.2f"%\
+                      ( i+1, reslist[i].value, val, oval ) )
+
+    if cons is not None:
+        out.constraints = ConstraintList( cons )
+        out.data["constraints"] = out.constraints.to_list_of_dict()
+    if reslist is not None:
+        out.restraints = reslist
+        out.data["restraints"] = out.restraints.to_list_of_dict()
     return out
 
 
@@ -403,7 +457,7 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     from . Struct import ListOfStruct
     from . geometric_inprocess import (
         get_persistent_calc,
-        run_geometric_inprocess,
+        run_geometric_robust,
         use_geometric_subprocess,
     )
     from tempfile import mkstemp
@@ -476,6 +530,7 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
 
     ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
 
+    result = None
     if use_geometric_subprocess():
         # Legacy path: spawn geometric_compat + watchdog.
         mystruct = copy.deepcopy(struct)
@@ -522,7 +577,7 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
         if getattr(los.args, "geometric_ini", None) is not None:
             if len(str(los.args.geometric_ini)) == 0:
                 log_ini = ""
-        result = run_geometric_inprocess(
+        result = run_geometric_robust(
             myatoms,
             calc,
             prefix=tmpbase,
@@ -544,6 +599,8 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
 
     out = copy.deepcopy(struct)
     out.Update(ene,crd,frc)
+    if isinstance(result, dict) and result.get("recovery"):
+        out.data["geometric_recovery"] = result["recovery"]
 
     if True:
         from . Constraints import FillConstraints
@@ -575,8 +632,19 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
         if os.path.exists(f):
             os.remove(f)
 
+    # Recovery ladder writes ``{tmpbase}.rN*`` sidecars; sweep them too.
+    import glob
+    import shutil
+    for f in glob.glob(tmpbase + ".r*"):
+        try:
+            if os.path.isdir(f):
+                shutil.rmtree(f)
+            elif os.path.isfile(f):
+                os.remove(f)
+        except OSError:
+            pass
+
     if os.path.isdir(tmpdir):
-        import shutil
         shutil.rmtree(tmpdir)
 
     return out
@@ -772,7 +840,7 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
         except Exception as e:
             # geomeTRIC sometimes cannot recover its IC system under frozen
             # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
-            # watchdog, ...). Fall back to ASE BFGS with the same constraints.
+            # watchdog, NotConverged, ...). Fall back to ASE BFGS/LBFGS/FIRE.
             _geomopt_fallback_note("geomeTRIC", e, "ASE")
             out = GeomOpt_ASE(los,struct,constraints,restraints)
     return out

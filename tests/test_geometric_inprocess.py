@@ -6,10 +6,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ffpopt.geometric_inprocess import (
+    _normalize_converge,
+    _recovery_attempts,
     calc_cache_key,
     get_persistent_calc,
+    is_geomopt_not_converged,
+    run_geometric_robust,
+    use_geometric_robust,
     use_geometric_subprocess,
-    _normalize_converge,
 )
 
 
@@ -97,6 +101,94 @@ class TestNormalizeConverge(unittest.TestCase):
 
     def test_none(self):
         self.assertIsNone(_normalize_converge(None))
+
+
+class TestRobustHelpers(unittest.TestCase):
+    def test_not_converged_detection(self):
+        class GeomOptNotConvergedError(Exception):
+            pass
+
+        self.assertTrue(
+            is_geomopt_not_converged(
+                GeomOptNotConvergedError(
+                    "Optimizer.optimizeGeometry() failed to converge."
+                )
+            )
+        )
+        self.assertFalse(is_geomopt_not_converged(ValueError("bad input")))
+
+    def test_robust_default_on(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FFPOPT_GEOMOPT_ROBUST", None)
+            self.assertTrue(use_geometric_robust())
+        with patch.dict(os.environ, {"FFPOPT_GEOMOPT_ROBUST": "0"}):
+            self.assertFalse(use_geometric_robust())
+
+    def test_recovery_attempts_include_soft(self):
+        with patch.dict(os.environ, {"FFPOPT_GEOMOPT_SOFT_MAXITER": "1"}):
+            atts = _recovery_attempts(
+                coordsys="tric", maxiter=500, converge="set GAU", enforce=0.1
+            )
+        labels = [a["label"] for a in atts]
+        self.assertEqual(labels[0], "primary")
+        self.assertIn("loose", labels)
+        self.assertIn("soft-maxiter", labels)
+        self.assertTrue(any("dlc" in x or "hdlc" in x for x in labels))
+
+    def test_run_geometric_robust_recovers(self):
+        import numpy as np
+
+        class _Atoms:
+            def __init__(self, positions):
+                self._pos = np.asarray(positions, dtype=float)
+
+            def get_positions(self):
+                return self._pos.copy()
+
+            def set_positions(self, positions):
+                self._pos = np.asarray(positions, dtype=float)
+
+            def __deepcopy__(self, memo):
+                return _Atoms(self._pos)
+
+        atoms = _Atoms([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]])
+        calls = {"n": 0}
+
+        def fake_run(work, *_a, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("Optimizer.optimizeGeometry() failed to converge.")
+            return {
+                "coords": work.get_positions(),
+                "energy_ha": -1.0,
+                "progress": None,
+            }
+
+        with patch.dict(
+            os.environ,
+            {
+                "FFPOPT_GEOMOPT_ROBUST": "1",
+                "FFPOPT_GEOMOPT_SOFT_MAXITER": "1",
+            },
+        ):
+            with patch(
+                "ffpopt.geometric_inprocess.run_geometric_inprocess",
+                side_effect=fake_run,
+            ):
+                with patch(
+                    "ffpopt.geometric_inprocess.read_last_optim_xyz",
+                    return_value=None,
+                ):
+                    out = run_geometric_robust(
+                        atoms,
+                        calc=object(),
+                        prefix="/tmp/ffpopt-test-geo",
+                        coordsys="tric",
+                        maxiter=10,
+                        converge="set GAU",
+                    )
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(out["recovery"], "loose")
 
 
 class TestWritePlainXyz(unittest.TestCase):

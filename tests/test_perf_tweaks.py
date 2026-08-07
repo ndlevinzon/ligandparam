@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from ffpopt.Constraints import has_nonbonded_clash
-from ffpopt.GeomOpt import _geomopt_fallback_note
+from ffpopt.GeomOpt import _ase_loose_fmax, _geomopt_fallback_note
 from ffpopt.Struct import ListOfStruct, Struct
 from ffpopt.ase.calculator import _scratch_atoms_energy_forces
 
@@ -101,6 +101,14 @@ def test_geomopt_fallback_note_quiet_by_default(monkeypatch):
     assert "ASE geomopt failed" in out
     assert "RuntimeError: boom" in out
     assert "Traceback" not in out
+
+
+def test_ase_loose_fmax_default_and_override(monkeypatch):
+    monkeypatch.delenv("FFPOPT_ASE_LOOSE_FMAX", raising=False)
+    assert _ase_loose_fmax(0.01) == pytest.approx(0.05)
+    assert _ase_loose_fmax(0.03) == pytest.approx(0.09)
+    monkeypatch.setenv("FFPOPT_ASE_LOOSE_FMAX", "0.2")
+    assert _ase_loose_fmax(0.01) == pytest.approx(0.2)
 
 
 def test_scratch_atoms_reused():

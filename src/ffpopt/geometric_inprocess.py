@@ -3,11 +3,15 @@
 Avoids the per-opt cost of ``python -m ffpopt.geometric_compat`` (interpreter
 bootstrap, JSON reload, model reconstruct). Call
 :func:`run_geometric_inprocess` with an already-built ASE calculator.
+
+:func:`run_geometric_robust` adds a recovery ladder for difficult constrained
+cases (looser converge, alternate coordsys, soft maxiter accept).
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Union
 
@@ -21,6 +25,28 @@ def use_geometric_subprocess() -> bool:
     """True when ``FFPOPT_GEOMETRIC_SUBPROCESS=1`` forces the legacy CLI path."""
     raw = os.environ.get("FFPOPT_GEOMETRIC_SUBPROCESS", "").strip().lower()
     return raw in ("1", "true", "yes", "on")
+
+
+def use_geometric_robust() -> bool:
+    """True unless ``FFPOPT_GEOMOPT_ROBUST=0`` disables the recovery ladder."""
+    raw = os.environ.get("FFPOPT_GEOMOPT_ROBUST", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _env_truthy(name: str, default: bool = True) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def is_geomopt_not_converged(exc: BaseException) -> bool:
+    """True for geomeTRIC ``GeomOptNotConvergedError`` (and close cousins)."""
+    name = type(exc).__name__
+    if "NotConverged" in name or name == "GeomOptNotConvergedError":
+        return True
+    msg = str(exc).lower()
+    return "failed to converge" in msg or "not converged" in msg
 
 
 def calc_cache_key(los, struct) -> tuple:
@@ -173,3 +199,181 @@ def run_geometric_inprocess(
         "energy_ha": energy_ha,
         "progress": progress,
     }
+
+
+def read_last_optim_xyz(prefix: PathLike) -> Optional[np.ndarray]:
+    """Return last-frame coordinates (Å) from ``{prefix}_optim.xyz``, if any."""
+    path = Path(str(prefix) + "_optim.xyz")
+    if not path.is_file():
+        return None
+    try:
+        import ase.io
+
+        frames = ase.io.read(str(path), index=":", format="xyz")
+        if not frames:
+            return None
+        last = frames[-1] if isinstance(frames, list) else frames
+        return np.asarray(last.get_positions(), dtype=float)
+    except Exception:
+        return None
+
+
+def _recovery_attempts(
+    *,
+    coordsys: str,
+    maxiter: int,
+    converge,
+    enforce: Optional[float],
+) -> list[dict[str, Any]]:
+    """Ordered recovery attempts for hard constrained optimizations."""
+    primary_conv = _normalize_converge(converge) or ["set", "GAU"]
+    loose = ["set", "GAU_LOOSE"]
+    soft = ["set", "GAU_LOOSE", "maxiter"]
+    boost = max(int(maxiter), int(1.5 * int(maxiter)), 750)
+
+    alts = []
+    for cs in ("dlc", "hdlc", "tric"):
+        if cs != coordsys and cs not in alts:
+            alts.append(cs)
+
+    attempts: list[dict[str, Any]] = [
+        {
+            "label": "primary",
+            "coordsys": coordsys,
+            "maxiter": int(maxiter),
+            "converge": primary_conv,
+            "enforce": enforce,
+        },
+    ]
+    # Looser Gaussian criteria + more steps, same IC system.
+    attempts.append(
+        {
+            "label": "loose",
+            "coordsys": coordsys,
+            "maxiter": boost,
+            "converge": loose,
+            "enforce": enforce,
+        }
+    )
+    # Alternate internal coordinate systems (common rescue under frozen torsions).
+    for cs in alts[:2]:
+        attempts.append(
+            {
+                "label": f"{cs}-loose",
+                "coordsys": cs,
+                "maxiter": boost,
+                "converge": loose,
+                "enforce": enforce,
+            }
+        )
+    # Last geometric resort: treat maxiter as success (keeps best frame).
+    if _env_truthy("FFPOPT_GEOMOPT_SOFT_MAXITER", True):
+        attempts.append(
+            {
+                "label": "soft-maxiter",
+                "coordsys": coordsys,
+                "maxiter": boost,
+                "converge": soft,
+                "enforce": enforce,
+            }
+        )
+    return attempts
+
+
+def _geom_retry_note(label: str, exc: BaseException) -> None:
+    sys.stderr.write(
+        f"[ffpopt] geomeTRIC attempt failed ({type(exc).__name__}: {exc}); "
+        f"retrying with recovery '{label}'\n"
+    )
+
+
+def run_geometric_robust(
+    atoms,
+    calc,
+    *,
+    prefix: PathLike,
+    constraints_path: Optional[PathLike] = None,
+    coordsys: str = "tric",
+    maxiter: int = 500,
+    converge="set GAU",
+    enforce: Optional[float] = None,
+    log_ini: Optional[PathLike] = None,
+    **extra_kwargs: Any,
+):
+    """Run geomeTRIC with a recovery ladder for difficult cases.
+
+    On :class:`~geometric.errors.GeomOptNotConvergedError` (and similar),
+    restarts from the last ``_optim.xyz`` frame with looser converge criteria,
+    alternate ``coordsys``, and optionally ``converge maxiter`` so a nearly
+    relaxed geometry is accepted rather than aborting the whole scan node.
+
+    Disable with ``FFPOPT_GEOMOPT_ROBUST=0``. Soft maxiter accept can be
+    disabled with ``FFPOPT_GEOMOPT_SOFT_MAXITER=0``.
+    """
+    import copy
+
+    if not use_geometric_robust():
+        return run_geometric_inprocess(
+            atoms,
+            calc,
+            prefix=prefix,
+            constraints_path=constraints_path,
+            coordsys=coordsys,
+            maxiter=maxiter,
+            converge=converge,
+            enforce=enforce,
+            log_ini=log_ini,
+            **extra_kwargs,
+        )
+
+    attempts = _recovery_attempts(
+        coordsys=str(coordsys),
+        maxiter=int(maxiter),
+        converge=converge,
+        enforce=enforce,
+    )
+    work = copy.deepcopy(atoms)
+    last_exc: Optional[BaseException] = None
+
+    for i, att in enumerate(attempts):
+        # Fresh prefix per attempt so logs / optim.xyz do not collide mid-retry.
+        att_prefix = str(prefix) if i == 0 else f"{prefix}.r{i}"
+        try:
+            result = run_geometric_inprocess(
+                work,
+                calc,
+                prefix=att_prefix,
+                constraints_path=constraints_path,
+                coordsys=att["coordsys"],
+                maxiter=att["maxiter"],
+                converge=att["converge"],
+                enforce=att["enforce"],
+                log_ini=log_ini,
+                **extra_kwargs,
+            )
+            if i > 0:
+                sys.stderr.write(
+                    f"[ffpopt] geomeTRIC recovered with attempt '{att['label']}'\n"
+                )
+            result["recovery"] = att["label"]
+            return result
+        except Exception as exc:
+            last_exc = exc
+            # Prefer last trajectory frame when available (even for hard errors).
+            last = read_last_optim_xyz(att_prefix)
+            if last is not None and last.shape == work.get_positions().shape:
+                work.set_positions(last)
+            if i + 1 >= len(attempts):
+                break
+            next_label = attempts[i + 1]["label"]
+            # Always escalate on non-convergence; also try recovery for IC /
+            # Brent / structure issues that patches did not fully absorb.
+            if is_geomopt_not_converged(exc) or i == 0:
+                _geom_retry_note(next_label, exc)
+                continue
+            # Unknown hard failure on a later attempt: still try remaining ladder.
+            _geom_retry_note(next_label, exc)
+            continue
+
+    assert last_exc is not None
+    raise last_exc
