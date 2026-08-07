@@ -9,13 +9,17 @@ import sys
 import tempfile
 from contextlib import contextmanager
 
-libc = ctypes.CDLL(None)
+libc = None
+c_stderr = None
 if sys.platform == "darwin":
+    libc = ctypes.CDLL(None)
     c_stderr = ctypes.c_void_p.in_dll(libc, "__stderrp")
 elif sys.platform.startswith("linux"):
+    libc = ctypes.CDLL(None)
     c_stderr = ctypes.c_void_p.in_dll(libc, "stderr")
 else:
-    print(f"Got unsupported platform: {sys.platform}")
+    # Windows and other platforms: C-level stderr redirect is unavailable.
+    pass
 
 from pathlib import Path
 from typing import Optional,  Union
@@ -138,7 +142,8 @@ def stderr_redirector(stream):
     def _redirect_stderr(to_fd):
         """Redirect stderr to the given file descriptor."""
         # Flush the C-level buffer stderr
-        libc.fflush(c_stderr)
+        if libc is not None and c_stderr is not None:
+            libc.fflush(c_stderr)
         # Flush and close sys.stderr - also closes the file descriptor (fd)
         sys.stderr.close()
         # Make original_stderr_fd point to the same file as to_fd

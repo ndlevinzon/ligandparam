@@ -19,12 +19,46 @@ from ligandparam.io.orientations import (
 )
 from ligandparam.interfaces import Gaussian, Antechamber
 from ligandparam.log import get_logger
+from ligandparam.gaussian_budget import split_gaussian_job_budget
 
 #
 logger = logging.getLogger("ligandparam.gaussian")
 
 # Use Opt(CalcFC) below this atom count; plain Opt at or above it.
 _CALCFC_MAX_ATOMS = 50
+
+
+def _run_gaussian_rotation_job(payload: dict) -> dict:
+    """Run one rotation ESP job (spawn-pool worker; must be picklable)."""
+    cwd = Path(payload["cwd"])
+    in_com = payload["in_com"]
+    out_log = payload["out_log"]
+    force = bool(payload.get("force", False))
+    dry_run = bool(payload.get("dry_run", False))
+    log_path = cwd / out_log
+
+    if not force and GaussianReader(log_path).check_complete():
+        return {"in_com": in_com, "status": "skipped"}
+
+    gau = Gaussian(
+        cwd=cwd,
+        gaussian_root=payload.get("gaussian_root", ""),
+        gauss_exedir=payload.get("gauss_exedir", ""),
+        gaussian_binary=payload.get("gaussian_binary", "g16"),
+        gaussian_scratch=payload.get("gaussian_scratch", ""),
+        logger=logging.getLogger("ligandparam.gaussian.worker"),
+    )
+    stem = Path(in_com).stem
+    gau.call(
+        inp_pipe=in_com,
+        out_pipe=out_log,
+        dry_run=dry_run,
+        script_name=f"_gau_{stem}.sh",
+        scratch=str(cwd / "tmp" / f"scratch_{stem}"),
+    )
+    if not dry_run and not GaussianReader(log_path).check_complete():
+        raise RuntimeError(f"Gaussian did not complete normally: {log_path}")
+    return {"in_com": in_com, "status": "ok"}
 
 
 def _gaussian_opt_keyword(n_atoms: int) -> str:
@@ -506,8 +540,11 @@ class StageGaussianRotation(AbstractStage):
     net_charge : float, optional
         Net molecular charge.
     force_gaussian_rerun : bool, optional
-        Unused for rotations today (jobs are always rewritten); kept for API
-        consistency with other Gaussian stages.
+        If False (default), skip orientation logs that already show
+        ``Normal termination``. If True, rerun every orientation.
+    nproc : int, optional
+        Total core budget for this stage. Concurrent jobs and per-job
+        ``%NProc`` are chosen so ``n_workers * %NProc <= nproc``.
     """
 
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
@@ -600,6 +637,12 @@ class StageGaussianRotation(AbstractStage):
                 alpha=alpha, beta=beta, gamma=gamma
             )
 
+    def _n_orientation_count(self) -> int:
+        """Number of orientation jobs this stage will write."""
+        if self.orientation_protocol == "so3_n28":
+            return len(get_quaternion_pack("so3_n28"))
+        return len(self.alpha) * len(self.beta) * len(self.gamma)
+
     def setup(self, name_template: str) -> bool:
         """
         Set up Gaussian input and output files for the rotation calculations.
@@ -615,7 +658,8 @@ class StageGaussianRotation(AbstractStage):
         bool
             Always returns False (rotation calculations are not pre-completed).
         """
-        self.header = [f"%NPROC={self.nproc}",
+        job_nproc = getattr(self, "_job_nproc", None) or self.nproc
+        self.header = [f"%NPROC={job_nproc}",
                        f"%MEM={self.mem}GB"]
 
         # __init__ tries to set up the coordinates object, but it may not have been available at init time.
@@ -664,29 +708,75 @@ class StageGaussianRotation(AbstractStage):
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """Execute Gaussian RESP calculations for each rotated ligand.
 
+        Pools over ``.com`` jobs. ``nproc`` is the total core budget: workers and
+        per-job ``%NProc`` satisfy ``n_workers * %NProc <= nproc``.
+
         Parameters
         ----------
         dry_run : bool, optional
             If True, log the commands that would be run without executing them.
         nproc : int, optional
-            Number of processors to use.
+            Total processor budget for concurrent orientation jobs.
         mem : int, optional
-            Amount of memory to use (in GB).
+            Amount of memory to use (in GB) written into each ``%MEM`` header.
         """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
+        import multiprocessing as mp
+
+        # Prefer self. so subclasses / tests can override or patch setup.
+        self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
+        n_orients = self._n_orientation_count()
+        n_workers, job_nproc = split_gaussian_job_budget(self.nproc, n_orients)
+        self._rotation_n_workers = n_workers
+        self._job_nproc = job_nproc
+        self.logger.info(
+            f"Gaussian rotation parallel plan: {n_orients} job(s), "
+            f"nproc={self.nproc} -> {n_workers} worker(s) x %NProc={job_nproc}"
+        )
         self.setup(self.out_gaussian_label)
 
-        for i, (in_com, out_log) in enumerate(zip(self.in_coms, self.out_logs)):
-            gau_run = Gaussian(
-                cwd=self.gaussian_cwd,
-                logger=self.logger,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
+        pending = []
+        for in_com, out_log in zip(self.in_coms, self.out_logs):
+            if (
+                not self.force_gaussian_rerun
+                and GaussianReader(out_log).check_complete()
+            ):
+                self.logger.info(f"Skipping complete {out_log.name}")
+                continue
+            pending.append(
+                {
+                    "cwd": str(self.gaussian_cwd),
+                    "in_com": in_com.name,
+                    "out_log": out_log.name,
+                    "force": bool(self.force_gaussian_rerun),
+                    "dry_run": bool(dry_run),
+                    "gaussian_root": self.gaussian_root,
+                    "gauss_exedir": self.gauss_exedir,
+                    "gaussian_binary": self.gaussian_binary,
+                    "gaussian_scratch": self.gaussian_scratch,
+                }
             )
-            gau_run.call(inp_pipe=in_com.name, out_pipe=out_log.name, dry_run=dry_run)
-            self._print_status(i + 1, len(self.in_coms))
+
+        total = len(self.in_coms)
+        finished = total - len(pending)
+        if finished:
+            self._print_status(finished, total)
+
+        if not pending:
+            return
+
+        workers = min(n_workers, len(pending))
+        if dry_run or workers <= 1:
+            for i, job in enumerate(pending):
+                _run_gaussian_rotation_job(job)
+                self._print_status(finished + i + 1, total)
+            return
+
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=workers) as pool:
+            for i, _result in enumerate(
+                pool.imap_unordered(_run_gaussian_rotation_job, pending)
+            ):
+                self._print_status(finished + i + 1, total)
 
         return
 

@@ -208,15 +208,19 @@ class Gaussian(SimpleInterface):
         return
 
     def call(self, **kwargs):
-        """This function calls the Gaussian program with the specified arguments,
-        however, it works slightly differently than the other interfaces. The Gaussian
-        interface for some reason isn't compatible with the subprocess.run() function
-        so we instead write a bash script to call the program and then execute the script."""
+        """Call Gaussian via a per-job bash wrapper (subprocess-safe).
 
-        dry_run = False
-        if "dry_run" in kwargs:
-            dry_run = kwargs["dry_run"]
-            del kwargs["dry_run"]
+        Extra kwargs (stripped before building the Gaussian command):
+
+        - ``dry_run`` (bool): log the bash command without running it
+        - ``script_name`` (str): bash wrapper filename under ``cwd`` (unique
+          per concurrent job; default ``_gau_<stem>.sh`` from ``inp_pipe``)
+        - ``scratch`` (path-like): ``GAUSS_SCRDIR`` for this job (default
+          ``cwd/tmp/scratch_<stem>`` so concurrent jobs do not collide)
+        """
+        dry_run = bool(kwargs.pop("dry_run", False))
+        script_name = kwargs.pop("script_name", None)
+        scratch = kwargs.pop("scratch", None)
 
         command = [self.method]
         shell = False
@@ -231,19 +235,31 @@ class Gaussian(SimpleInterface):
                 if value is not None:
                     command.extend([f"-{key}", str(value)])
 
-        self.write_bash(" ".join(command))
-        bashcommand = "bash temp_gaussian_sub.sh"
+        inp = kwargs.get("inp_pipe")
+        stem = Path(str(inp)).stem if inp else "job"
+        if script_name is None:
+            script_name = f"_gau_{stem}.sh"
+        if scratch is None:
+            if inp:
+                scratch = self.cwd / "tmp" / f"scratch_{stem}"
+            elif self.gaussian_scratch:
+                scratch = self.gaussian_scratch
+
+        self.write_bash(" ".join(command), script_name=script_name)
+        bashcommand = f"bash {script_name}"
 
         if dry_run:
             self.logger.info(f"Command: {bashcommand}")
         else:
             self.logger.info("\t" + bashcommand)
-
-            # Set the Gaussian environment variables if they weren't already set
-            env = self.set_environment()
-
+            env = self.set_environment(scratch=scratch)
             p = subprocess.run(
-                bashcommand, shell=shell, cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+                bashcommand,
+                shell=shell,
+                cwd=self.cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
             )
             if p.returncode != 0:
                 self.logger.error(f"Gaussian run at {self.cwd} failed.")
@@ -253,21 +269,31 @@ class Gaussian(SimpleInterface):
 
         return
 
-    def write_bash(self, command):
-        """This function writes a bash script to call the Gaussian program
-        with the specified arguments."""
-        with open(self.cwd / "temp_gaussian_sub.sh", "w") as f:
+    def write_bash(self, command, script_name="temp_gaussian_sub.sh"):
+        """Write a bash script that invokes Gaussian with the given command line."""
+        path = self.cwd / script_name
+        with open(path, "w") as f:
             f.write("#!/bin/bash\n\n")
             f.write(command)
             f.write("\n")
-        return
+        return path
 
-    def set_environment(self) -> dict:
-        env = os.environ
-        if not env.get("g16root") and self.gaussian_root:
+    def set_environment(self, scratch=None) -> dict:
+        """Build a subprocess env with Gaussian paths; never mutate ``os.environ``.
+
+        Parameters
+        ----------
+        scratch : path-like, optional
+            Job-specific ``GAUSS_SCRDIR``. Falls back to ``gaussian_scratch``,
+            then any existing ``GAUSS_SCRDIR`` in the parent environment.
+        """
+        env = os.environ.copy()
+        if self.gaussian_root:
             env["g16root"] = str(self.gaussian_root)
-        if not env.get("GAUSS_EXEDIR") and self.gauss_exedir:
+        if self.gauss_exedir:
             env["GAUSS_EXEDIR"] = str(self.gauss_exedir)
-        if not env.get("GAUSS_SCRDIR") and self.gaussian_scratch:
-            env["GAUSS_SCRDIR"] = str(self.gaussian_scratch)
+        scratch_dir = scratch if scratch is not None else self.gaussian_scratch
+        if scratch_dir:
+            Path(scratch_dir).mkdir(parents=True, exist_ok=True)
+            env["GAUSS_SCRDIR"] = str(scratch_dir)
         return env
