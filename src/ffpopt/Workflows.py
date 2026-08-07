@@ -41,7 +41,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 
 _LOG = logging.getLogger("ffpopt.workflows")
@@ -800,6 +800,7 @@ def run_dihed_twist_workflow(
     structure_images: dict | None = None,
     workdir: PathLike | None = None,
     logger: logging.Logger | None = None,
+    progress: Callable[[str, str], None] | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -883,6 +884,13 @@ def run_dihed_twist_workflow(
         set, this workflow never calls ``os.chdir`` - paths are resolved
         under ``workdir`` and shell-outs use ``subprocess(..., cwd=workdir)``.
         Default is None (use the process cwd / relative paths as given).
+    logger : logging.Logger, optional
+        Logger for workflow progress messages. Default is the module logger.
+    progress : callable, optional
+        ``progress(stage, detail)`` hook used by the fragmented parent to
+        update a live status board. Stages include ``hl_scan``, ``orig_scan``,
+        ``compare``, ``fit/...``, ``apply/...``, ``rescan/...``, ``finished``.
+        Default is None.
     **standard_kwargs
         Forwarded to the wavefront. Accepts anything declared by
         :func:`ffpopt.Options.AddStandardOptions` (``model``, ``mfile``,
@@ -910,6 +918,13 @@ def run_dihed_twist_workflow(
         )
     log = _resolve_logger(logger)
     wd = _as_path(workdir).resolve() if workdir is not None else None
+
+    def _prog(stage: str, detail: str = "") -> None:
+        if progress is not None:
+            try:
+                progress(stage, detail)
+            except Exception:
+                pass
 
     import argparse
     from types import SimpleNamespace
@@ -980,6 +995,7 @@ def run_dihed_twist_workflow(
     }
 
     # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
+    _prog("hl_scan", f"model={model} · {len(scans)} bond(s)")
     results["scans"].extend(
         _run_scans_for_bonds(
             scans,
@@ -995,6 +1011,7 @@ def run_dihed_twist_workflow(
     )
 
     # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
+    _prog("orig_scan", f"sander reference · {len(scans)} bond(s)")
     results["scans"].extend(
         _run_scans_for_bonds(
             scans,
@@ -1016,6 +1033,7 @@ def run_dihed_twist_workflow(
 
     # ---- 2b. Drop dihedrals that already agree (initial convergence) -----
     if skip_converged_initial:
+        _prog("compare", "initial HL vs LL")
         initial = _compare_per_bond(
             scans, hlname, "orig", compare_config,
             plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
@@ -1063,6 +1081,7 @@ def run_dihed_twist_workflow(
         results["fit_jsons"].append(fit_json)
 
         # 3b. GenDihedFit -> itNN.py. FUTURE: replace subprocess with API call.
+        _prog(f"fit/{citname}", "GenDihedFit")
         _run_gendihedfit(
             citname,
             nlmaxiter=args.nlmaxiter,
@@ -1072,6 +1091,7 @@ def run_dihed_twist_workflow(
         )
 
         # 3c. Apply fit + PrepareInput. FUTURE: replace subprocess with API calls.
+        _prog(f"apply/{citname}", "apply fit + PrepareInput")
         _apply_fit_and_prepare(
             citname=citname,
             origparm=origparm,
@@ -1088,6 +1108,7 @@ def run_dihed_twist_workflow(
         )
 
         # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
+        _prog(f"rescan/{citname}", f"sander · {len(scans)} bond(s)")
         results["scans"].extend(
             _run_scans_for_bonds(
                 scans,
@@ -1149,6 +1170,7 @@ def run_dihed_twist_workflow(
                     ", ".join(still_off_idxs),
                 )
 
+    _prog("finished", "twist workflow complete")
     return results
 
 
@@ -1403,48 +1425,93 @@ def _run_fragment_twist_job(job: dict) -> dict:
     """Worker entry: prepare + twist one fragment (picklable job dict)."""
     from types import SimpleNamespace
 
+    from .fragment_progress import (
+        FragmentProgressStore,
+        fragment_stdio_to_file,
+        make_fragment_file_logger,
+    )
+
     frag_dir = Path(job["frag_dir"]).resolve()
+    fragment_id = job["fragment_id"]
     fragment = SimpleNamespace(
-        fragment_id=job["fragment_id"],
+        fragment_id=fragment_id,
         manifest_path=frag_dir / "manifest.json",
         parm7_path=job["parm7"],
         rst7_path=job["rst7"],
         fit_torsions=job["fit_torsions"],
     )
-    log = _LOG
     bonds = [tuple(b) for b in job["bonds"]]
+    frag_log_path = frag_dir / "frag-twist.log"
+    store = None
+    status_path = job.get("status_path")
+    if status_path:
+        store = FragmentProgressStore(status_path)
+
+    def _set(**kwargs):
+        if store is not None:
+            store.update(fragment_id, **kwargs)
+
+    def _progress(stage: str, detail: str = "") -> None:
+        _set(status="running", stage=stage, detail=detail)
+
+    frag_log = make_fragment_file_logger(fragment_id, frag_log_path)
     structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
-    log.info(
+
+    _set(
+        status="running",
+        stage="prepare",
+        detail=f"{len(bonds)} bond(s) · wf_nproc={job['wf_nproc']}",
+        bonds=len(bonds),
+        log_path=str(frag_log_path),
+    )
+    frag_log.info(
         "[frag-twist] %s: %s bond(s) %s -> running twist in %s (wf_nproc=%s)",
-        fragment.fragment_id,
+        fragment_id,
         len(bonds),
         bonds,
         frag_dir,
         job["wf_nproc"],
     )
-    start_json = _prepare_fragment_input(
-        fragment,
-        skip_existing=job["skip_existing"],
-        logger=log,
-        workdir=frag_dir,
-    )
-    twist_kwargs = dict(job["twist_kwargs"])
-    twist_kwargs["nproc"] = int(job["wf_nproc"])
-    twist_kwargs.pop("logger", None)
-    twist_result = run_dihed_twist_workflow(
-        inp=start_json,
-        bond=bonds,
-        structure_images=structure_images or None,
-        workdir=frag_dir,
-        **twist_kwargs,
-    )
-    log.info("[frag-twist] %s: twist workflow finished", fragment.fragment_id)
-    return {
-        "fragment_id": fragment.fragment_id,
-        "dir": str(frag_dir),
-        "bonds": bonds,
-        "twist_result": _slim_twist_result(twist_result),
-    }
+
+    try:
+        with fragment_stdio_to_file(frag_log_path):
+            start_json = _prepare_fragment_input(
+                fragment,
+                skip_existing=job["skip_existing"],
+                logger=frag_log,
+                workdir=frag_dir,
+            )
+            twist_kwargs = dict(job["twist_kwargs"])
+            twist_kwargs["nproc"] = int(job["wf_nproc"])
+            twist_kwargs.pop("logger", None)
+            twist_kwargs.pop("progress", None)
+            twist_result = run_dihed_twist_workflow(
+                inp=start_json,
+                bond=bonds,
+                structure_images=structure_images or None,
+                workdir=frag_dir,
+                logger=frag_log,
+                progress=_progress,
+                **twist_kwargs,
+            )
+        _set(status="done", stage="finished", detail="ok")
+        frag_log.info("[frag-twist] %s: twist workflow finished", fragment_id)
+        return {
+            "fragment_id": fragment_id,
+            "dir": str(frag_dir),
+            "bonds": bonds,
+            "twist_result": _slim_twist_result(twist_result),
+            "log_path": str(frag_log_path),
+        }
+    except Exception as exc:
+        _set(
+            status="failed",
+            stage="failed",
+            detail=type(exc).__name__,
+            error=str(exc)[:200],
+        )
+        frag_log.exception("[frag-twist] %s: failed", fragment_id)
+        raise
 
 
 def run_fragmented_dihed_twist_workflow(
@@ -1686,6 +1753,20 @@ def run_fragmented_dihed_twist_workflow(
     for job in runnable:
         job["wf_nproc"] = n_wf
 
+    from .fragment_progress import FragmentBoardWatcher, FragmentProgressStore
+
+    status_path = out_dir_path / ".frag_progress.json"
+    board_path = out_dir_path / "FRAG_STATUS.txt"
+    store = FragmentProgressStore(status_path)
+    for job in runnable:
+        job["status_path"] = str(status_path)
+        store.register(
+            job["fragment_id"],
+            bonds=len(job["bonds"]),
+            frag_dir=job["frag_dir"],
+            log_path=str(Path(job["frag_dir"]) / "frag-twist.log"),
+        )
+
     log.info(
         "[frag-twist] parallel plan: %s fragment(s), nproc=%s -> "
         "%s fragment worker(s) x wf_nproc=%s",
@@ -1694,50 +1775,67 @@ def run_fragmented_dihed_twist_workflow(
         n_frag_workers,
         n_wf,
     )
-
-    if n_frag_workers == 1:
-        per_fragment_results = []
-        for i, job in enumerate(runnable, start=1):
-            result = _run_fragment_twist_job(job)
-            per_fragment_results.append(result)
-            log.info(
-                "[frag-twist] fragment job finished (%s/%s): %s",
-                i,
-                len(runnable),
-                result["fragment_id"],
-            )
-    else:
-        pool = _make_nondaemon_spawn_pool(n_frag_workers)
-        try:
-            # Unordered so progress logs appear as each fragment finishes;
-            # restore runnable order afterward for stable merge input.
-            by_id: dict[str, dict] = {}
-            finished = 0
-            for result in pool.imap_unordered(
-                _run_fragment_twist_job, runnable
-            ):
-                finished += 1
-                by_id[result["fragment_id"]] = result
+    log.info(
+        "[frag-twist] live status board: %s "
+        "(per-fragment detail: <frag>/frag-twist.log)",
+        board_path,
+    )
+    watcher = FragmentBoardWatcher(
+        store,
+        board_path=board_path,
+        logger=log,
+        interval_sec=5.0,
+        log_root_hint="<out_dir>/<fragment>/frag-twist.log",
+    )
+    watcher.start()
+    try:
+        if n_frag_workers == 1:
+            per_fragment_results = []
+            for i, job in enumerate(runnable, start=1):
+                result = _run_fragment_twist_job(job)
+                per_fragment_results.append(result)
                 log.info(
                     "[frag-twist] fragment job finished (%s/%s): %s",
-                    finished,
+                    i,
                     len(runnable),
                     result["fragment_id"],
                 )
-            missing = [
-                j["fragment_id"] for j in runnable if j["fragment_id"] not in by_id
-            ]
-            if missing:
-                raise RuntimeError(
-                    "fragment pool returned incomplete results; missing: "
-                    + ", ".join(missing)
-                )
-            per_fragment_results = [
-                by_id[j["fragment_id"]] for j in runnable
-            ]
-        finally:
-            pool.close()
-            pool.join()
+        else:
+            pool = _make_nondaemon_spawn_pool(n_frag_workers)
+            try:
+                # Unordered so progress logs appear as each fragment finishes;
+                # restore runnable order afterward for stable merge input.
+                by_id: dict[str, dict] = {}
+                finished = 0
+                for result in pool.imap_unordered(
+                    _run_fragment_twist_job, runnable
+                ):
+                    finished += 1
+                    by_id[result["fragment_id"]] = result
+                    log.info(
+                        "[frag-twist] fragment job finished (%s/%s): %s",
+                        finished,
+                        len(runnable),
+                        result["fragment_id"],
+                    )
+                missing = [
+                    j["fragment_id"]
+                    for j in runnable
+                    if j["fragment_id"] not in by_id
+                ]
+                if missing:
+                    raise RuntimeError(
+                        "fragment pool returned incomplete results; missing: "
+                        + ", ".join(missing)
+                    )
+                per_fragment_results = [
+                    by_id[j["fragment_id"]] for j in runnable
+                ]
+            finally:
+                pool.close()
+                pool.join()
+    finally:
+        watcher.stop()
 
     log.info(
         "[frag-twist] all %s fragment twist job(s) finished",

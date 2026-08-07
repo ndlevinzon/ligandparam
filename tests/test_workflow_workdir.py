@@ -3,6 +3,7 @@
 import inspect
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -181,47 +182,51 @@ class TestSplitFragmentNproc(unittest.TestCase):
         import scission.merge as scission_merge
         from scission.models import FragmentConfig
 
-        with patch(
-            "ffpopt.Workflows._load_existing_fragments",
-            return_value=[frag_a, frag_b],
-        ), patch(
-            "ffpopt.Workflows._parent_paths_from_args",
-            return_value=(Path("/m.mol2"), Path("/m.lib"), Path("/m.frcmod")),
-        ), patch(
-            "ffpopt.Workflows._make_nondaemon_spawn_pool",
-            return_value=fake_pool,
-        ) as make_pool, patch.object(
-            scission, "FragmentConfig", FragmentConfig
-        ), patch.object(
-            scission, "InputBundle"
-        ), patch.object(
-            scission, "fragment_ligand"
-        ), patch.object(
-            scission_merge,
-            "merge_fragment_frcmods",
-            return_value={"ok": True},
-        ):
-            result = run_fragmented_dihed_twist_workflow(
-                mol2="/m.mol2",
-                lib="/m.lib",
-                frcmod="/m.frcmod",
-                out_dir="/tmp/out",
-                merged_frcmod="/tmp/merged.frcmod",
-                nproc=8,
-                skip_existing=True,
-            )
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "out"
+            out_dir.mkdir()
+            merged = Path(td) / "merged.frcmod"
+            with patch(
+                "ffpopt.Workflows._load_existing_fragments",
+                return_value=[frag_a, frag_b],
+            ), patch(
+                "ffpopt.Workflows._parent_paths_from_args",
+                return_value=(Path("/m.mol2"), Path("/m.lib"), Path("/m.frcmod")),
+            ), patch(
+                "ffpopt.Workflows._make_nondaemon_spawn_pool",
+                return_value=fake_pool,
+            ) as make_pool, patch.object(
+                scission, "FragmentConfig", FragmentConfig
+            ), patch.object(
+                scission, "InputBundle"
+            ), patch.object(
+                scission, "fragment_ligand"
+            ), patch.object(
+                scission_merge,
+                "merge_fragment_frcmods",
+                return_value={"ok": True},
+            ):
+                result = run_fragmented_dihed_twist_workflow(
+                    mol2="/m.mol2",
+                    lib="/m.lib",
+                    frcmod="/m.frcmod",
+                    out_dir=out_dir,
+                    merged_frcmod=merged,
+                    nproc=8,
+                    skip_existing=True,
+                )
 
-        make_pool.assert_called_once_with(2)
-        fake_pool.imap_unordered.assert_called_once()
-        jobs = fake_pool.imap_unordered.call_args.args[1]
-        self.assertEqual(len(jobs), 2)
-        self.assertEqual(jobs[0]["wf_nproc"], 4)
-        self.assertEqual(jobs[1]["wf_nproc"], 4)
-        fake_pool.close.assert_called_once()
-        fake_pool.join.assert_called_once()
-        self.assertEqual(
-            result["merged_frcmod"], str(Path("/tmp/merged.frcmod").resolve())
-        )
+            make_pool.assert_called_once_with(2)
+            fake_pool.imap_unordered.assert_called_once()
+            jobs = fake_pool.imap_unordered.call_args.args[1]
+            self.assertEqual(len(jobs), 2)
+            self.assertEqual(jobs[0]["wf_nproc"], 4)
+            self.assertEqual(jobs[1]["wf_nproc"], 4)
+            self.assertTrue(jobs[0]["status_path"])
+            self.assertTrue((out_dir / "FRAG_STATUS.txt").is_file())
+            fake_pool.close.assert_called_once()
+            fake_pool.join.assert_called_once()
+            self.assertEqual(result["merged_frcmod"], str(merged.resolve()))
 
 
 class TestNonDaemonSpawnPool(unittest.TestCase):
