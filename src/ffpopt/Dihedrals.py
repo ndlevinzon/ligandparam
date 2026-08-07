@@ -813,6 +813,113 @@ class ParamInstance(object):
         return d
 
 
+def _normalize_scan_angle(ang: float) -> float:
+    """Map angle to ``[0, 360)`` with 360 collapsed to 0."""
+    a = float(ang) % 360.0
+    if abs(a - 360.0) < 1.0e-6 or abs(a) < 1.0e-6:
+        return 0.0
+    return a
+
+
+def struct_scan_angle(struct) -> float | None:
+    """Best-effort scan-angle key for a wavefront JSON frame.
+
+    Prefers ``data['name']`` like ``d030`` (from :meth:`Wavefront.sort_results`),
+    then a dihedral constraint value stored on the structure.
+    """
+    import re
+
+    data = getattr(struct, "data", None) or {}
+    name = str(data.get("name") or "").strip()
+    m = re.match(r"^d(\d+(?:\.\d+)?)$", name, flags=re.IGNORECASE)
+    if m:
+        return _normalize_scan_angle(float(m.group(1)))
+
+    cons = data.get("constraints") or []
+    for c in cons:
+        if not isinstance(c, dict):
+            continue
+        ctype = str(c.get("type") or "").lower()
+        if ctype in ("dihedral", "torsion") and "value" in c:
+            return _normalize_scan_angle(float(c["value"]))
+
+    clist = getattr(struct, "constraints", None)
+    if clist is not None:
+        try:
+            for c in clist:
+                ctype = str(getattr(c, "type", getattr(c, "ctype", "")) or "").lower()
+                if "dihed" in ctype or "torsion" in ctype:
+                    return _normalize_scan_angle(float(c.value))
+        except Exception:
+            pass
+    return None
+
+
+def _angle_map_from_los(los):
+    """Return ``{angle: struct}``; raise if any frame lacks an angle key."""
+    out = {}
+    missing = []
+    for i, struct in enumerate(los.structs):
+        ang = struct_scan_angle(struct)
+        if ang is None:
+            missing.append(i)
+            continue
+        # Prefer first occurrence if duplicates (should not happen for scans).
+        out.setdefault(ang, struct)
+    if missing:
+        raise ValueError(
+            f"Could not determine scan angle for structure index(es) {missing}; "
+            "expected names like 'd030' or dihedral constraints on each frame."
+        )
+    return out
+
+
+def align_scan_profiles(loshl, losll, *, hl_path="", ll_path="", min_points=3):
+    """Keep only HL/LL frames that share the same scan angles (sorted).
+
+    Wavefront HL/LL runs can finish with different angle coverage when nodes
+    fail or are soft-accepted without spawning. GenDihedFit pairs energies by
+    index, so mismatched lengths must be reconciled by angle before fitting.
+
+    Returns
+    -------
+    loshl, losll, info
+        Aligned ``ListOfStruct`` objects (shared topology clones where possible)
+        and a small diagnostic dict.
+    """
+    from . Struct import ListOfStruct
+
+    hl_map = _angle_map_from_los(loshl)
+    ll_map = _angle_map_from_los(losll)
+    common = sorted(set(hl_map) & set(ll_map))
+    hl_only = sorted(set(hl_map) - set(ll_map))
+    ll_only = sorted(set(ll_map) - set(hl_map))
+
+    if len(common) < int(min_points):
+        raise Exception(
+            f"Structure count mismatch in {hl_path or 'HL'} and {ll_path or 'LL'} "
+            f"({len(loshl)} vs {len(losll)}); after angle alignment only "
+            f"{len(common)} shared points remain (need >= {min_points}). "
+            f"HL-only angles={hl_only[:12]}{'...' if len(hl_only) > 12 else ''}; "
+            f"LL-only angles={ll_only[:12]}{'...' if len(ll_only) > 12 else ''}."
+        )
+
+    hl_structs = [hl_map[a] for a in common]
+    ll_structs = [ll_map[a] for a in common]
+    new_hl = ListOfStruct.from_structs_shared(
+        hl_structs, args=getattr(loshl, "args", None)
+    )
+    new_ll = ListOfStruct.from_structs_shared(
+        ll_structs, args=getattr(losll, "args", None)
+    )
+    info = {
+        "n_common": len(common),
+        "angles": common,
+        "hl_only": hl_only,
+        "ll_only": ll_only,
+    }
+    return new_hl, new_ll, info
+
     
 class ProfileType(object):
     """ A class representing a profile for dihedral parameters.
@@ -865,11 +972,28 @@ class ProfileType(object):
         self.loshl = ListOfStruct.from_file(self.hl)
         self.losll = ListOfStruct.from_file(self.ll)
 
-        
-        if len(self.loshl.structs) != len(self.losll.structs):
-            raise Exception(f"Structure count mismatch in {self.hl} "
-                            +f"and {self.ll} ({len(self.loshl)} vs "
-                            +f"{len(self.losll)})")
+        n_hl = len(self.loshl.structs)
+        n_ll = len(self.losll.structs)
+        if n_hl != n_ll:
+            self.loshl, self.losll, info = align_scan_profiles(
+                self.loshl, self.losll, hl_path=self.hl, ll_path=self.ll
+            )
+            import sys
+            sys.stderr.write(
+                f"[ffpopt] Profile '{self.name}': HL/LL structure counts differed "
+                f"({n_hl} vs {n_ll}); aligned on {info['n_common']} shared scan "
+                f"angles (dropped HL-only={len(info['hl_only'])}, "
+                f"LL-only={len(info['ll_only'])}).\n"
+            )
+            if info["hl_only"] or info["ll_only"]:
+                if info["hl_only"]:
+                    sys.stderr.write(
+                        f"[ffpopt]   HL-only angles: {info['hl_only']}\n"
+                    )
+                if info["ll_only"]:
+                    sys.stderr.write(
+                        f"[ffpopt]   LL-only angles: {info['ll_only']}\n"
+                    )
         
         s = stride
         self.loshl.structs = self.loshl.structs[::s]

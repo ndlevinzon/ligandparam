@@ -37,6 +37,7 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - **Noisier fallbacks** — calculator device / SANDER load / ConfSearch mol parse / Gaussian I/O report the underlying exception instead of bare `except:`.
 - **Charge normalization** — safe for nonzero `net_charge`, tiny diffs, and `|diff| > natoms*precision` (residual on largest-|q| atom); asserts final sum.
 - **Docs / packaging** — READMEs clarify `src/` is runtime SoT vs optional `*-main/` trees; `numpy<2` documented; optional `ligandparam[ml-potentials]` for MACE / TorchANI.
+- **GenDihedFit HL/LL mismatch** — when wavefront HL and LL JSON scans differ in length (failed / soft-opt holes), align on shared `dXXX` scan angles instead of aborting; raise only if fewer than 3 common points remain.
 
 ---
 
