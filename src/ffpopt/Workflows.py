@@ -23,9 +23,10 @@ When to use which entry point
 Requirements and caveats
 ------------------------
 * Call either workflow from an ``if __name__ == "__main__":`` guard. The
-  wavefront scan uses ``spawn``-mode multiprocessing; the fragmented
-  workflow may also spawn a non-daemon fragment pool that nests wavefront
-  workers (``nproc`` is split across fragments and per-fragment wavefront).
+  wavefront scan uses ``spawn``-mode multiprocessing. ``run_dihed_twist_workflow``
+  may also pool over bonds (``n_bond_workers × wf_nproc``); the fragmented
+  workflow pools over fragments the same way. ``nproc`` is always a total
+  core budget so worker counts times nested wavefront size stay within it.
 * Fragmented mode requires the integrated ``scission`` package
   (``src/scission``) and AmberTools (``tleap``) on ``PATH``.
 * High-level ``model`` values (e.g. ``qdpi2``, ``mace``) need the matching
@@ -432,6 +433,97 @@ def _run_one_scan(
     )
 
 
+def _slim_scan_result(scan_result: Optional[dict]) -> Optional[dict]:
+    """Drop heavy ``wf_run`` objects so bond-pool IPC stays picklable."""
+    if not isinstance(scan_result, dict):
+        return scan_result
+    return {k: v for k, v in scan_result.items() if k != "wf_run"}
+
+
+def _run_bond_scan_job(job: dict) -> dict:
+    """Worker entry: one wavefront scan for one central bond (picklable)."""
+    workdir = job.get("workdir")
+    r = _run_one_scan(
+        inp=job["inp"],
+        model=job["model"],
+        dihed_idxs=job["dihed_idxs"],
+        out=job["out"],
+        skip_existing=job["skip_existing"],
+        logger=_LOG,
+        workdir=Path(workdir) if workdir else None,
+        **job["wf_kwargs"],
+    )
+    return {
+        "prefix": job["prefix"],
+        "dihed_idxs": list(job["dihed_idxs"]),
+        "result": _slim_scan_result(r),
+    }
+
+
+def _run_scans_for_bonds(
+    scans,
+    *,
+    prefix: str,
+    model: str,
+    inp: str,
+    nproc: int,
+    skip_existing: bool,
+    workdir: Optional[Path],
+    logger: logging.Logger | None,
+    wf_kwargs: dict,
+) -> list[tuple[str, tuple, Optional[dict]]]:
+    """Run one wavefront scan per bond, pooling when the core budget allows.
+
+    Splits ``nproc`` as ``n_bond_workers × wf_nproc`` (same rule as fragment
+    pooling) so concurrent bond scans do not oversubscribe cores.
+    """
+    log = _resolve_logger(logger)
+    jobs = [
+        {
+            "prefix": prefix,
+            "inp": inp,
+            "model": model,
+            "dihed_idxs": list(scan.idxs),
+            "out": f"{prefix}_{scan.GetIdxStr()}.json",
+            "skip_existing": skip_existing,
+            "workdir": str(workdir) if workdir is not None else None,
+            "wf_kwargs": dict(wf_kwargs),
+        }
+        for scan in scans
+    ]
+    if not jobs:
+        return []
+
+    n_bond_workers, n_wf = _split_fragment_nproc(nproc, len(jobs))
+    for job in jobs:
+        job["wf_kwargs"]["nproc"] = int(n_wf)
+
+    log.info(
+        "[twist] parallel bond scans: prefix=%s, %s bond(s), nproc=%s -> "
+        "%s bond worker(s) x wf_nproc=%s",
+        prefix,
+        len(jobs),
+        nproc,
+        n_bond_workers,
+        n_wf,
+    )
+
+    if n_bond_workers == 1:
+        raw = [_run_bond_scan_job(job) for job in jobs]
+    else:
+        pool = _make_nondaemon_spawn_pool(n_bond_workers)
+        try:
+            raw = pool.map(_run_bond_scan_job, jobs)
+        finally:
+            pool.close()
+            pool.join()
+
+    return [
+        (item["prefix"], tuple(item["dihed_idxs"]), item["result"])
+        for item in raw
+    ]
+
+
 def _write_fit_json(
     *,
     citname: str,
@@ -744,7 +836,9 @@ def run_dihed_twist_workflow(
         Forwarded as ``--nlmaxiter`` to ``ffpopt-GenDihedFit.py``.
         Default is 300.
     nproc : int, optional
-        Wavefront parallelism. Default is 1.
+        Total core budget for bond scans and nested wavefront workers.
+        Split as ``n_bond_workers × wf_nproc`` across concurrent bonds.
+        Default is 1.
     wf_starting_nodes : int, optional
         Wavefront starting nodes. Default is 4.
     wf_num_conformers : int, optional
@@ -885,35 +979,35 @@ def run_dihed_twist_workflow(
         "early_stopped_at": None,
     }
 
-    # ---- 1. High-level scans (one per bond) ------------------------------
-    for scan in scans:
-        out = f"{hlname}_{scan.GetIdxStr()}.json"
-        r = _run_one_scan(
-            inp=args.inp,
+    # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
+    results["scans"].extend(
+        _run_scans_for_bonds(
+            scans,
+            prefix=hlname,
             model=model,
-            dihed_idxs=scan.idxs,
-            out=out,
+            inp=args.inp,
+            nproc=nproc,
             skip_existing=skip_existing,
-            logger=log,
             workdir=wd,
-            **wf_kwargs,
+            logger=log,
+            wf_kwargs=wf_kwargs,
         )
-        results["scans"].append((hlname, scan.idxs, r))
+    )
 
     # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
-    for scan in scans:
-        out = f"orig_{scan.GetIdxStr()}.json"
-        r = _run_one_scan(
-            inp=args.inp,
+    results["scans"].extend(
+        _run_scans_for_bonds(
+            scans,
+            prefix="orig",
             model="sander",
-            dihed_idxs=scan.idxs,
-            out=out,
+            inp=args.inp,
+            nproc=nproc,
             skip_existing=skip_existing,
-            logger=log,
             workdir=wd,
-            **wf_kwargs,
+            logger=log,
+            wf_kwargs=wf_kwargs,
         )
-        results["scans"].append(("orig", scan.idxs, r))
+    )
 
     if plot_comparisons:
         plot_dir = wd if wd is not None else Path(".")
@@ -994,19 +1088,19 @@ def run_dihed_twist_workflow(
         )
 
         # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
-        for scan in scans:
-            out = f"{citname}_{scan.GetIdxStr()}.json"
-            r = _run_one_scan(
-                inp=str(_in_workdir(wd, f"{citname}.json")),
+        results["scans"].extend(
+            _run_scans_for_bonds(
+                scans,
+                prefix=citname,
                 model="sander",
-                dihed_idxs=scan.idxs,
-                out=out,
+                inp=str(_in_workdir(wd, f"{citname}.json")),
+                nproc=nproc,
                 skip_existing=skip_existing,
-                logger=log,
                 workdir=wd,
-                **wf_kwargs,
+                logger=log,
+                wf_kwargs=wf_kwargs,
             )
-            results["scans"].append((citname, scan.idxs, r))
+        )
 
         # 3e. Per-iteration convergence: compare HL vs itNN per bond.
         if convergence_mode != "off":
@@ -1221,15 +1315,18 @@ def _prepare_fragment_input(
 
 
 def _split_fragment_nproc(nproc: int, n_fragments: int) -> tuple[int, int]:
-    """Split ``nproc`` across fragment workers and per-fragment wavefront.
+    """Split ``nproc`` across outer workers and nested wavefront size.
+
+    Used for both fragment-level pooling and per-bond scan pooling inside
+    :func:`run_dihed_twist_workflow`.
 
     Returns
     -------
     tuple of int
-        ``(n_fragment_workers, n_wavefront_per_fragment)`` such that
-        ``n_fragment_workers * n_wavefront_per_fragment <= nproc`` (when
-        ``n_fragments > 1``), preferring to use as many fragment workers as
-        possible up to ``min(nproc, n_fragments)``.
+        ``(n_workers, n_wavefront_per_worker)`` such that
+        ``n_workers * n_wavefront_per_worker <= nproc`` (when
+        ``n_items > 1``), preferring as many outer workers as possible up
+        to ``min(nproc, n_items)``.
     """
     nproc = max(1, int(nproc))
     n_fragments = max(1, int(n_fragments))

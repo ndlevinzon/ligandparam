@@ -222,5 +222,96 @@ class TestSplitFragmentNproc(unittest.TestCase):
         )
 
 
+class TestBondScanPool(unittest.TestCase):
+    def test_single_bond_stays_serial(self):
+        from ffpopt.Workflows import _run_scans_for_bonds
+
+        scan = MagicMock()
+        scan.idxs = [0, 1, 2, 3]
+        scan.GetIdxStr.return_value = "0-1-2-3"
+
+        with patch(
+            "ffpopt.Workflows._run_bond_scan_job",
+            side_effect=lambda job: {
+                "prefix": job["prefix"],
+                "dihed_idxs": job["dihed_idxs"],
+                "result": None,
+            },
+        ) as worker, patch(
+            "ffpopt.Workflows._make_nondaemon_spawn_pool"
+        ) as make_pool:
+            out = _run_scans_for_bonds(
+                [scan],
+                prefix="xtb",
+                model="xtb",
+                inp="/tmp/start.json",
+                nproc=8,
+                skip_existing=True,
+                workdir=None,
+                logger=None,
+                wf_kwargs={"nproc": 8, "delta": 10},
+            )
+
+        make_pool.assert_not_called()
+        worker.assert_called_once()
+        self.assertEqual(worker.call_args.args[0]["wf_kwargs"]["nproc"], 8)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0][0], "xtb")
+
+    def test_multi_bond_splits_nproc_and_pools(self):
+        from ffpopt.Workflows import _run_scans_for_bonds
+
+        scans = []
+        for idxs, label in (
+            ([0, 1, 2, 3], "0-1-2-3"),
+            ([1, 2, 3, 4], "1-2-3-4"),
+            ([2, 3, 4, 5], "2-3-4-5"),
+            ([3, 4, 5, 6], "3-4-5-6"),
+        ):
+            s = MagicMock()
+            s.idxs = idxs
+            s.GetIdxStr.return_value = label
+            scans.append(s)
+
+        fake_pool = MagicMock()
+        fake_pool.map.side_effect = lambda fn, jobs: [
+            {
+                "prefix": j["prefix"],
+                "dihed_idxs": j["dihed_idxs"],
+                "result": {"ok": True},
+            }
+            for j in jobs
+        ]
+
+        with patch(
+            "ffpopt.Workflows._make_nondaemon_spawn_pool",
+            return_value=fake_pool,
+        ) as make_pool:
+            out = _run_scans_for_bonds(
+                scans,
+                prefix="xtb",
+                model="xtb",
+                inp="/tmp/start.json",
+                nproc=8,
+                skip_existing=True,
+                workdir=Path("/tmp/wd"),
+                logger=None,
+                wf_kwargs={"nproc": 8, "delta": 15},
+            )
+
+        make_pool.assert_called_once_with(4)
+        fake_pool.map.assert_called_once()
+        jobs = fake_pool.map.call_args.args[1]
+        self.assertEqual(len(jobs), 4)
+        for job in jobs:
+            self.assertEqual(job["wf_kwargs"]["nproc"], 2)
+            self.assertEqual(job["wf_kwargs"]["delta"], 15)
+            self.assertEqual(job["workdir"], str(Path("/tmp/wd")))
+        fake_pool.close.assert_called_once()
+        fake_pool.join.assert_called_once()
+        self.assertEqual(len(out), 4)
+        self.assertEqual(out[0][1], (0, 1, 2, 3))
+
+
 if __name__ == "__main__":
     unittest.main()
