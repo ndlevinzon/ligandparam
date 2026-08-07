@@ -18,6 +18,10 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - **Parallel RespFit / CpeFit conformer ESP** — independent per-conformer ab initio ESP (and cosmo/harmonic sets) in a process pool; charge / CPE fit stays serial.
 - **Parallel scission screen / writes** — pool over torsions for candidate screening and over fragments for `parmchk2`/`tleap`; `FragmentConfig.nproc` / CLI `--nproc` / fragmented-workflow `nproc`.
 - **Parallel fragments** — `run_fragmented_dihed_twist_workflow` splits `-n` / `nproc` across a non-daemon fragment pool and nested wavefront workers.
+- **Vectorized `cap_site_scan_margin`** — NumPy rotate + margin vs retained heavies (same pattern as `screen_candidate`).
+- **Cached retained APSP** — `retained_distance_map` keyed by `frozenset(retained)` for shell-sibling reuse.
+- **Unique domain-shell enum** — skip left/right depths that do not change the domain set; build each fragment once.
+- **`FindMinCycles` via cycle basis** — NetworkX `cycle_basis` instead of DFS min-path search (sugar puckers).
 
 ### Reliability
 

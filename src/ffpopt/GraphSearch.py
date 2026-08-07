@@ -254,43 +254,39 @@ class GraphSearch(object):
     #     return allpaths
 
     def FindMinCycles(self):
-        """Returns all minimum-length unique closed cycles within a graph.
-        That is, the returned cycles cannot be expressed as a sum of two
-        smaller cycles.
+        """Return a cycle basis as closed paths (first node repeated at end).
 
-        Parameters
-        ----------
-        minsize : int, default=3
-            All cycles that contain fewer than minsize nodes will be
-            excluded
-
-        Returns
-        -------
-        paths : list of list of str
-            The found paths. Each path is a list of nodes
+        Uses an undirected cycle basis (same class of result as NetworkX
+        ``cycle_basis``) instead of enumerating minimum paths between every
+        edge. Output format matches the historical DFS implementation: each
+        cycle is a list of node ids with the start node appended again so a
+        5-ring has length 6.
         """
-        cycs=[]
-        seen=[]
-        for snode in self.nodes:
-            for tnode in self.edges[snode]:
-                st=(snode,tnode)
-                ts=(tnode,snode)
-                if ts in seen:
-                    continue
-                seen.append(st)
-                
-                paths = self.FindMinPaths(snode,tnode,minsize=3)
-                for path in paths:
-                    minnode = min(path)
-                    minidx = [i for i,j in enumerate(path) if j == minnode][0]
-                    path = path[minidx:] + path[:minidx]
-                    if path[-1] < path[1]:
-                        f = path.pop(0)
-                        path.append(f)
-                        path.reverse()
-                    path.append(path[0])
-                    cycs.append( self.PathToStr(path) )
-        allpaths = [ self.StrToPath(x) for x in list(set(cycs)) ]
+        import networkx as nx
+
+        G = nx.Graph()
+        for node in self.nodes:
+            G.add_node(node)
+        for snode, nbrs in self.edges.items():
+            for tnode in nbrs:
+                if snode <= tnode:
+                    G.add_edge(snode, tnode)
+
+        allpaths = []
+        for cycle in nx.cycle_basis(G):
+            if len(cycle) < 3:
+                continue
+            # Canonicalize rotation/orientation like the legacy path code.
+            path = list(cycle)
+            minnode = min(path)
+            minidx = path.index(minnode)
+            path = path[minidx:] + path[:minidx]
+            if len(path) > 1 and path[-1] < path[1]:
+                first = path.pop(0)
+                path.append(first)
+                path.reverse()
+            path.append(path[0])
+            allpaths.append(path)
         allpaths.sort()
         return allpaths
 

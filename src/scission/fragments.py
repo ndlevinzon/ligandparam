@@ -44,6 +44,7 @@ def get_fragmentation_topology(
     domains, atom_to_domain, domain_graph, domain_has_ring = _build_domains(
         ligand,
         heavy_graph,
+        ring_edges=ring_edges,
         include_rigid_single_bonds=include_rigid_single_bonds,
         rotatable_bond_smarts=rotatable_bond_smarts,
     )
@@ -148,6 +149,7 @@ def _build_heavy_graph(graph: nx.Graph) -> nx.Graph:
 def _build_domains(
     ligand: Ligand,
     heavy_graph: nx.Graph,
+    ring_edges: frozenset[tuple[int, int]] | set[tuple[int, int]] | None = None,
     include_rigid_single_bonds: bool = True,
     rotatable_bond_smarts: tuple[str, ...] = (),
 ) -> tuple[list[set[int]], dict[int, int], nx.Graph, dict[int, bool]]:
@@ -156,6 +158,8 @@ def _build_domains(
     Args:
         ligand: Parent ligand record used to identify rotatable bonds.
         heavy_graph: Heavy-atom-only molecular graph.
+        ring_edges: Optional precomputed ring-bond set (avoids a second
+            ``cycle_basis``). When omitted, computed from ``heavy_graph``.
         include_rigid_single_bonds: Whether to split rigid domains across
             amide-like acyclic single bonds in addition to the default set of
             acyclic single-bond torsions.
@@ -176,7 +180,9 @@ def _build_domains(
     )
     rigid_graph = heavy_graph.copy()
     rigid_graph.remove_edges_from([edge for edge in rotatable if rigid_graph.has_edge(*edge)])
-    ring_atoms = {atom for cycle in nx.cycle_basis(heavy_graph) for atom in cycle}
+    if ring_edges is None:
+        ring_edges = frozenset(ring_bond_set(heavy_graph))
+    ring_atoms = {atom for edge in ring_edges for atom in edge}
 
     domains = [set(component) for component in nx.connected_components(rigid_graph)]
     atom_to_domain: dict[int, int] = {}
@@ -382,33 +388,52 @@ def build_candidate_fragments(
     max_left = max(left_distances.values(), default=0)
     max_right = max(right_distances.values(), default=0)
 
-    candidates_by_id: dict[str, CandidateFragment] = {}
-    for left_depth in range(min_left, max_left + 1):
-        for right_depth in range(min_right, max_right + 1):
-            included_domains = {
-                domain_id
-                for domain_id, depth in left_distances.items()
-                if depth <= left_depth
-            }
-            included_domains.update(
-                domain_id
-                for domain_id, depth in right_distances.items()
-                if depth <= right_depth
+    # Cumulative shells: only keep depths that change the domain set so the
+    # left×right product does not rebuild identical fragments.
+    def _unique_shells(
+        distances: dict[int, int], min_depth: int, max_depth: int
+    ) -> list[tuple[int, frozenset[int]]]:
+        shells: list[tuple[int, frozenset[int]]] = []
+        seen: set[frozenset[int]] = set()
+        for depth in range(min_depth, max_depth + 1):
+            domain_set = frozenset(
+                domain_id for domain_id, d in distances.items() if d <= depth
             )
-            if len(included_domains) == len(domains):
+            if domain_set in seen:
                 continue
-            candidate = _candidate_from_domains(
-                ligand,
-                graph,
-                ring_edges,
-                domains,
-                atom_to_domain,
-                domain_has_ring,
-                included_domains,
-                torsion,
-                shell_level=left_depth + right_depth,
-            )
-            candidates_by_id.setdefault(candidate.candidate_id, candidate)
+            seen.add(domain_set)
+            shells.append((depth, domain_set))
+        return shells
+
+    left_shells = _unique_shells(left_distances, min_left, max_left)
+    right_shells = _unique_shells(right_distances, min_right, max_right)
+
+    # Keyed by included domain frozenset -> (min shell_level, domains)
+    domain_combos: dict[frozenset[int], int] = {}
+    for left_depth, left_set in left_shells:
+        for right_depth, right_set in right_shells:
+            included = left_set | right_set
+            if len(included) == len(domains):
+                continue
+            shell_level = left_depth + right_depth
+            prev = domain_combos.get(included)
+            if prev is None or shell_level < prev:
+                domain_combos[included] = shell_level
+
+    candidates_by_id: dict[str, CandidateFragment] = {}
+    for included_domains, shell_level in domain_combos.items():
+        candidate = _candidate_from_domains(
+            ligand,
+            graph,
+            ring_edges,
+            domains,
+            atom_to_domain,
+            domain_has_ring,
+            set(included_domains),
+            torsion,
+            shell_level=shell_level,
+        )
+        candidates_by_id.setdefault(candidate.candidate_id, candidate)
 
     full_candidate = _candidate_from_domains(
         ligand,

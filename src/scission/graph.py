@@ -105,6 +105,30 @@ def graph_distance_map(graph: nx.Graph) -> dict[int, dict[int, int]]:
     }
 
 
+def retained_distance_map(
+    ligand: Ligand,
+    retained_atoms: set[int],
+) -> dict[int, dict[int, int]]:
+    """All-pairs hop distances on the retained subgraph, cached by atom set.
+
+    Shell siblings often share the same retained atoms; caching by
+    ``frozenset(retained)`` avoids repeating BFS APSP for each candidate.
+    """
+
+    key = frozenset(retained_atoms)
+    cache = getattr(ligand, "_distance_maps", None)
+    if cache is None:
+        cache = {}
+        ligand._distance_maps = cache
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    graph = build_graph(ligand)
+    distances = graph_distance_map(graph.subgraph(retained_atoms))
+    cache[key] = distances
+    return distances
+
+
 def component_beyond_bond(graph: nx.Graph, retained: set[int], atom_in: int, atom_out: int) -> set[int]:
     """Collect the connected component reached by crossing a specific bond.
 

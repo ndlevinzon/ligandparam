@@ -116,6 +116,7 @@ class Ligand:
     _rotatable_bonds_cache: Any = field(default=None, init=False, repr=False, compare=False)
     _ring_edges: Any = field(default=None, init=False, repr=False, compare=False)
     _rdkit_mol: Any = field(default=None, init=False, repr=False, compare=False)
+    _distance_maps: Any = field(default=None, init=False, repr=False, compare=False)
 
     def atom(self, atom_index: int) -> Atom:
         """Return a parent atom record by its one-based index.
@@ -152,6 +153,7 @@ class Ligand:
         self._rotatable_bonds_cache = None
         self._ring_edges = None
         self._rdkit_mol = None
+        self._distance_maps = None
 
 
 @dataclass(frozen=True)

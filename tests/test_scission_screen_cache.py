@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from scission.graph import build_graph, graph_distance_map
+from scission.graph import build_graph
 from scission.models import (
     Atom,
     Bond,
@@ -87,7 +87,10 @@ def test_screen_candidate_builds_graph_once_and_distance_map_once():
     thresholds = ClashThresholds()
 
     with patch("scission.screen.build_graph", wraps=build_graph) as mock_build, patch(
-        "scission.screen.graph_distance_map", wraps=graph_distance_map
+        "scission.screen.retained_distance_map",
+        wraps=__import__(
+            "scission.graph", fromlist=["retained_distance_map"]
+        ).retained_distance_map,
     ) as mock_dist:
         result = screen_candidate(
             ligand, torsion, candidate, angle_step=60, thresholds=thresholds

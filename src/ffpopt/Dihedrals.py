@@ -1810,11 +1810,12 @@ def FindPuckers(s):
     """
     
     g = s.GetGraph()
+    # Closed paths from cycle basis; length 6 => 5 unique ring atoms + close.
     mincycs = g.FindMinCycles()
     keepcycs = []
     for c in mincycs:
         if len(c) == 6:
-            h = [ x for x in c[:-1] ]
+            h = [x for x in c[:-1]]
             keepcycs.append(h)
 
     rings = []

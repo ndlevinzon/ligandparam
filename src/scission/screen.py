@@ -7,7 +7,7 @@ import networkx as nx
 import numpy as np
 
 from .capping import bond_type_to_order, heavy_cap_bond_length
-from .graph import build_graph, graph_distance_map
+from .graph import build_graph, retained_distance_map
 from .models import CandidateFragment, ClashThresholds, Ligand, TorsionDefinition
 
 VDW_RADII = {
@@ -361,7 +361,7 @@ def screen_candidate(
     side_from_c = _descendants(graph, d, c, retained)
     side_from_b = _descendants(graph, a, b, retained)
     rotating_side = side_from_c if len(side_from_c) <= len(side_from_b) else side_from_b
-    distances = graph_distance_map(graph.subgraph(retained))
+    distances = retained_distance_map(ligand, retained)
     original = ligand.coordinates
     pivot1 = original[b]
     pivot2 = original[c]
@@ -454,6 +454,10 @@ def cap_site_scan_margin(
     the smallest margin between that cap atom and any retained heavy atom is
     returned.
 
+    Topology is fixed for the candidate; coordinates are rotated with the same
+    vectorized path as :func:`screen_candidate`. Cap placement still follows
+    :func:`cap_direction` each angle (neighbor geometry can rotate).
+
     Args:
         ligand: Parent ligand record.
         candidate: Candidate fragment being capped.
@@ -475,47 +479,78 @@ def cap_site_scan_margin(
     if not {a, b, c, d, retained_atom}.issubset(retained):
         return float("inf")
 
-    # Through-bond separation from the cap (one bond past the retained atom),
-    # measured within the fragment so distances do not route through removed atoms.
-    sub_distances = nx.single_source_shortest_path_length(graph.subgraph(retained), retained_atom)
+    distances = retained_distance_map(ligand, retained)
+    # Through-bond separation from the cap (one bond past the retained atom).
+    sub_distances = distances.get(retained_atom, {})
     retained_element = ligand.atom(retained_atom).element
     bond_length = heavy_cap_bond_length(retained_element, cap_element, 1)
 
     original = ligand.coordinates
+    retained_list = sorted(retained)
+    row_of = {idx: i for i, idx in enumerate(retained_list)}
+    base_coords = np.asarray([original[idx] for idx in retained_list], dtype=float)
+    attach_row = row_of[retained_atom]
+
+    partner_idxs: list[int] = []
+    allowed_list: list[float] = []
+    for atom_idx in retained_list:
+        element = ligand.atom(atom_idx).element
+        if element == "H":
+            continue
+        path_length = 1 + sub_distances.get(atom_idx, 99)
+        if path_length <= 2:
+            continue
+        scale = thresholds.path3_scale if path_length == 3 else thresholds.far_scale
+        allowed_list.append(
+            scale * (VDW_RADII.get(cap_element, 1.7) + VDW_RADII.get(element, 1.7))
+        )
+        partner_idxs.append(atom_idx)
+    partner_rows = np.asarray(
+        [row_of[idx] for idx in partner_idxs], dtype=np.intp
+    )
+    allowed = np.asarray(allowed_list, dtype=float)
+
     if candidate.cut_bonds:
         side_from_c = _descendants(graph, d, c, retained)
         side_from_b = _descendants(graph, a, b, retained)
         rotating_side = side_from_c if len(side_from_c) <= len(side_from_b) else side_from_b
         pivot1 = original[b]
         axis = original[c] - pivot1
+        if np.linalg.norm(axis) == 0:
+            return 0.0
         current = _dihedral_angle(original[a], original[b], original[c], original[d])
         angles = list(range(-180, 180, angle_step))
+        rotating_rows = np.asarray(
+            [row_of[idx] for idx in rotating_side if idx in row_of],
+            dtype=np.intp,
+        )
+        pivot = np.asarray(pivot1, dtype=float)
     else:
-        rotating_side = set()
-        pivot1 = original[b]
+        rotating_rows = np.asarray([], dtype=np.intp)
         axis = np.zeros(3)
         current = 0.0
         angles = [0]
+        pivot = np.zeros(3)
+
+    if partner_rows.size == 0:
+        return 0.0
 
     worst = float("inf")
     for target_angle in angles:
-        coords = {idx: original[idx].copy() for idx in retained}
-        if np.linalg.norm(axis) > 1.0e-8:
+        coords = base_coords.copy()
+        if rotating_rows.size and np.linalg.norm(axis) > 1.0e-8:
             delta = ((target_angle - current + 180.0) % 360.0) - 180.0
             rotation = _rotation_matrix(axis, math.radians(delta))
-            for idx in rotating_side:
-                coords[idx] = rotation @ (coords[idx] - pivot1) + pivot1
-        direction = cap_direction(graph, ligand, retained_atom, removed_atom, coords)
-        cap_pos = coords[retained_atom] + direction * bond_length
-        for atom_idx in retained:
-            element = ligand.atom(atom_idx).element
-            if element == "H":
-                continue
-            path_length = 1 + sub_distances.get(atom_idx, 99)
-            if path_length <= 2:
-                continue
-            scale = thresholds.path3_scale if path_length == 3 else thresholds.far_scale
-            allowed = scale * (VDW_RADII.get(cap_element, 1.7) + VDW_RADII.get(element, 1.7))
-            observed = float(np.linalg.norm(cap_pos - coords[atom_idx]))
-            worst = min(worst, observed - allowed)
+            shifted = coords[rotating_rows] - pivot
+            coords[rotating_rows] = (rotation @ shifted.T).T + pivot
+        # Neighbor dict for cap_direction (small; only attach neighborhood).
+        coord_map = {idx: coords[row_of[idx]] for idx in retained}
+        direction = cap_direction(
+            graph, ligand, retained_atom, removed_atom, coord_map
+        )
+        cap_pos = coords[attach_row] + direction * bond_length
+        delta = cap_pos - coords[partner_rows]
+        observed = np.linalg.norm(delta, axis=1)
+        margins = observed - allowed
+        worst = min(worst, float(np.min(margins)))
     return worst if worst != float("inf") else 0.0
