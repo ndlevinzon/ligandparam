@@ -23,6 +23,7 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 
 - Gaussian `call` uses unique submit scripts and env copies so concurrent jobs do not collide.
 - Windows-safe `ligandparam.utils` libc loading (no `ctypes.CDLL(None)` crash on import).
+- **Non-daemon fragment/bond pools** — `_make_nondaemon_spawn_pool` no longer subclasses `ctx.Pool` (a factory method on Python 3.8+ / 3.14); uses `multiprocessing.pool.Pool` with a module-level non-daemon spawn `Process` so nested wavefront pools work on CHPC.
 
 ---
 

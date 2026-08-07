@@ -178,6 +178,7 @@ class TestSplitFragmentNproc(unittest.TestCase):
         # Patch symbols used after the in-function scission import.
         import scission
         import scission.merge as scission_merge
+        from scission.models import FragmentConfig
 
         with patch(
             "ffpopt.Workflows._load_existing_fragments",
@@ -189,7 +190,7 @@ class TestSplitFragmentNproc(unittest.TestCase):
             "ffpopt.Workflows._make_nondaemon_spawn_pool",
             return_value=fake_pool,
         ) as make_pool, patch.object(
-            scission, "FragmentConfig"
+            scission, "FragmentConfig", FragmentConfig
         ), patch.object(
             scission, "InputBundle"
         ), patch.object(
@@ -220,6 +221,35 @@ class TestSplitFragmentNproc(unittest.TestCase):
         self.assertEqual(
             result["merged_frcmod"], str(Path("/tmp/merged.frcmod").resolve())
         )
+
+
+class TestNonDaemonSpawnPool(unittest.TestCase):
+    def test_pool_constructs_with_nondaemon_process(self):
+        from ffpopt.Workflows import (
+            _NonDaemonSpawnProcess,
+            _make_nondaemon_spawn_pool,
+        )
+
+        pool = _make_nondaemon_spawn_pool(2)
+        try:
+            self.assertIs(pool._ctx.Process, _NonDaemonSpawnProcess)
+            self.assertTrue(pool._pool)
+            for worker in pool._pool:
+                self.assertIsInstance(worker, _NonDaemonSpawnProcess)
+                self.assertFalse(worker.daemon)
+                worker.daemon = True
+                self.assertFalse(worker.daemon)
+        finally:
+            pool.close()
+            pool.join()
+
+    def test_ctx_pool_is_not_subclassable_method(self):
+        """Regression: ctx.Pool is a factory method (Python 3.8+), not a class."""
+        import multiprocessing as mp
+
+        ctx = mp.get_context("spawn")
+        self.assertTrue(callable(ctx.Pool))
+        self.assertEqual(type(ctx.Pool).__name__, "method")
 
 
 class TestBondScanPool(unittest.TestCase):

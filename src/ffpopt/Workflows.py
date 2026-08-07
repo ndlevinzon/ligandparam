@@ -1337,27 +1337,48 @@ def _split_fragment_nproc(nproc: int, n_fragments: int) -> tuple[int, int]:
     return n_frag_workers, n_wf
 
 
+# Spawn Process subclass must live at module scope so pool workers pickle.
+_SpawnProcessBase = __import__("multiprocessing").get_context("spawn").Process
+
+
+class _NonDaemonSpawnProcess(_SpawnProcessBase):
+    """Spawn process that ignores daemon=True (may create nested pools)."""
+
+    @property
+    def daemon(self):
+        return False
+
+    @daemon.setter
+    def daemon(self, value):
+        pass
+
+
+class _NonDaemonSpawnContext:
+    """Context wrapper so ``Pool`` uses :class:`_NonDaemonSpawnProcess`."""
+
+    def __init__(self):
+        import multiprocessing as mp
+
+        self._ctx = mp.get_context("spawn")
+        self.Process = _NonDaemonSpawnProcess
+
+    def __getattr__(self, name):
+        return getattr(self._ctx, name)
+
+
 def _make_nondaemon_spawn_pool(n_workers: int):
-    """Spawn ``Pool`` whose workers are non-daemon (may nest wavefront pools)."""
-    import multiprocessing as mp
+    """Spawn ``Pool`` whose workers are non-daemon (may nest wavefront pools).
 
-    ctx = mp.get_context("spawn")
+    ``multiprocessing.get_context(...).Pool`` is a factory method, not a class,
+    so it cannot be subclassed. Pass ``multiprocessing.pool.Pool`` a context
+    whose ``Process`` is :class:`_NonDaemonSpawnProcess` instead.
+    """
+    from multiprocessing.pool import Pool
 
-    class _NonDaemonProcess(ctx.Process):
-        # Pool defaults to daemon workers, which cannot create children.
-        @property
-        def daemon(self):
-            return False
-
-        @daemon.setter
-        def daemon(self, value):
-            pass
-
-    class _NonDaemonPool(ctx.Pool):
-        def Process(self, *args, **kwds):
-            return _NonDaemonProcess(*args, **kwds)
-
-    return _NonDaemonPool(processes=max(1, int(n_workers)))
+    return Pool(
+        processes=max(1, int(n_workers)),
+        context=_NonDaemonSpawnContext(),
+    )
 
 
 def _slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
