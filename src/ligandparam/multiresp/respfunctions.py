@@ -416,7 +416,7 @@ def ReadGauOutput(fname):
                 crds.append( float(data[i+1][1]) )
                 crds.append( float(data[i+1][2]) )
                 crds.append( float(data[i+1][3]) )
-    except:
+    except Exception as exc:
         print("Could not process gaussian file '%s'"%(fname))
         print("This is the archive:")
         for i,sec in enumerate(secs):
@@ -424,6 +424,9 @@ def ReadGauOutput(fname):
             for j,sub in enumerate(subs):
                 vals = sub.split(",")
                 print("%2i %2i %s"%(i,j,str(vals)))
+        raise ValueError(
+            f"Could not parse Gaussian archive in {fname!r}: {exc}"
+        ) from exc
     
     return atn,crds,charge,mult
 

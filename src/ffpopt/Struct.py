@@ -469,16 +469,40 @@ class Struct(object):
         None
         """
         self.data["energy"] = ene
-        try:
+        if hasattr(crds, "tolist"):
             self.data["positions"] = crds.tolist()
-        except:
+        else:
             self.data["positions"] = crds
         self.data["forces"] = None
         if frcs is not None:
-            try:
+            if hasattr(frcs, "tolist"):
                 self.data["forces"] = frcs.tolist()
-            except:
+            else:
                 self.data["forces"] = frcs
+
+    def clone_geometry(self, coords=None, ene=None, frcs=None):
+        """Return a topology-sharing clone with independent ``data`` / positions.
+
+        Shares immutable-ish topology lists (``elements``, ``bonds``, …) via a
+        shallow ``data`` dict copy. Clears graph / RDKit caches. Use this instead
+        of ``deepcopy`` when only energy / coordinates / forces change (wavefront
+        nodes, parm path overrides).
+        """
+        import copy
+
+        out = copy.copy(self)
+        out.data = dict(self.data)
+        if hasattr(out, "graph"):
+            out.graph = None
+        for attr in ("_rdkit_mol", "rdkit_mol"):
+            if hasattr(out, attr):
+                setattr(out, attr, None)
+        use_ene = out.data.get("energy") if ene is None else ene
+        use_crds = out.data.get("positions") if coords is None else coords
+        use_frc = out.data.get("forces") if frcs is None else frcs
+        if coords is not None or ene is not None or frcs is not None:
+            out.Update(use_ene, use_crds, use_frc)
+        return out
 
 
     def SaveCrds(self,fname_or_fh,fmt=None):
@@ -800,6 +824,19 @@ class ListOfStruct(object):
         self.structs = deepcopy(structs)
         self.args  = None
         self.calc  = None
+
+    @classmethod
+    def from_structs_shared(cls, structs, args=None):
+        """Build a ``ListOfStruct`` without deepcopying each ``Struct``.
+
+        Use when callers already own independent geometry clones (e.g. parm-path
+        overrides for dihedral deletion scans).
+        """
+        obj = cls.__new__(cls)
+        obj.structs = list(structs)
+        obj.args = args
+        obj.calc = None
+        return obj
 
         
     def __getstate__(self):

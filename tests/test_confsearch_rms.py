@@ -15,7 +15,7 @@ class TestConfSearchFastRmsThreshold(unittest.TestCase):
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("FFPOPT_CONFSEARCH_RMS_FAST_N", None)
-            self.assertEqual(_confsearch_fast_rms_threshold(), 100)
+            self.assertEqual(_confsearch_fast_rms_threshold(), 50)
 
     def test_env_override(self):
         from ffpopt.confsearch.ConfSearch import _confsearch_fast_rms_threshold

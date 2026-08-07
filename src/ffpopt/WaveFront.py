@@ -44,10 +44,20 @@ def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) ->
     _WORKER["template"] = copy.deepcopy(template_struct)
 
 
+def _clone_struct_geometry(struct, coords, ene=0.0, frcs=None):
+    """Prefer ``Struct.clone_geometry``; fall back to deepcopy for test doubles."""
+    clone = getattr(struct, "clone_geometry", None)
+    if callable(clone):
+        return clone(coords=coords, ene=ene, frcs=frcs)
+    out = copy.deepcopy(struct)
+    out.Update(ene, np.asarray(coords, dtype=float), frcs)
+    return out
+
+
 def _struct_from_coords(coords) -> Struct:
-    struct = copy.deepcopy(_WORKER["template"])
-    struct.Update(0.0, np.asarray(coords, dtype=float), None)
-    return struct
+    return _clone_struct_geometry(
+        _WORKER["template"], coords, ene=0.0, frcs=None
+    )
 
 
 def _run_node_job(job: dict) -> dict:
@@ -195,8 +205,9 @@ class WavefrontNode:
         self.opt_recovery = result.get("opt_recovery", self.opt_recovery)
         coords = result.get("coords")
         if coords is not None:
-            self.opt_geom = copy.deepcopy(self.struct)
-            self.opt_geom.Update(self.energy, coords, result.get("forces"))
+            self.opt_geom = _clone_struct_geometry(
+                self.struct, coords, ene=self.energy, frcs=result.get("forces")
+            )
             if self.opt_recovery:
                 tag = str(self.opt_recovery)
                 if tag in ("BFGS", "LBFGS", "FIRE") or tag.endswith("-soft"):

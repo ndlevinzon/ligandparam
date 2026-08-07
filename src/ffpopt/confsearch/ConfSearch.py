@@ -73,26 +73,23 @@ def ReadMolecule(fnameormol,quiet=False):
         mol = AddHs(mol)
         if not quiet:
             print("Success!")
-    except:
+    except Exception as exc_inchi:
         try:
             if not quiet:
-                print("...Failed")
+                print(f"...Failed ({type(exc_inchi).__name__}: {exc_inchi})")
                 print(f"Trying to interpret {fnameormol} as a smiles string...")
             params = Chem.SmilesParserParams()
             params.sanitize = False
             
             cansmi = Chem.CanonSmiles(fnameormol)
-            #mol = MolFromSmiles\
-            #    (cansmi, removeHs=False, sanitize=False,
-            #    treatWarningAsError=True)
             mol = Chem.MolFromSmiles(cansmi, params)
             mol = AddHs(mol)
             if not quiet:
                 print("Success!")
-        except:
+        except Exception as exc_smi:
             try:
                 if not quiet:
-                    print("...Failed")
+                    print(f"...Failed ({type(exc_smi).__name__}: {exc_smi})")
                     print(f"Reading {fnameormol} using parmed...")
                 pmol = parmed.load_file(fnameormol)
             
@@ -110,9 +107,9 @@ def ReadMolecule(fnameormol,quiet=False):
                 SanitizeMol(mol)
                 if not quiet:
                     print("Success!")
-            except:
+            except Exception as exc_parm:
                 if not quiet:
-                    print("...Failed")
+                    print(f"...Failed ({type(exc_parm).__name__}: {exc_parm})")
                     print(f"Reading {fnameormol} as json...")
                 from .. Struct import ListOfStruct
                 s = ListOfStruct.from_file(fnameormol)
@@ -127,15 +124,15 @@ def ReadMolecule(fnameormol,quiet=False):
 def _confsearch_fast_rms_threshold() -> int:
     """Conformer count at which Condensed RMS switches to the fast path.
 
-    ``FFPOPT_CONFSEARCH_RMS_FAST_N`` (default ``100``). Set to ``0`` to always
+    ``FFPOPT_CONFSEARCH_RMS_FAST_N`` (default ``50``). Set to ``0`` to always
     use legacy per-pair ``GetBestRMS``.
     """
     import os
 
     try:
-        return max(0, int(os.environ.get("FFPOPT_CONFSEARCH_RMS_FAST_N", "100")))
+        return max(0, int(os.environ.get("FFPOPT_CONFSEARCH_RMS_FAST_N", "50")))
     except ValueError:
-        return 100
+        return 50
 
 
 def _butina_rms_distances(mol, cids, *, quiet: bool = False):

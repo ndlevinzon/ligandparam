@@ -54,5 +54,6 @@ Module reference
    :undoc-members:
    :show-inheritance:
 
-Upstream docs and examples remain in ``ffpopt-main/``. See also
-``src/ffpopt/GLOSSARY.md`` and ``src/ffpopt/README.md``.
+Runtime package is ``src/ffpopt``. An optional ``ffpopt-main/`` checkout is
+upstream reference only. See also ``src/ffpopt/GLOSSARY.md`` and
+``src/ffpopt/README.md``.

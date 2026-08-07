@@ -30,4 +30,6 @@ re-exported from ``ligandparam.multiresp.parmhelper``.
 Not used by ``lig-dihed-correct`` (kept for standalone ffpopt CLIs): RespFit,
 cpefit, confsearch, DeltaPuckerFit, WaveFrontND, Json* utilities.
 
-See ``GLOSSARY.md`` and ``ffpopt-main/`` for models and examples.
+See ``GLOSSARY.md`` for models and terminology. Runtime code lives in this
+``src/ffpopt`` tree. The optional ``ffpopt-main/`` checkout (gitignored) is an
+upstream reference only — not required after ``pip install``.

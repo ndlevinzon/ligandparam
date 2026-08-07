@@ -194,18 +194,24 @@ class StageNormalizeCharge(AbstractStage):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 u = mda.Universe(self.in_mol2, format="mol2")
-            # TODO: verify behavior when net_charge is nonzero
             rounded_charges, total_charge, charge_difference = self.check_charge(u.atoms.charges)
 
             if not np.isclose(total_charge, self.net_charge, rtol=1e-10):
-                self.logger.info("Normalizing charges")
-                # TODO: verify behavior when |charge_difference| exceeds natoms * precision
+                self.logger.info(
+                    "Normalizing charges (net_charge=%s, rounded_sum=%s, diff=%s)",
+                    self.net_charge,
+                    total_charge,
+                    charge_difference,
+                )
                 new_charges = self.normalize(rounded_charges, charge_difference)
                 _, new_total, new_diff = self.check_charge(new_charges)
-                if np.isclose(new_total, self.net_charge, rtol=1e-10):
+                if np.isclose(new_total, self.net_charge, atol=max(self.precision, 1e-10)):
                     u.atoms.charges = new_charges
                 else:
-                    raise ValueError(f"Error: Charge normalization failed, new charge: {new_total}.")
+                    raise ValueError(
+                        f"Error: Charge normalization failed, new charge: {new_total} "
+                        f"(target {self.net_charge}, residual {new_diff})."
+                    )
             else:
                 self.logger.info("Charges are already normalized")
             if not dry_run:
@@ -229,24 +235,59 @@ class StageNormalizeCharge(AbstractStage):
         charges : np.ndarray
             Array of atomic charges.
         charge_difference : float
-            The charge difference to be corrected.
+            The charge difference to be corrected (``net_charge - sum(charges)``).
 
         Returns
         -------
         np.ndarray
             The normalized charges.
-        """
 
-        count = np.round(np.abs(charge_difference) / self.precision)
-        adjust = np.round(charge_difference / count, self.decimals)
+        Raises
+        ------
+        ValueError
+            If ``|charge_difference|`` cannot be expressed with the configured
+            precision, or exceeds what ``natoms`` discrete adjustments can fix.
+        """
+        charges = np.asarray(charges, dtype=float).copy()
+        if np.isclose(charge_difference, 0.0, atol=max(self.precision * 0.5, 1e-12)):
+            return charges
+
+        count = int(np.round(np.abs(charge_difference) / self.precision))
+        if count < 1:
+            # Difference below one precision quantum — leave as-is.
+            return charges
+
         natoms = len(charges)
-        # Choosing charges closest to zero.
-        sorted_indices = np.argsort(np.abs(charges))
-        # Flip the order to choose the largest charges first.
-        sorted_indices = sorted_indices[::-1]
-        for i in range(int(count)):
-            atom_idx = i % natoms
-            charges[sorted_indices[atom_idx]] += adjust
+        if natoms < 1:
+            raise ValueError("Cannot normalize charges on an empty molecule.")
+
+        # Cap to one full pass over atoms, then put any residual on the largest |q|.
+        n_adjust = min(count, natoms)
+        adjust = np.round(charge_difference / count, self.decimals)
+        if np.isclose(adjust, 0.0) and not np.isclose(charge_difference, 0.0):
+            raise ValueError(
+                f"Charge difference {charge_difference} is too small to adjust "
+                f"at precision={self.precision} / decimals={self.decimals}."
+            )
+
+        sorted_indices = np.argsort(np.abs(charges))[::-1]
+        for i in range(n_adjust):
+            charges[sorted_indices[i]] += adjust
+
+        # If |diff| needed more than natoms steps, fold the leftover onto atom 0 of sort.
+        leftover_steps = count - n_adjust
+        if leftover_steps > 0:
+            charges[sorted_indices[0]] += np.round(
+                adjust * leftover_steps, self.decimals
+            )
+            self.logger.warning(
+                "Charge delta |%s| exceeds natoms*precision (%s*%s); "
+                "applied residual on the largest-|q| atom.",
+                charge_difference,
+                natoms,
+                self.precision,
+            )
+
         return charges
 
     def check_charge(self, charges):

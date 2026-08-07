@@ -67,5 +67,5 @@ Module reference
    :undoc-members:
    :show-inheritance:
 
-Upstream docs and examples remain in ``scission-main/``. See
-``src/scission/README.md``.
+Runtime package is ``src/scission``. An optional ``scission-main/`` checkout is
+upstream reference only. See ``src/scission/README.md``.

@@ -32,7 +32,8 @@ Code originally written by York Lab (Rutgers) and compiled by Cheatham Lab (UofU
 ### Python
 
 - Python **≥ 3.10**
-- Core dependencies are installed with the package (`numpy`, `MDAnalysis`, `ParmEd`, `RDKit`, …)
+- Core dependencies are installed with the package (`numpy<2` for ParmEd compatibility, `MDAnalysis`, `ParmEd`, `RDKit`, …)
+- Optional ML potentials (`mace`, `ani*`, `aimnet2*`) need `pip install ligandparam[ml-potentials]` (or a manual install of those stacks)
 
 ### External tools
 
@@ -171,7 +172,8 @@ lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -m
 lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10
 ```
 
-Use ``--model qdpi2`` (or ``mace``, …) if that stack is installed; ``xtb``
+Use ``--model qdpi2`` (or ``mace``, …) if that stack is installed
+(``ligandparam[ml-potentials]`` for MACE / TorchANI / AIMNet); ``xtb``
 only needs ``tblite``.
 
 Fragment alone with scission (without fitting):

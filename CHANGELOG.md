@@ -12,16 +12,17 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 
 ### Performance
 
-- **ConfSearch RMS matrix** — for large ensembles (`nconf >= 100`, override with `FFPOPT_CONFSEARCH_RMS_FAST_N`), align once to the first conformer and use vectorized heavy-atom RMS for Butina clustering instead of per-pair `GetBestRMS`. Set the env var to `0` to force the legacy path.
+- **ConfSearch RMS matrix** — for ensembles at/above `FFPOPT_CONFSEARCH_RMS_FAST_N` (default **50**), align once to the first conformer and use vectorized heavy-atom RMS for Butina clustering instead of per-pair `GetBestRMS`. Set the env var to `0` to force the legacy path.
 - **Parallel multi-ESP rotations** (`StageGaussianRotation`) — process pool over orientation `.com` jobs; `nproc` is a total core budget (`n_workers × %NProc ≤ nproc`). Per-job bash scripts and `GAUSS_SCRDIR`.
 - **Parallel per-bond scans** — `run_dihed_twist_workflow` pools HL / reference / iteration wavefront scans across bonds (`n_bond_workers × wf_nproc`).
-- **Parallel RespFit / CpeFit conformer ESP** — independent per-conformer ab initio ESP (and cosmo/harmonic sets) in a process pool; charge / CPE fit stays serial.
+- **Parallel RespFit / CpeFit conformer ESP** — independent per-conformer ab initio ESP (and cosmo/harmonic sets) in a process pool; charge / CPE fit stays serial (O(natoms) assembly).
 - **Parallel scission screen / writes** — pool over torsions for candidate screening and over fragments for `parmchk2`/`tleap`; `FragmentConfig.nproc` / CLI `--nproc` / fragmented-workflow `nproc`.
 - **Parallel fragments** — `run_fragmented_dihed_twist_workflow` splits `-n` / `nproc` across a non-daemon fragment pool and nested wavefront workers.
 - **Vectorized `cap_site_scan_margin`** — NumPy rotate + margin vs retained heavies (same pattern as `screen_candidate`).
 - **Cached retained APSP** — `retained_distance_map` keyed by `frozenset(retained)` for shell-sibling reuse.
 - **Unique domain-shell enum** — skip left/right depths that do not change the domain set; build each fragment once.
 - **`FindMinCycles` via cycle basis** — NetworkX `cycle_basis` instead of DFS min-path search (sugar puckers).
+- **Cheaper wavefront / dihedral clones** — `Struct.clone_geometry` + `ListOfStruct.from_structs_shared` replace full deepcopies for coord updates and parm-path overrides; `MultiDihedFcn` uses shallow prim copies.
 
 ### Reliability
 
@@ -33,6 +34,9 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - **WaveFront soft-opt gates** — soft-maxiter / ASE `*-soft` geometries may fill the profile but cannot displace hard-converged minima and do not spawn neighbors; tags survive slim IPC.
 - **WaveFront failure reporting** — precheck exceptions are `precheck_error` (not all `clash_precheck`); summary lists failed / soft-accepted counts instead of always saying “successfully.”
 - **Constraints f-string** — nested quotes fixed so `ffpopt.Constraints` imports on Python 3.10–3.11.
+- **Noisier fallbacks** — calculator device / SANDER load / ConfSearch mol parse / Gaussian I/O report the underlying exception instead of bare `except:`.
+- **Charge normalization** — safe for nonzero `net_charge`, tiny diffs, and `|diff| > natoms*precision` (residual on largest-|q| atom); asserts final sum.
+- **Docs / packaging** — READMEs clarify `src/` is runtime SoT vs optional `*-main/` trees; `numpy<2` documented; optional `ligandparam[ml-potentials]` for MACE / TorchANI.
 
 ---
 

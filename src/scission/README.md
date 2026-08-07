@@ -17,4 +17,6 @@ lig-scission fragment -d CHA3 -r CHA --label chaps
 Requires AmberTools (``tleap``) on ``PATH`` for ``parm7``/``rst7`` writing.
 RDKit is already a ligandparam dependency and is used for SMARTS / drawings.
 
-Upstream docs and examples remain in ``scission-main/``.
+Runtime package is this ``src/scission`` tree. An optional ``scission-main/``
+checkout (gitignored) may exist as an upstream reference for historical docs /
+examples and is not required after ``pip install``.

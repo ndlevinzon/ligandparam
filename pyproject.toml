@@ -50,6 +50,14 @@ ml = [
   "deepmd-kit",
 ]
 
+# Optional ffpopt ML potentials (--model mace / ani* / aimnet2*).
+# Packages and versions vary by CUDA / torch stack; install matching
+# wheels for your environment after this meta-extra if needed.
+ml-potentials = [
+  "mace-torch",
+  "torchani",
+]
+
 dihed = [
   # Fragmented twist uses integrated src/ffpopt + src/scission.
   # Still needs AmberTools on PATH and an HL model stack (e.g. xtb/tblite).
@@ -73,6 +81,7 @@ docs = [
 all = [
   "ligandparam[tblite]",
   "ligandparam[ml]",
+  "ligandparam[ml-potentials]",
   "ligandparam[dihed]",
   "ligandparam[misc]",
   "ligandparam[sage]",

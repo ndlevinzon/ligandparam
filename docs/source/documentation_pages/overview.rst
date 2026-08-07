@@ -21,9 +21,10 @@ As of version **1.4**, the installable tree under ``src/`` is:
 
 ``ligandparam`` owns parameterization (charges, typing, baseline
 ``frcmod`` / ``lib``). ``ffpopt`` + ``scission`` own optional **post-hoc**
-torsion correction on that Amber triplet. Upstream source trees
-``ffpopt-main/`` and ``scission-main/`` remain for docs and examples; the
-runtime packages used after ``pip install`` are the ones under ``src/``.
+torsion correction on that Amber triplet. After ``pip install``, only the
+packages under ``src/`` are used. Optional ``ffpopt-main/`` / ``scission-main/``
+checkouts (often gitignored) are upstream reference trees only — not a runtime
+dependency.
 
 Multi-orientation RESP
 ----------------------

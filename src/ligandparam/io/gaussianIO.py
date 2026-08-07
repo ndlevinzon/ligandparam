@@ -238,8 +238,8 @@ class GaussianReader:
                     coords.append([float(data[i+1][2]), float(data[i+1][3]), float(data[i+1][4])])
                 else:
                     coords.append([float(data[i+1][1]), float(data[i+1][2]), float(data[i+1][3])])
-        except:
-            raise IOError("Error reading log file")
+        except Exception as exc:
+            raise IOError(f"Error reading log file: {exc}") from exc
         
         print(f"Found {len(atn)} atoms.")
 

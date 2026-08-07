@@ -430,21 +430,29 @@ def GetStandardOptions(args):
    """
 
    geometric_kwargs = {}
-   try:
-      geometric_kwargs = { "coordsys": str(args.geometric_coordsys),
-                           "maxiter": str(args.geometric_maxiter),
-                           "converge": str(args.geometric_converge),
-                           "enforce": str(args.geometric_enforce) }
-   except:
-      pass
+   if all(
+      hasattr(args, name)
+      for name in (
+         "geometric_coordsys",
+         "geometric_maxiter",
+         "geometric_converge",
+         "geometric_enforce",
+      )
+   ):
+      geometric_kwargs = {
+         "coordsys": str(args.geometric_coordsys),
+         "maxiter": str(args.geometric_maxiter),
+         "converge": str(args.geometric_converge),
+         "enforce": str(args.geometric_enforce),
+      }
 
    
    psi4_kwargs = {}
-   try:
-      psi4_kwargs = { "memory": str(args.psi4_memory),
-                      "num_threads": str(args.psi4_num_threads) }
-   except:
-      pass
+   if hasattr(args, "psi4_memory") and hasattr(args, "psi4_num_threads"):
+      psi4_kwargs = {
+         "memory": str(args.psi4_memory),
+         "num_threads": str(args.psi4_num_threads),
+      }
 
 
    extra_args = { "geometric": geometric_kwargs,

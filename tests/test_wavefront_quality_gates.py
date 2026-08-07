@@ -146,6 +146,17 @@ class TestSoftOptEvaluate(unittest.TestCase):
         self.assertIs(run.min_nodes[30.0], hard)
         self.assertTrue(hard.active)
 
+    def test_soft_opt_cannot_spawn_neighbors(self):
+        run = _make_run()
+        run.delta = 10
+        run.workdir = "."
+        run.los = None
+        run.con = _FakeCon()
+        soft = _make_node(30.0, -1.0, soft=True, recovery="soft-maxiter")
+        run._evaluate_node(soft)
+        with self.assertRaises(ValueError):
+            run.spawn_neighbors(soft)
+
 
 class TestPrintSummary(unittest.TestCase):
     def test_reports_failures_not_always_success(self):

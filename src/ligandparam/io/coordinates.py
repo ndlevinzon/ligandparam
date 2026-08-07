@@ -58,7 +58,13 @@ class Coordinates:
         """
         try:
             return [atom.element for atom in self.u.atoms]
-        except:
+        except (AttributeError, TypeError, ValueError) as exc:
+            import warnings
+            warnings.warn(
+                f"Could not read atom.element ({type(exc).__name__}: {exc}); "
+                "guessing elements from atom names",
+                stacklevel=2,
+            )
             return self._get_elements_from_topology()
 
     def _get_elements_from_topology(self):

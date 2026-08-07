@@ -152,7 +152,7 @@ class GenCalculator(Calculator):
             try:
                 import torch
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            except:
+            except ImportError:
                 device = 'cpu'
             
             self.calc = MACECalculator(model_paths=model,device=device)
@@ -196,26 +196,41 @@ class GenCalculator(Calculator):
             try:
                 import torch
                 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            except:
+            except ImportError:
                 device = 'cpu'
             
             if self.mode == "ANI1CCX":
                 try:
                     model = torchani.models.ANI1ccx().to(device)
                     self.calc = torchani.ase.Calculator(model)
-                except:
+                except Exception as exc:
+                    import sys
+                    sys.stderr.write(
+                        f"[ffpopt] ANI1CCX device path failed "
+                        f"({type(exc).__name__}: {exc}); using .ase() fallback\n"
+                    )
                     self.calc = torchani.models.ANI1ccx().ase()
             elif self.mode == "ANI1X":
                 try:
                     model = torchani.models.ANI1x().to(device)
                     self.calc = torchani.ase.Calculator(model)
-                except:
+                except Exception as exc:
+                    import sys
+                    sys.stderr.write(
+                        f"[ffpopt] ANI1X device path failed "
+                        f"({type(exc).__name__}: {exc}); using .ase() fallback\n"
+                    )
                     self.calc = torchani.models.ANI1x().ase()
             elif self.mode == "ANI2X":
                 try:
                     model = torchani.models.ANI2x().to(device)
                     self.calc = torchani.ase.Calculator(model)
-                except:
+                except Exception as exc:
+                    import sys
+                    sys.stderr.write(
+                        f"[ffpopt] ANI2X device path failed "
+                        f"({type(exc).__name__}: {exc}); using .ase() fallback\n"
+                    )
                     self.calc = torchani.models.ANI2x().ase()
             else:
                 raise Exception(f"Expected ani1x, ani2x, ani1ccx, or ani1xbb but received {self.mode}")
@@ -561,7 +576,12 @@ class SanderCalculator(Calculator):
         else:
             try:
                 self.mol = load_file(parm,xyz=crd)
-            except:
+            except Exception as exc:
+                import sys
+                sys.stderr.write(
+                    f"[ffpopt] SANDER load_file({parm!r}, xyz={crd!r}) failed "
+                    f"({type(exc).__name__}: {exc}); trying ReadMol2\n"
+                )
                 from .. Reader import ReadMol2
                 self.mol = ReadMol2(parm)
 
@@ -612,7 +632,12 @@ class SanderSQMCalculator(Calculator):
         else:
             try:
                 self.mol = load_file(parm,xyz=crd)
-            except:
+            except Exception as exc:
+                import sys
+                sys.stderr.write(
+                    f"[ffpopt] SANDER load_file({parm!r}, xyz={crd!r}) failed "
+                    f"({type(exc).__name__}: {exc}); trying ReadMol2\n"
+                )
                 from .. Reader import ReadMol2
                 self.mol = ReadMol2(parm)
 
@@ -846,7 +871,12 @@ class WrappedORBCalculator(Calculator):
                     device=mydevice,
                     precision=self.ftype
                 )
-            except:
+            except Exception as exc:
+                import sys
+                sys.stderr.write(
+                    f"[ffpopt] ORB model init on {mydevice!r} failed "
+                    f"({type(exc).__name__}: {exc}); retrying on cpu\n"
+                )
                 mydevice="cpu"
                 orbff,atoms_adapter = ORB_PRETRAINED_MODELS[self.model](
                     device=mydevice,

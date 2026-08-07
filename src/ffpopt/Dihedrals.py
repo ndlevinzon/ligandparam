@@ -187,8 +187,8 @@ class MultiDihedFcn(object):
     """
     def __init__(self,idxs,prims):
         import copy
-        self.idxs = copy.deepcopy(idxs)
-        self.prims = copy.deepcopy(prims)
+        self.idxs = list(idxs)
+        self.prims = [copy.copy(p) for p in prims]
 
     def CptEne(self,ang):
         """ Calculate the total energy contribution of the multi-term dihedral function for a given angle.
@@ -504,12 +504,12 @@ def EnergyScansWithoutDihedrals(mol,list_of_los,cons):
     from . AmberParm import CopyParm
     from . Dihedrals import DeleteDihedrals
     from . Dihedrals import GetMultiDihedFcnFromIdxs
+    from . Struct import ListOfStruct
     from tempfile import mkstemp
-    import os,copy
+    import os
     
     p = CopyParm(mol)
-    llos = copy.deepcopy(list_of_los)
-    
+
     DeleteDihedrals(p,[ x.idxs for x in cons ])
 
     fd,path = mkstemp(dir=".",prefix="tmp.",suffix=".parm7")
@@ -518,10 +518,18 @@ def EnergyScansWithoutDihedrals(mol,list_of_los,cons):
     #fh = os.fdopen(fd,"w")
     #p.save("tmp.parm7",overwrite=True)
     p.save(path,overwrite=True,format="amber")
-    for los in llos:
-        los.calc = None
-        for s in los:
+    # Topology-sharing clones with an overridden parm path (avoid full los deepcopy).
+    llos = []
+    for los in list_of_los:
+        structs = [
+            s.clone_geometry(coords=s.data["positions"], ene=s.data.get("energy"), frcs=s.data.get("forces"))
+            for s in los
+        ]
+        for s in structs:
             s.data["parm"] = path
+        nlos = ListOfStruct.from_structs_shared(structs, args=getattr(los, "args", None))
+        nlos.calc = None
+        llos.append(nlos)
     
     #calc = stdargs.MakeCalc(parm=path)
     
