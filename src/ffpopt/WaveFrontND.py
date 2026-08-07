@@ -280,7 +280,10 @@ class WavefrontNode(object):
         if "active" in result:
             self.active = bool(result["active"])
         self.soft_opt = bool(result.get("soft_opt", False))
-        self.opt_recovery = result.get("opt_recovery", self.opt_recovery)
+        if "opt_recovery" in result:
+            self.opt_recovery = result["opt_recovery"]
+        else:
+            self.opt_recovery = getattr(self, "opt_recovery", None)
         coords = result.get("coords")
         if coords is not None:
             self.opt_geom = _clone_struct_geometry(
@@ -293,6 +296,13 @@ class WavefrontNode(object):
                 else:
                     self.opt_geom.data["geometric_recovery"] = tag
 
+    def _ensure_soft_opt_attrs(self) -> None:
+        """Fill soft-opt fields missing from older node pickles / checkpoints."""
+        if not hasattr(self, "soft_opt"):
+            self.soft_opt = False
+        if not hasattr(self, "opt_recovery"):
+            self.opt_recovery = None
+
     def replace_with_pickle(self) -> None:
         """Replace node fields from a sidecar pickle if present (restores ``los``)."""
         filename = Path(f"{self.node_pkl}")
@@ -304,6 +314,7 @@ class WavefrontNode(object):
                 self.__dict__.update(loaded_node.__dict__)
             if self.los is None:
                 self.los = los
+            self._ensure_soft_opt_attrs()
             print("Node data replaced with pickle data.")
 
     def calculate(self) -> None:

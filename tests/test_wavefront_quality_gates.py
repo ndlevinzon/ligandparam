@@ -210,6 +210,35 @@ class TestIpcSoftTags(unittest.TestCase):
                 node.opt_geom.data.get("geometric_recovery"), "soft-maxiter"
             )
 
+    def test_apply_result_tolerates_missing_opt_recovery_attr(self):
+        """Old node pickles predate ``opt_recovery``; dict.get default must not crash."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            node = WavefrontNode(
+                los=SimpleNamespace(),
+                struct=_FakeStruct(),
+                con=_FakeCon(),
+                angle=40.0,
+                level=1,
+                node_id=2,
+                workdir=td,
+            )
+            del node.opt_recovery
+            node.apply_result(
+                {
+                    "energy": -1.0,
+                    "forces": np.zeros((3, 3)),
+                    "coords": np.zeros((3, 3)),
+                    "complete": True,
+                    "error": None,
+                    "active": True,
+                    "soft_opt": False,
+                    "opt_recovery": "BFGS",
+                }
+            )
+            self.assertEqual(node.opt_recovery, "BFGS")
+
 
 if __name__ == "__main__":
     unittest.main()

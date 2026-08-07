@@ -202,7 +202,10 @@ class WavefrontNode:
         if "active" in result:
             self.active = bool(result["active"])
         self.soft_opt = bool(result.get("soft_opt", False))
-        self.opt_recovery = result.get("opt_recovery", self.opt_recovery)
+        if "opt_recovery" in result:
+            self.opt_recovery = result["opt_recovery"]
+        else:
+            self.opt_recovery = getattr(self, "opt_recovery", None)
         coords = result.get("coords")
         if coords is not None:
             self.opt_geom = _clone_struct_geometry(
@@ -215,6 +218,13 @@ class WavefrontNode:
                 else:
                     self.opt_geom.data["geometric_recovery"] = tag
 
+    def _ensure_soft_opt_attrs(self) -> None:
+        """Fill soft-opt fields missing from older node pickles / checkpoints."""
+        if not hasattr(self, "soft_opt"):
+            self.soft_opt = False
+        if not hasattr(self, "opt_recovery"):
+            self.opt_recovery = None
+
     def replace_with_pickle(self) -> None:
         """Replace node fields from a sidecar pickle if present (restores ``los``)."""
         filename = Path(f"{self.node_pkl}")
@@ -226,6 +236,7 @@ class WavefrontNode:
                 self.__dict__.update(loaded_node.__dict__)
             if self.los is None:
                 self.los = los
+            self._ensure_soft_opt_attrs()
             print("Node data replaced with pickle data.")
 
     def calculate(self) -> None:
@@ -488,6 +499,11 @@ class Wavefront:
         for level in self.levels:
             for node in level.nodes:
                 node.los = los
+                if hasattr(node, "_ensure_soft_opt_attrs"):
+                    node._ensure_soft_opt_attrs()
+        for node in getattr(self, "_resume_queue", None) or []:
+            if hasattr(node, "_ensure_soft_opt_attrs"):
+                node._ensure_soft_opt_attrs()
         print("Number of times restarted:", len(self.restarted))
         self.restarted.append(prev_options)
         
@@ -1409,6 +1425,13 @@ def wavefront_loader(filename: str) -> Wavefront:
     """
     with open(filename, 'rb') as f:
         wavefront = pickle.load(f)
+    for level in getattr(wavefront, "levels", []) or []:
+        for node in getattr(level, "nodes", []) or []:
+            if hasattr(node, "_ensure_soft_opt_attrs"):
+                node._ensure_soft_opt_attrs()
+    for node in getattr(wavefront, "_resume_queue", None) or []:
+        if hasattr(node, "_ensure_soft_opt_attrs"):
+            node._ensure_soft_opt_attrs()
     print("Wavefront object loaded from", filename)
     return wavefront
 
