@@ -125,7 +125,101 @@ class TestFragmentedWorkflowNoChdir(unittest.TestCase):
     def test_source_has_no_os_chdir_call(self):
         src = inspect.getsource(run_fragmented_dihed_twist_workflow)
         self.assertNotIn("os.chdir(", src)
-        self.assertIn("workdir=frag_dir", src)
+        from ffpopt.Workflows import _run_fragment_twist_job
+
+        job_src = inspect.getsource(_run_fragment_twist_job)
+        self.assertIn("workdir=frag_dir", job_src)
+
+
+class TestSplitFragmentNproc(unittest.TestCase):
+    def test_single_fragment_gets_all_cores(self):
+        from ffpopt.Workflows import _split_fragment_nproc
+
+        self.assertEqual(_split_fragment_nproc(16, 1), (1, 16))
+
+    def test_many_fragments_prefer_fragment_workers(self):
+        from ffpopt.Workflows import _split_fragment_nproc
+
+        self.assertEqual(_split_fragment_nproc(16, 4), (4, 4))
+        self.assertEqual(_split_fragment_nproc(16, 20), (16, 1))
+        self.assertEqual(_split_fragment_nproc(3, 2), (2, 1))
+
+    def test_pool_used_for_multiple_fragments(self):
+        frag_a = MagicMock()
+        frag_a.fragment_id = "fragment_1"
+        frag_a.fit_torsions = [{"fragment_rotatable_bond": [1, 2]}]
+        frag_a.manifest_path = Path("/tmp/f1/manifest.json")
+        frag_a.parm7_path = Path("/tmp/f1/fragment.parm7")
+        frag_a.rst7_path = Path("/tmp/f1/fragment.rst7")
+
+        frag_b = MagicMock()
+        frag_b.fragment_id = "fragment_2"
+        frag_b.fit_torsions = [{"fragment_rotatable_bond": [2, 3]}]
+        frag_b.manifest_path = Path("/tmp/f2/manifest.json")
+        frag_b.parm7_path = Path("/tmp/f2/fragment.parm7")
+        frag_b.rst7_path = Path("/tmp/f2/fragment.rst7")
+
+        fake_pool = MagicMock()
+        fake_pool.map.return_value = [
+            {
+                "fragment_id": "fragment_1",
+                "dir": "/tmp/f1",
+                "bonds": [(0, 1)],
+                "twist_result": {},
+            },
+            {
+                "fragment_id": "fragment_2",
+                "dir": "/tmp/f2",
+                "bonds": [(1, 2)],
+                "twist_result": {},
+            },
+        ]
+
+        # Patch symbols used after the in-function scission import.
+        import scission
+        import scission.merge as scission_merge
+
+        with patch(
+            "ffpopt.Workflows._load_existing_fragments",
+            return_value=[frag_a, frag_b],
+        ), patch(
+            "ffpopt.Workflows._parent_paths_from_args",
+            return_value=(Path("/m.mol2"), Path("/m.lib"), Path("/m.frcmod")),
+        ), patch(
+            "ffpopt.Workflows._make_nondaemon_spawn_pool",
+            return_value=fake_pool,
+        ) as make_pool, patch.object(
+            scission, "FragmentConfig"
+        ), patch.object(
+            scission, "InputBundle"
+        ), patch.object(
+            scission, "fragment_ligand"
+        ), patch.object(
+            scission_merge,
+            "merge_fragment_frcmods",
+            return_value={"ok": True},
+        ):
+            result = run_fragmented_dihed_twist_workflow(
+                mol2="/m.mol2",
+                lib="/m.lib",
+                frcmod="/m.frcmod",
+                out_dir="/tmp/out",
+                merged_frcmod="/tmp/merged.frcmod",
+                nproc=8,
+                skip_existing=True,
+            )
+
+        make_pool.assert_called_once_with(2)
+        fake_pool.map.assert_called_once()
+        jobs = fake_pool.map.call_args.args[1]
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(jobs[0]["wf_nproc"], 4)
+        self.assertEqual(jobs[1]["wf_nproc"], 4)
+        fake_pool.close.assert_called_once()
+        fake_pool.join.assert_called_once()
+        self.assertEqual(
+            result["merged_frcmod"], str(Path("/tmp/merged.frcmod").resolve())
+        )
 
 
 if __name__ == "__main__":

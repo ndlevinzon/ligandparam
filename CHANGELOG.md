@@ -74,6 +74,7 @@ Wiring the merged packages into ligandparam recipes/CLI and making HPC runs fini
 
 #### Reliability & HPC fixes (post-merge hardening)
 
+- **Parallel fragments** — `run_fragmented_dihed_twist_workflow` splits `-n` / `nproc` across a non-daemon fragment pool and nested wavefront workers (`n_frag_workers × wf_nproc`).
 - Run fit scripts and ffpopt bin tools with **`sys.executable`** (bare `python3` on CHPC often lacks ParmEd).
 - **In-process apply** of GenDihedFit `itNN.py` (`runpy`) so apply uses the same env and logs progress to the parent `.out`.
 - **Absolute paths in `*.fit.json`** (script, frcmod, HL/LL profiles) so GenDihedFit cannot write to the wrong cwd.

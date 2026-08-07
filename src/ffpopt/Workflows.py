@@ -23,7 +23,9 @@ When to use which entry point
 Requirements and caveats
 ------------------------
 * Call either workflow from an ``if __name__ == "__main__":`` guard. The
-  wavefront scan uses ``spawn``-mode multiprocessing.
+  wavefront scan uses ``spawn``-mode multiprocessing; the fragmented
+  workflow may also spawn a non-daemon fragment pool that nests wavefront
+  workers (``nproc`` is split across fragments and per-fragment wavefront).
 * Fragmented mode requires the integrated ``scission`` package
   (``src/scission``) and AmberTools (``tleap``) on ``PATH``.
 * High-level ``model`` values (e.g. ``qdpi2``, ``mace``) need the matching
@@ -1218,6 +1220,114 @@ def _prepare_fragment_input(
     return str(start_json)
 
 
+def _split_fragment_nproc(nproc: int, n_fragments: int) -> tuple[int, int]:
+    """Split ``nproc`` across fragment workers and per-fragment wavefront.
+
+    Returns
+    -------
+    tuple of int
+        ``(n_fragment_workers, n_wavefront_per_fragment)`` such that
+        ``n_fragment_workers * n_wavefront_per_fragment <= nproc`` (when
+        ``n_fragments > 1``), preferring to use as many fragment workers as
+        possible up to ``min(nproc, n_fragments)``.
+    """
+    nproc = max(1, int(nproc))
+    n_fragments = max(1, int(n_fragments))
+    if n_fragments == 1:
+        return 1, nproc
+    n_frag_workers = min(nproc, n_fragments)
+    n_wf = max(1, nproc // n_frag_workers)
+    return n_frag_workers, n_wf
+
+
+def _make_nondaemon_spawn_pool(n_workers: int):
+    """Spawn ``Pool`` whose workers are non-daemon (may nest wavefront pools)."""
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+
+    class _NonDaemonProcess(ctx.Process):
+        # Pool defaults to daemon workers, which cannot create children.
+        @property
+        def daemon(self):
+            return False
+
+        @daemon.setter
+        def daemon(self, value):
+            pass
+
+    class _NonDaemonPool(ctx.Pool):
+        def Process(self, *args, **kwds):
+            return _NonDaemonProcess(*args, **kwds)
+
+    return _NonDaemonPool(processes=max(1, int(n_workers)))
+
+
+def _slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
+    """Drop heavy ``wf_run`` objects so fragment-pool IPC stays picklable."""
+    if twist_result is None:
+        return None
+    slim = {k: v for k, v in twist_result.items() if k != "scans"}
+    scans_out = []
+    for item in twist_result.get("scans", []) or []:
+        if isinstance(item, tuple) and len(item) == 3:
+            prefix, idxs, payload = item
+            if isinstance(payload, dict):
+                payload = {k: v for k, v in payload.items() if k != "wf_run"}
+            scans_out.append((prefix, idxs, payload))
+        else:
+            scans_out.append(item)
+    slim["scans"] = scans_out
+    return slim
+
+
+def _run_fragment_twist_job(job: dict) -> dict:
+    """Worker entry: prepare + twist one fragment (picklable job dict)."""
+    from types import SimpleNamespace
+
+    frag_dir = Path(job["frag_dir"]).resolve()
+    fragment = SimpleNamespace(
+        fragment_id=job["fragment_id"],
+        manifest_path=frag_dir / "manifest.json",
+        parm7_path=job["parm7"],
+        rst7_path=job["rst7"],
+        fit_torsions=job["fit_torsions"],
+    )
+    log = _LOG
+    bonds = [tuple(b) for b in job["bonds"]]
+    structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
+    log.info(
+        "[frag-twist] %s: %s bond(s) %s -> running twist in %s (wf_nproc=%s)",
+        fragment.fragment_id,
+        len(bonds),
+        bonds,
+        frag_dir,
+        job["wf_nproc"],
+    )
+    start_json = _prepare_fragment_input(
+        fragment,
+        skip_existing=job["skip_existing"],
+        logger=log,
+        workdir=frag_dir,
+    )
+    twist_kwargs = dict(job["twist_kwargs"])
+    twist_kwargs["nproc"] = int(job["wf_nproc"])
+    twist_kwargs.pop("logger", None)
+    twist_result = run_dihed_twist_workflow(
+        inp=start_json,
+        bond=bonds,
+        structure_images=structure_images or None,
+        workdir=frag_dir,
+        **twist_kwargs,
+    )
+    return {
+        "fragment_id": fragment.fragment_id,
+        "dir": str(frag_dir),
+        "bonds": bonds,
+        "twist_result": _slim_twist_result(twist_result),
+    }
+
+
 def run_fragmented_dihed_twist_workflow(
     *,
     mol2: PathLike | None = None,
@@ -1298,7 +1408,11 @@ def run_fragmented_dihed_twist_workflow(
     nlmaxiter : int, optional
         Forwarded to ``ffpopt-GenDihedFit.py``. Default is 300.
     nproc : int, optional
-        Wavefront parallelism per fragment. Default is 1.
+        Total CPU workers for the fragmented workflow. Split across
+        fragment-level jobs and per-fragment wavefront pools:
+        ``n_fragment_workers = min(nproc, n_runnable_fragments)`` and
+        ``wf_nproc = max(1, nproc // n_fragment_workers)`` (all ``nproc``
+        go to wavefront when only one fragment runs). Default is 1.
     wf_starting_nodes : int, optional
         Wavefront starting nodes. Default is 4.
     wf_num_conformers : int, optional
@@ -1408,7 +1522,8 @@ def run_fragmented_dihed_twist_workflow(
         maxiter=maxiter,
         bytype=True,
         nlmaxiter=nlmaxiter,
-        nproc=nproc,
+        # nproc filled per job after fragment/wavefront split below.
+        nproc=1,
         wf_starting_nodes=wf_starting_nodes,
         wf_num_conformers=wf_num_conformers,
         wf_max_levels=wf_max_levels,
@@ -1419,56 +1534,58 @@ def run_fragmented_dihed_twist_workflow(
         convergence_mode=convergence_mode,
         plot_comparisons=plot_comparisons,
         **standard_kwargs,
-        logger=log,
     )
 
-    per_fragment_results = []
-    fragment_dirs_for_merge = []
-
+    runnable = []
     for fragment in fragments_iter:
         if not fragment.fit_torsions:
             log.info("[frag-twist] %s: no fit_torsions - skipping", fragment.fragment_id)
             continue
-        # scission fit_torsions use 1-based fragment indices; ffpopt wants 0-based.
         bonds = bonds0_from_scission_fit_torsions(fragment.fit_torsions)
         frag_dir = _as_path(fragment.manifest_path).parent.resolve()
-        structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
-        log.info(
-            "[frag-twist] %s: %s bond(s) %s -> running twist in %s",
-            fragment.fragment_id,
-            len(bonds),
-            bonds,
-            frag_dir,
-        )
-
-        start_json = _prepare_fragment_input(
-            fragment,
-            skip_existing=skip_existing,
-            logger=log,
-            workdir=frag_dir,
-        )
-        twist_result = run_dihed_twist_workflow(
-            inp=start_json,
-            bond=bonds,
-            structure_images=structure_images or None,
-            workdir=frag_dir,
-            **twist_kwargs,
-        )
-
-        per_fragment_results.append(
+        runnable.append(
             {
                 "fragment_id": fragment.fragment_id,
-                "dir": str(frag_dir),
-                "bonds": bonds,
-                "twist_result": twist_result,
+                "frag_dir": str(frag_dir),
+                "parm7": str(_as_path(fragment.parm7_path).resolve()),
+                "rst7": str(_as_path(fragment.rst7_path).resolve()),
+                "fit_torsions": fragment.fit_torsions,
+                "bonds": [list(b) for b in bonds],
+                "skip_existing": skip_existing,
+                "twist_kwargs": twist_kwargs,
             }
         )
-        fragment_dirs_for_merge.append(frag_dir)
 
-    if not fragment_dirs_for_merge:
+    if not runnable:
         raise RuntimeError(
             "no fragments had fittable torsions - nothing to merge"
         )
+
+    n_frag_workers, n_wf = _split_fragment_nproc(nproc, len(runnable))
+    for job in runnable:
+        job["wf_nproc"] = n_wf
+
+    log.info(
+        "[frag-twist] parallel plan: %s fragment(s), nproc=%s -> "
+        "%s fragment worker(s) x wf_nproc=%s",
+        len(runnable),
+        nproc,
+        n_frag_workers,
+        n_wf,
+    )
+
+    if n_frag_workers == 1:
+        per_fragment_results = [_run_fragment_twist_job(job) for job in runnable]
+    else:
+        pool = _make_nondaemon_spawn_pool(n_frag_workers)
+        try:
+            # map preserves runnable order
+            per_fragment_results = pool.map(_run_fragment_twist_job, runnable)
+        finally:
+            pool.close()
+            pool.join()
+
+    fragment_dirs_for_merge = [Path(r["dir"]) for r in per_fragment_results]
 
     log.info(
         "[frag-twist] merging %s fragment frcmod(s) -> %s",
