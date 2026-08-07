@@ -754,7 +754,7 @@ def to_primitive_restraints(cons,k=1):
         elif c['type'] == 'dihedral':
             rs.append( DihedRestraint(k,c['indices'],c['value'] ) )
         else:
-            raise Exception(f"Unknown constraint type {c["type"]}")
+            raise Exception(f"Unknown constraint type {c['type']}")
     return RestraintList( rs )
 
 

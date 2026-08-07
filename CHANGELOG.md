@@ -29,6 +29,10 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - Windows-safe `ligandparam.utils` libc loading (no `ctypes.CDLL(None)` crash on import).
 - **Non-daemon fragment/bond pools** — `_make_nondaemon_spawn_pool` no longer subclasses `ctx.Pool` (a factory method on Python 3.8+ / 3.14); uses `multiprocessing.pool.Pool` with a module-level non-daemon spawn `Process` so nested wavefront pools work on CHPC.
 - **Robust GeomOpt recovery** — on geomeTRIC `GeomOptNotConvergedError`, restart from the last `_optim.xyz` frame with a ladder: `GAU_LOOSE` + more iterations, alternate `dlc`/`hdlc` coordsys, then soft `converge maxiter`. ASE fallback tries BFGS → LBFGS → FIRE and soft-accepts near-converged `fmax`. Disable ladder with `FFPOPT_GEOMOPT_ROBUST=0`; tune soft ASE with `FFPOPT_ASE_LOOSE_FMAX`.
+- **`--geometric-opt` help** — corrected to match code (flag prefers geomeTRIC; default ASE-first).
+- **WaveFront soft-opt gates** — soft-maxiter / ASE `*-soft` geometries may fill the profile but cannot displace hard-converged minima and do not spawn neighbors; tags survive slim IPC.
+- **WaveFront failure reporting** — precheck exceptions are `precheck_error` (not all `clash_precheck`); summary lists failed / soft-accepted counts instead of always saying “successfully.”
+- **Constraints f-string** — nested quotes fixed so `ffpopt.Constraints` imports on Python 3.10–3.11.
 
 ---
 

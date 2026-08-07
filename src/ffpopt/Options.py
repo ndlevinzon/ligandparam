@@ -21,7 +21,9 @@ def AddGeomOptOptions(parser):
    
    parser.add_argument \
       ("--geometric-opt",
-       help="If present, then use the BFGS optimizer in ASE rather than geometric-optimize",
+       help="If present, prefer geomeTRIC for geometry optimization "
+            "(falls back to ASE BFGS/LBFGS/FIRE on failure). "
+            "Without this flag, ASE is tried first.",
        action='store_true')
 
    parser.add_argument \

@@ -10,7 +10,7 @@ import numpy as np
 from typing import Generator, Optional
 from pathlib import Path
 
-from . GeomOpt import GeomOpt, bare_potential_energy
+from . GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
 from . Constraints import Constraint
 from . Struct import ListOfStruct, Struct
 
@@ -21,7 +21,19 @@ _WORKER: dict = {}
 
 def _clear_los_calc(los: ListOfStruct) -> None:
     """Drop live calculators so workers rebuild (and cache) in-process."""
-    los.clear_runtime_caches()
+    clearer = getattr(los, "clear_runtime_caches", None)
+    if callable(clearer):
+        clearer()
+        return
+    calc = getattr(los, "calc", None)
+    if calc is not None:
+        try:
+            calc.reset()
+        except Exception:
+            pass
+        los.calc = None
+    if hasattr(los, "_ffpopt_calc_cache"):
+        los._ffpopt_calc_cache = None
 
 
 def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) -> None:
@@ -118,6 +130,8 @@ class WavefrontNode:
         )
         self.complete = False
         self.error = None
+        self.soft_opt = False
+        self.opt_recovery = None
 
     @classmethod
     def from_job(cls, job: dict, los: ListOfStruct, con: Constraint) -> "WavefrontNode":
@@ -164,6 +178,8 @@ class WavefrontNode:
             "complete": self.complete,
             "error": self.error,
             "active": self.active,
+            "soft_opt": self.soft_opt,
+            "opt_recovery": self.opt_recovery,
         }
 
     def apply_result(self, result: dict) -> None:
@@ -175,10 +191,18 @@ class WavefrontNode:
         self.error = result.get("error", self.error)
         if "active" in result:
             self.active = bool(result["active"])
+        self.soft_opt = bool(result.get("soft_opt", False))
+        self.opt_recovery = result.get("opt_recovery", self.opt_recovery)
         coords = result.get("coords")
         if coords is not None:
             self.opt_geom = copy.deepcopy(self.struct)
             self.opt_geom.Update(self.energy, coords, result.get("forces"))
+            if self.opt_recovery:
+                tag = str(self.opt_recovery)
+                if tag in ("BFGS", "LBFGS", "FIRE") or tag.endswith("-soft"):
+                    self.opt_geom.data["ase_opt_recovery"] = tag
+                else:
+                    self.opt_geom.data["geometric_recovery"] = tag
 
     def replace_with_pickle(self) -> None:
         """Replace node fields from a sidecar pickle if present (restores ``los``)."""
@@ -197,11 +221,19 @@ class WavefrontNode:
         """Calculate the energy of the atoms."""
         if not self.complete:
             self.constraints[0].value = self.angle
-            if not self._precheck_geometry():
-                self._mark_failed("clash_precheck")
+            precheck_err = self._precheck_geometry()
+            if precheck_err is not None:
+                self._mark_failed(precheck_err)
                 return
             try:
                 self.opt_geom = GeomOpt(self.los, self.struct, constraints=self.constraints)
+                self.opt_recovery = opt_recovery_label(self.opt_geom)
+                self.soft_opt = is_soft_opt_recovery(self.opt_geom)
+                if self.soft_opt:
+                    print(
+                        f"Node {self.node_id} soft-accepted opt "
+                        f"(recovery={self.opt_recovery}); will not spawn neighbors"
+                    )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
                 self._write_checkpoint()
@@ -239,8 +271,12 @@ class WavefrontNode:
         print(f"Node {self.node_id} failed at angle {self.angle}: {msg}")
         self._write_checkpoint()
 
-    def _precheck_geometry(self, min_dist: float = 0.8) -> bool:
-        """Return False if constraints produce a severe clash (nonbonded < min_dist)."""
+    def _precheck_geometry(self, min_dist: float = 0.8) -> Optional[str]:
+        """Return a failure reason, or ``None`` if the geometry looks usable.
+
+        Distinguishes real clashes from precheck exceptions (imports, constraint
+        apply failures, …) so failure reports are not all labeled as clashes.
+        """
         try:
             from ffpopt.Constraints import FillConstraints, ApplyConstraints, has_nonbonded_clash
             myatoms = self.struct.GetASEAtoms()
@@ -251,11 +287,11 @@ class WavefrontNode:
             )
             if clashed:
                 print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Å (< {min_dist} Å)")
-                return False
+                return "clash_precheck"
         except Exception as e:
             print(f"Precheck failed due to error: {e}")
-            return False
-        return True
+            return f"precheck_error: {e}"
+        return None
 
 class WavefrontLevel:
     """ This class represents a level in the wavefront algorithm, containing multiple nodes. 
@@ -1002,6 +1038,10 @@ class Wavefront:
         energies are stored in eV, so the threshold is converted to eV before
         the comparison.
 
+        Soft-accepted optimizations (``soft-maxiter`` / ASE ``*-soft``) may fill
+        or improve soft minima for the energy profile, but never displace a
+        hard-converged minimum and never spawn neighbors.
+
         Parameters
         ----------
         node : WavefrontNode
@@ -1019,8 +1059,58 @@ class Wavefront:
             print(f"Angle {node.angle} is inactive due to failed optimization.")
             node.active = False
             return
+
+        soft = bool(getattr(node, "soft_opt", False))
+        if not soft and node.opt_geom is not None:
+            soft = is_soft_opt_recovery(node.opt_geom)
+            node.soft_opt = soft
+
+        existing_soft = False
+        if node.angle in self.min_nodes:
+            prev = self.min_nodes[node.angle]
+            existing_soft = bool(getattr(prev, "soft_opt", False))
+            if not existing_soft:
+                existing_soft = is_soft_opt_recovery(
+                    self.min_structures.get(node.angle)
+                )
+
+        if soft:
+            if node.angle not in self.min_energies:
+                print(
+                    f"New angle (soft-opt): {node.angle}, Energy: {node.energy} "
+                    f"(recovery={getattr(node, 'opt_recovery', None)}; no spawn)"
+                )
+                self.min_energies[node.angle] = node.energy
+                self.min_structures[node.angle] = node.opt_geom
+                self.min_nodes[node.angle] = node
+            elif existing_soft and node.energy < self.min_energies[node.angle]:
+                print(
+                    f"Updating soft-opt angle: {node.angle}, "
+                    f"Old Energy: {self.min_energies[node.angle]}, "
+                    f"New Energy: {node.energy} (no spawn)"
+                )
+                self.min_energies[node.angle] = node.energy
+                self.min_structures[node.angle] = node.opt_geom
+                self.min_nodes[node.angle] = node
+            else:
+                print(
+                    f"Angle {node.angle} soft-opt demoted "
+                    f"(recovery={getattr(node, 'opt_recovery', None)}); "
+                    f"not replacing hard-converged / lower soft minimum."
+                )
+            node.active = False
+            return
+
         if node.angle not in self.min_energies:
             print(f"New angle detected: {node.angle}, Energy: {node.energy}")
+            self.min_energies[node.angle] = node.energy
+            self.min_structures[node.angle] = node.opt_geom
+            self.min_nodes[node.angle] = node
+        elif existing_soft:
+            print(
+                f"Replacing soft-opt angle {node.angle} with hard-converged "
+                f"Energy: {node.energy} (was {self.min_energies[node.angle]})"
+            )
             self.min_energies[node.angle] = node.energy
             self.min_structures[node.angle] = node.opt_geom
             self.min_nodes[node.angle] = node
@@ -1122,11 +1212,42 @@ class Wavefront:
         print("Number of Nodes per Level:")
         for i, level in enumerate(self.levels):
             print(f"Level {i+1}: {len(level.nodes)} nodes")
-        print("Total Nodes: ", sum(len(level.nodes) for level in self.levels))
-        print("Average number of nodes per level: ",
-              sum(len(level.nodes) for level in self.levels) / len(self.levels))
-        
-        print("Wavefront calculation completed successfully.")
+        total = sum(len(level.nodes) for level in self.levels)
+        print("Total Nodes: ", total)
+        if self.levels:
+            print(
+                "Average number of nodes per level: ",
+                total / len(self.levels),
+            )
+
+        failed = []
+        soft = []
+        for level in self.levels:
+            for node in level.nodes:
+                if getattr(node, "error", None):
+                    failed.append(node)
+                elif getattr(node, "soft_opt", False):
+                    soft.append(node)
+                elif node.energy is None or not np.isfinite(node.energy):
+                    failed.append(node)
+
+        print(f"Failed nodes: {len(failed)}")
+        if failed:
+            for node in failed[:20]:
+                print(
+                    f"  angle={node.angle} id={node.node_id} "
+                    f"error={getattr(node, 'error', None)}"
+                )
+            if len(failed) > 20:
+                print(f"  ... and {len(failed) - 20} more")
+        print(f"Soft-accepted nodes (no spawn): {len(soft)}")
+        if failed:
+            print(
+                f"Wavefront calculation finished with {len(failed)} failed "
+                f"node(s)."
+            )
+        else:
+            print("Wavefront calculation completed successfully.")
     
     
 
