@@ -1752,10 +1752,16 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
     for idfcn, dfcn in enumerate(dfcns):
         allmasks = [ [ ":%s@%s"%("{rname}",p.atoms[idx].name)
                        for idx in dfcn.idxs ] ]
+        idxs_label = "-".join(str(i) for i in dfcn.idxs)
 
         for masks in allmasks:
             mstr = ",".join(["f\"%s\""%(mask) for mask in masks])
-            fh.write(f"print(\"[fit-apply]   {idfcn+1}/{n_ops} delete+add {mstr}\", flush=True)\n")
+            # Do not embed mstr in the print string — it contains f\"...\" and
+            # would produce a SyntaxError in the generated script.
+            fh.write(
+                f"print(\"[fit-apply]   {idfcn+1}/{n_ops} delete+add "
+                f"idxs={idxs_label}\", flush=True)\n"
+            )
             fh.write(f"deleteDihedral(p,{mstr}).execute()\n")
             for prim in dfcn.prims:
                 fh.write(f"addDihedral(p,{mstr},{prim.fc},{prim.per},{prim.phase},scee,scnb).execute()\n")
