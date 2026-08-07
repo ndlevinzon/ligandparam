@@ -55,6 +55,7 @@ Targeted wall-time and I/O reductions for HL wavefront scans (especially `--mode
 
 - Faster **ESP / EOF** parsing (`ReadGauEsp` substring gates + token parse; compiled regex; `GaussianReader.check_complete` reads a short tail for `Normal termination`).
 - **Parallel multi-ESP rotations** (`StageGaussianRotation`) — process pool over orientation `.com` jobs; `nproc` is a total core budget so `n_workers × %NProc ≤ nproc` (e.g. 28 SO(3) jobs on 28 cores → 28×`%NProc=1`). Per-job bash scripts and `GAUSS_SCRDIR` avoid shared-scratch collisions; completed logs are skipped unless `force_gaussian_rerun`.
+- **Parallel RespFit / CpeFit conformer ESP** — independent per-conformer ab initio ESP (and cosmo/harmonic ESP sets) run in a process pool with `--psi4-num-threads` as a total core budget (`n_workers × threads`); charge / CPE fit stays serial. Per-job `PSI_SCRATCH` / `GAUSS_SCRDIR` under `tmp/esp_<basename>`.
 
 #### Misc I/O
 

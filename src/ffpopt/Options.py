@@ -96,7 +96,8 @@ def AddModelOptions(parser):
 
    parser.add_argument \
        ("--psi4-num-threads",
-        help="The number of threads sent to the psi4 calculator. Default: 4",
+        help="Total CPU-core budget for ab initio ESP (split across concurrent "
+             "conformers). Also used for Gaussian %%nproc. Default: 4",
         default=4,
         type=int)
 

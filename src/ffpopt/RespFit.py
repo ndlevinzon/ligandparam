@@ -339,8 +339,9 @@ def RunRespFit(*,
         tmpq = np.array(los[0].data["charges"],copy=True)
         newq = m.clean_loc_charges(tmpq)
     else:
-        for conf in confs:
-            conf.RunAbInitioEspIfNeeded(scfopts)
+        from ffpopt.cpefit.parallel_esp import run_abinitio_esp_conformers
+
+        run_abinitio_esp_conformers(confs, scfopts)
         if args.respf:
             newq = m.RunRespF(args.inp)
         else:
@@ -390,10 +391,14 @@ def RunRespFit(*,
 
     if args.scosmo > 0:
 
-        for conf in confs:
-            print("MakeCosmoAndSurfaceHarmonics",conf.GetBasename(),conf.name,conf.pertid)
-            conf.MakeCosmoAndSurfaceHarmonics\
-                (0,newq,scfopts,onlypos=True)
+        from ffpopt.cpefit.parallel_esp import (
+            run_abinitio_esp_conformers,
+            run_cosmo_harmonics_conformers,
+        )
+
+        run_cosmo_harmonics_conformers(
+            confs, 0, newq, scfopts, onlypos=True
+        )
             
         print("build cosmo_confs")
         
@@ -418,8 +423,7 @@ def RunRespFit(*,
         newparams.opt_zetascl  = False
 
 
-        for conf in mccosmo.mols[0].conformers:
-            conf.RunAbInitioEspIfNeeded(scfopts)
+        run_abinitio_esp_conformers(mccosmo.mols[0].conformers, scfopts)
 
         if args.respf:
             solvq = mccosmo.mols[0].RunRespF(args.inp)

@@ -96,7 +96,8 @@ if __name__ == "__main__":
          type=int,
          required=False,
          default=4,
-         help="Number of CPU cores. Default: 4. Despite the name, this is also used for Gaussian calculations.")
+         help="Total CPU-core budget for ab initio ESP (split across concurrent "
+              "conformers). Despite the name, this is also used for Gaussian. Default: 4.")
 
     parser.add_argument \
         ("--psi4-memory",
@@ -229,9 +230,14 @@ if __name__ == "__main__":
 
     oldq = params.q[ m.paridxs ]
 
+    from ffpopt.cpefit.parallel_esp import (
+        run_abinitio_esp_conformers,
+        run_cosmo_harmonics_conformers,
+    )
+
     for conf in confs:
         print(len(conf.espsurf.elems),len(conf.extsurf.elems))
-        conf.RunAbInitioEspIfNeeded(scfopts)
+    run_abinitio_esp_conformers(confs, scfopts)
 
     mc.OptimizeFixedCharge(params)
     gasq = params.q[ m.paridxs ]
@@ -247,9 +253,7 @@ if __name__ == "__main__":
     #mol.save( args.out, overwrite=True )
 
 
-    for conf in confs:
-        conf.MakeCosmoAndSurfaceHarmonics\
-            (args.ext_lmax,newq,scfopts)
+    run_cosmo_harmonics_conformers(confs, args.ext_lmax, newq, scfopts)
 
     refhs = np.array(m.refhardness,copy=True)
     mc.OptimizeHardness(params,args.opt_zetascl)
