@@ -28,37 +28,79 @@ logger = logging.getLogger("ligandparam.gaussian")
 _CALCFC_MAX_ATOMS = 50
 
 
+def _orientation_id_from_paths(in_com: str | Path, out_log: str | Path) -> str:
+    """Stable board id: ``q012`` or ``0.00_30.00_0.00`` from ``*_rot_<id>.*``."""
+    stem = Path(in_com).stem
+    marker = "_rot_"
+    if marker in stem:
+        return stem.split(marker, 1)[1]
+    return Path(out_log).stem
+
+
 def _run_gaussian_rotation_job(payload: dict) -> dict:
     """Run one rotation ESP job (spawn-pool worker; must be picklable)."""
+    from ffpopt.progress_board import JobProgressStore
+
     cwd = Path(payload["cwd"])
     in_com = payload["in_com"]
     out_log = payload["out_log"]
     force = bool(payload.get("force", False))
     dry_run = bool(payload.get("dry_run", False))
     log_path = cwd / out_log
+    job_id = payload.get("job_id") or _orientation_id_from_paths(in_com, out_log)
+    store = None
+    status_path = payload.get("status_path")
+    if status_path:
+        store = JobProgressStore(
+            status_path,
+            collection_key="orientations",
+            id_header="Angle",
+            title="Gaussian orientation ESP — live status",
+        )
+
+    def _set(**kwargs):
+        if store is not None:
+            store.update(job_id, **kwargs)
 
     if not force and GaussianReader(log_path).check_complete():
-        return {"in_com": in_com, "status": "skipped"}
+        _set(status="skipped", stage="finished", detail=f"already complete · {out_log}")
+        return {"in_com": in_com, "status": "skipped", "job_id": job_id}
 
-    gau = Gaussian(
-        cwd=cwd,
-        gaussian_root=payload.get("gaussian_root", ""),
-        gauss_exedir=payload.get("gauss_exedir", ""),
-        gaussian_binary=payload.get("gaussian_binary", "g16"),
-        gaussian_scratch=payload.get("gaussian_scratch", ""),
-        logger=logging.getLogger("ligandparam.gaussian.worker"),
+    _set(
+        status="running",
+        stage="gaussian",
+        detail=f"{out_log} · %NProc={payload.get('job_nproc', '?')}",
+        log_path=str(log_path),
     )
-    stem = Path(in_com).stem
-    gau.call(
-        inp_pipe=in_com,
-        out_pipe=out_log,
-        dry_run=dry_run,
-        script_name=f"_gau_{stem}.sh",
-        scratch=str(cwd / "tmp" / f"scratch_{stem}"),
-    )
-    if not dry_run and not GaussianReader(log_path).check_complete():
-        raise RuntimeError(f"Gaussian did not complete normally: {log_path}")
-    return {"in_com": in_com, "status": "ok"}
+    try:
+        gau = Gaussian(
+            cwd=cwd,
+            gaussian_root=payload.get("gaussian_root", ""),
+            gauss_exedir=payload.get("gauss_exedir", ""),
+            gaussian_binary=payload.get("gaussian_binary", "g16"),
+            gaussian_scratch=payload.get("gaussian_scratch", ""),
+            logger=logging.getLogger("ligandparam.gaussian.worker"),
+        )
+        stem = Path(in_com).stem
+        gau.call(
+            inp_pipe=in_com,
+            out_pipe=out_log,
+            dry_run=dry_run,
+            script_name=f"_gau_{stem}.sh",
+            scratch=str(cwd / "tmp" / f"scratch_{stem}"),
+        )
+        if not dry_run and not GaussianReader(log_path).check_complete():
+            raise RuntimeError(f"Gaussian did not complete normally: {log_path}")
+        _set(status="done", stage="finished", detail=f"ok · {out_log}")
+        return {"in_com": in_com, "status": "ok", "job_id": job_id}
+    except Exception as exc:
+        _set(
+            status="failed",
+            stage="failed",
+            detail=type(exc).__name__,
+            error=str(exc)[:200],
+        )
+        raise
 
 
 def _gaussian_opt_keyword(n_atoms: int) -> str:
@@ -722,6 +764,8 @@ class StageGaussianRotation(AbstractStage):
         """
         import multiprocessing as mp
 
+        from ffpopt.progress_board import JobBoardWatcher, JobProgressStore
+
         # Prefer self. so subclasses / tests can override or patch setup.
         self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         n_orients = self._n_orientation_count()
@@ -734,19 +778,49 @@ class StageGaussianRotation(AbstractStage):
         )
         self.setup(self.out_gaussian_label)
 
+        status_path = self.gaussian_cwd / ".rot_progress.json"
+        board_path = self.gaussian_cwd / "ROT_STATUS.txt"
+        store = JobProgressStore(
+            status_path,
+            collection_key="orientations",
+            id_header="Angle",
+            title="Gaussian orientation ESP — live status",
+            empty_hint="no orientations registered yet",
+            detail_hint_label="Per-orientation Gaussian logs",
+        )
+
         pending = []
         for in_com, out_log in zip(self.in_coms, self.out_logs):
-            if (
+            job_id = _orientation_id_from_paths(in_com, out_log)
+            already_done = (
                 not self.force_gaussian_rerun
                 and GaussianReader(out_log).check_complete()
-            ):
+            )
+            if already_done:
+                store.register(
+                    job_id,
+                    status="skipped",
+                    stage="finished",
+                    detail=f"already complete · {out_log.name}",
+                    log_path=str(out_log),
+                )
                 self.logger.info(f"Skipping complete {out_log.name}")
                 continue
+            store.register(
+                job_id,
+                status="queued",
+                stage="queued",
+                detail=f"{out_log.name} · %NProc={job_nproc}",
+                log_path=str(out_log),
+            )
             pending.append(
                 {
                     "cwd": str(self.gaussian_cwd),
                     "in_com": in_com.name,
                     "out_log": out_log.name,
+                    "job_id": job_id,
+                    "status_path": str(status_path),
+                    "job_nproc": int(job_nproc),
                     "force": bool(self.force_gaussian_rerun),
                     "dry_run": bool(dry_run),
                     "gaussian_root": self.gaussian_root,
@@ -758,25 +832,38 @@ class StageGaussianRotation(AbstractStage):
 
         total = len(self.in_coms)
         finished = total - len(pending)
-        if finished:
-            self._print_status(finished, total)
+        self.logger.info(
+            f"Gaussian rotation status board: {board_path} "
+            f"({finished} already complete, {len(pending)} pending)"
+        )
+        watcher = JobBoardWatcher(
+            store,
+            board_path=board_path,
+            logger=self.logger,
+            interval_sec=5.0,
+            log_root_hint=str(self.gaussian_cwd / "*_rot_*.log"),
+            thread_name="rot-progress-board",
+        )
+        watcher.start()
+        try:
+            if not pending:
+                return
 
-        if not pending:
-            return
+            workers = min(n_workers, len(pending))
+            if dry_run or workers <= 1:
+                for i, job in enumerate(pending):
+                    _run_gaussian_rotation_job(job)
+                    self._print_status(finished + i + 1, total)
+                return
 
-        workers = min(n_workers, len(pending))
-        if dry_run or workers <= 1:
-            for i, job in enumerate(pending):
-                _run_gaussian_rotation_job(job)
-                self._print_status(finished + i + 1, total)
-            return
-
-        ctx = mp.get_context("spawn")
-        with ctx.Pool(processes=workers) as pool:
-            for i, _result in enumerate(
-                pool.imap_unordered(_run_gaussian_rotation_job, pending)
-            ):
-                self._print_status(finished + i + 1, total)
+            ctx = mp.get_context("spawn")
+            with ctx.Pool(processes=workers) as pool:
+                for i, _result in enumerate(
+                    pool.imap_unordered(_run_gaussian_rotation_job, pending)
+                ):
+                    self._print_status(finished + i + 1, total)
+        finally:
+            watcher.stop()
 
         return
 
