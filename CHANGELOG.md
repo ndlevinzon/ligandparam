@@ -2,9 +2,27 @@
 
 All notable changes to **ligandparam** are documented here.
 
-This entry covers work from the **ffpopt / scission merge** through the subsequent performance and integration hardening that shipped as **v1.4.0** (and follow-on commits on `main`). Items are ordered by priority within each release section: package merge first, then performance, then integration / reliability.
-
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+---
+
+## [1.4.1] — 2026-08-07
+
+Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
+
+### Performance
+
+- **ConfSearch RMS matrix** — for large ensembles (`nconf >= 100`, override with `FFPOPT_CONFSEARCH_RMS_FAST_N`), align once to the first conformer and use vectorized heavy-atom RMS for Butina clustering instead of per-pair `GetBestRMS`. Set the env var to `0` to force the legacy path.
+- **Parallel multi-ESP rotations** (`StageGaussianRotation`) — process pool over orientation `.com` jobs; `nproc` is a total core budget (`n_workers × %NProc ≤ nproc`). Per-job bash scripts and `GAUSS_SCRDIR`.
+- **Parallel per-bond scans** — `run_dihed_twist_workflow` pools HL / reference / iteration wavefront scans across bonds (`n_bond_workers × wf_nproc`).
+- **Parallel RespFit / CpeFit conformer ESP** — independent per-conformer ab initio ESP (and cosmo/harmonic sets) in a process pool; charge / CPE fit stays serial.
+- **Parallel scission screen / writes** — pool over torsions for candidate screening and over fragments for `parmchk2`/`tleap`; `FragmentConfig.nproc` / CLI `--nproc` / fragmented-workflow `nproc`.
+- **Parallel fragments** — `run_fragmented_dihed_twist_workflow` splits `-n` / `nproc` across a non-daemon fragment pool and nested wavefront workers.
+
+### Reliability
+
+- Gaussian `call` uses unique submit scripts and env copies so concurrent jobs do not collide.
+- Windows-safe `ligandparam.utils` libc loading (no `ctypes.CDLL(None)` crash on import).
 
 ---
 
@@ -46,7 +64,6 @@ Targeted wall-time and I/O reductions for HL wavefront scans (especially `--mode
 #### Scission / RDKit / graphs
 
 - **Vectorized `screen_candidate`** (numpy rotate + heavy–heavy clash); skip unused cap builds on the hot path.
-- **Parallel scission screen / writes** — pool over torsions for candidate screening (process pool) and over selected fragments for `parmchk2`/`tleap` (thread pool); `FragmentConfig.nproc` / CLI `--nproc` / fragmented-workflow `nproc` set the worker budget. Selection stays serial.
 - **Hoisted fragmentation topology** + caches for rotatable bonds / ring edges on `Ligand`.
 - **Cached RDKit mol** and process-wide compiled SMARTS for central bonds.
 - **Faster `RotateMask` / graph bipartition** (`ComponentBeyondBond`) without defensive `deepcopy(GetGraph())` on every call.
@@ -55,8 +72,6 @@ Targeted wall-time and I/O reductions for HL wavefront scans (especially `--mode
 #### RESP / Gaussian I/O
 
 - Faster **ESP / EOF** parsing (`ReadGauEsp` substring gates + token parse; compiled regex; `GaussianReader.check_complete` reads a short tail for `Normal termination`).
-- **Parallel multi-ESP rotations** (`StageGaussianRotation`) — process pool over orientation `.com` jobs; `nproc` is a total core budget so `n_workers × %NProc ≤ nproc` (e.g. 28 SO(3) jobs on 28 cores → 28×`%NProc=1`). Per-job bash scripts and `GAUSS_SCRDIR` avoid shared-scratch collisions; completed logs are skipped unless `force_gaussian_rerun`.
-- **Parallel RespFit / CpeFit conformer ESP** — independent per-conformer ab initio ESP (and cosmo/harmonic ESP sets) run in a process pool with `--psi4-num-threads` as a total core budget (`n_workers × threads`); charge / CPE fit stays serial. Per-job `PSI_SCRATCH` / `GAUSS_SCRDIR` under `tmp/esp_<basename>`.
 
 #### Misc I/O
 
@@ -77,8 +92,6 @@ Wiring the merged packages into ligandparam recipes/CLI and making HPC runs fini
 
 #### Reliability & HPC fixes (post-merge hardening)
 
-- **Parallel fragments** — `run_fragmented_dihed_twist_workflow` splits `-n` / `nproc` across a non-daemon fragment pool and nested wavefront workers (`n_frag_workers × wf_nproc`).
-- **Parallel per-bond scans** — `run_dihed_twist_workflow` pools HL / reference / iteration wavefront scans across bonds with the same split (`n_bond_workers × wf_nproc`), so multi-bond fragments are not stuck serializing bonds after the fragment pool.
 - Run fit scripts and ffpopt bin tools with **`sys.executable`** (bare `python3` on CHPC often lacks ParmEd).
 - **In-process apply** of GenDihedFit `itNN.py` (`runpy`) so apply uses the same env and logs progress to the parent `.out`.
 - **Absolute paths in `*.fit.json`** (script, frcmod, HL/LL profiles) so GenDihedFit cannot write to the wrong cwd.
@@ -94,4 +107,5 @@ Prior releases focused on core RESP / FreeLigand recipes, orientation protocols 
 
 ---
 
+[1.4.1]: https://github.com/piskulichz/ligandparam/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/piskulichz/ligandparam/compare/v1.0.1...v1.4.0

@@ -124,12 +124,79 @@ def ReadMolecule(fnameormol,quiet=False):
     return mol
 
 
+def _confsearch_fast_rms_threshold() -> int:
+    """Conformer count at which Condensed RMS switches to the fast path.
+
+    ``FFPOPT_CONFSEARCH_RMS_FAST_N`` (default ``100``). Set to ``0`` to always
+    use legacy per-pair ``GetBestRMS``.
+    """
+    import os
+
+    try:
+        return max(0, int(os.environ.get("FFPOPT_CONFSEARCH_RMS_FAST_N", "100")))
+    except ValueError:
+        return 100
+
+
+def _butina_rms_distances(mol, cids, *, quiet: bool = False):
+    """Build condensed pairwise RMS distances for Butina clustering.
+
+    For modest ensembles, uses RDKit ``GetBestRMS`` (symmetry-aware). When the
+    conformer count is at or above :func:`_confsearch_fast_rms_threshold`,
+    aligns every conformer to the first and uses vectorized heavy-atom RMS —
+    much cheaper for large ``nconf`` while remaining adequate for clustering.
+    """
+    import numpy as np
+    from rdkit.Chem.rdMolAlign import AlignMol, GetBestRMS
+
+    n = len(cids)
+    thr = _confsearch_fast_rms_threshold()
+    use_fast = thr > 0 and n >= thr
+
+    if not use_fast:
+        dists = []
+        for i in range(n):
+            for j in range(i):
+                dists.append(GetBestRMS(mol, mol, int(cids[i]), int(cids[j])))
+        return dists
+
+    if not quiet:
+        print(
+            f"ConfSearch: nconf={n} >= {thr} - using fast heavy-atom RMS "
+            f"(set FFPOPT_CONFSEARCH_RMS_FAST_N=0 for GetBestRMS)"
+        )
+
+    heavy = [a.GetIdx() for a in mol.GetAtoms() if a.GetAtomicNum() > 1]
+    if not heavy:
+        heavy = list(range(mol.GetNumAtoms()))
+
+    ref_cid = int(cids[0])
+    for cid in cids[1:]:
+        AlignMol(mol, mol, int(cid), ref_cid)
+
+    coords = np.empty((n, len(heavy), 3), dtype=float)
+    for i, cid in enumerate(cids):
+        conf = mol.GetConformer(int(cid))
+        for k, atom_idx in enumerate(heavy):
+            pos = conf.GetAtomPosition(atom_idx)
+            coords[i, k, 0] = pos.x
+            coords[i, k, 1] = pos.y
+            coords[i, k, 2] = pos.z
+
+    dists = []
+    inv_m = 1.0 / float(coords.shape[1])
+    for i in range(1, n):
+        diff = coords[i] - coords[:i]
+        rms = np.sqrt(np.sum(diff * diff, axis=(1, 2)) * inv_m)
+        dists.extend(float(x) for x in rms)
+    return dists
+
+
 def GetConformers(mol,nconf,nkeep,mmff94=True,maxiter=250,rmstol=0.5,quiet=False):
     from rdkit.Chem.AllChem import EmbedMultipleConfs
     from rdkit.Chem.AllChem import ETKDGv3
     from rdkit.Chem.AllChem import MMFFOptimizeMoleculeConfs
     from rdkit.Chem.AllChem import UFFOptimizeMoleculeConfs
-    from rdkit.Chem.rdMolAlign import GetBestRMS
     from rdkit.ML.Cluster import Butina
 
     #
@@ -161,10 +228,7 @@ def GetConformers(mol,nconf,nkeep,mmff94=True,maxiter=250,rmstol=0.5,quiet=False
     # Each element is a tuple containing all integer indexes
     # of equivalent conformations
     #
-    dists = []
-    for i in range(len(cids)):
-        for j in range(i):
-            dists.append(GetBestRMS(mol,mol,i,j))
+    dists = _butina_rms_distances(mol, cids, quiet=quiet)
         
     clusts = Butina.ClusterData(dists, len(cids), rmstol,
                                 isDistData=True, reordering=False)
