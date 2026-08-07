@@ -1575,6 +1575,8 @@ def run_fragmented_dihed_twist_workflow(
                 config,
                 rotatable_bond_smarts=config.rotatable_bond_smarts + extra_smarts,
             )
+    # Scission screen + per-fragment Amber writes share the workflow core budget.
+    config = _dc_replace(config, nproc=max(1, int(nproc)))
     log = _resolve_logger(logger)
     mol2_path, lib_path, parent_frcmod = _parent_paths_from_args(
         mol2=mol2, lib=lib, frcmod=frcmod, bundle=bundle

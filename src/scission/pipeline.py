@@ -13,13 +13,12 @@ try:
 except ImportError:  # pragma: no cover
     rdkit = None
 
-from .fragments import build_candidate_fragments
 from .io import load_ligand
-from .models import CandidateFragment, FragmentConfig, FragmentationResult, InputBundle
+from .models import FragmentConfig, FragmentationResult, InputBundle
 from .optimize import select_fragments
-from .screen import screen_candidate
+from .parallel import screen_torsions, write_selected_fragments
 from .torsions import enumerate_torsions, match_central_bond_smarts
-from .writers import write_fragment_index, write_fragment_outputs, write_summary
+from .writers import write_fragment_index, write_summary
 
 
 def fragment_ligand(
@@ -28,6 +27,10 @@ def fragment_ligand(
     config: FragmentConfig,
 ) -> FragmentationResult:
     """Run the full ligand fragmentation workflow for one input bundle.
+
+    When ``config.nproc > 1``, torsion screening is pooled over torsions and
+    per-fragment ``parmchk2`` / ``tleap`` writes use a thread pool. Selection
+    and summary writes remain serial.
 
     Args:
         bundle: Input ligand file bundle to load and validate.
@@ -53,7 +56,6 @@ def fragment_ligand(
         rotatable_bond_smarts=config.rotatable_bond_smarts,
     )
     torsion_map = {torsion.label: torsion for torsion in torsions}
-    candidate_pool: dict[str, CandidateFragment] = {}
     rejected_torsions: dict[str, object] = {}
 
     # When restrict_to_bond_smarts is set, keep only the torsions whose central
@@ -78,55 +80,11 @@ def fragment_ligand(
             )
         torsions = kept_torsions
         torsion_map = {torsion.label: torsion for torsion in torsions}
-    accepted_by_torsion: dict[str, list[CandidateFragment]] = {}
-    for torsion in torsions:
-        valid_for_torsion = False
-        best_failure: tuple[float, dict[str, object]] | None = None
-        accepted_candidates: list[CandidateFragment] = []
-        for candidate in build_candidate_fragments(
-            ligand,
-            torsion,
-            include_rigid_single_bonds=config.include_rigid_single_bonds,
-            rotatable_bond_smarts=config.rotatable_bond_smarts,
-        ):
-            candidate_pool.setdefault(candidate.candidate_id, candidate)
-            screen = screen_candidate(
-                ligand,
-                torsion,
-                candidate,
-                angle_step=config.angle_step,
-                thresholds=config.clash_thresholds,
-            )
-            counts_as_success = screen.accepted and (
-                not candidate.is_parent_fallback or config.use_parent_fallback
-            )
-            if counts_as_success:
-                pooled = candidate_pool[candidate.candidate_id]
-                pooled.torsion_labels.update(candidate.torsion_labels)
-                pooled.accepted_torsions.add(torsion.label)
-                pooled.worst_margin = (
-                    screen.worst_margin
-                    if pooled.worst_margin is None
-                    else min(pooled.worst_margin, screen.worst_margin)
-                )
-                accepted_candidates.append(pooled)
-                valid_for_torsion = True
-            elif screen.violation is not None and not candidate.is_parent_fallback:
-                failure_payload = {
-                    "reason": screen.reason,
-                    "candidate_id": candidate.candidate_id,
-                    "retained_atom_count": len(candidate.retained_atoms),
-                    "cut_bonds": [list(bond) for bond in sorted(candidate.cut_bonds)],
-                    "violation": screen.violation,
-                }
-                if best_failure is None or screen.worst_margin > best_failure[0]:
-                    best_failure = (screen.worst_margin, failure_payload)
-        if not valid_for_torsion:
-            rejected_torsions[torsion.label] = (
-                best_failure[1] if best_failure is not None else "no_valid_fragment_found"
-            )
-        else:
-            accepted_by_torsion[torsion.label] = accepted_candidates
+
+    candidate_pool, accepted_by_torsion, screen_rejected = screen_torsions(
+        ligand, torsions, config
+    )
+    rejected_torsions.update(screen_rejected)
 
     preferred_candidate_ids: set[str] = set()
     for torsion_label, candidates in accepted_by_torsion.items():
@@ -156,19 +114,15 @@ def fragment_ligand(
     for torsion_label, candidate_id in covered_torsions.items():
         assigned[candidate_id].append(torsion_label)
 
-    selected_fragments = [
-        write_fragment_outputs(
-            ligand,
-            candidate,
-            f"fragment_{index}",
-            sorted(assigned[candidate.candidate_id]),
-            torsion_map,
-            out_dir,
-            config,
-            warnings,
-        )
-        for index, candidate in enumerate(selected_candidates, start=1)
-    ]
+    selected_fragments = write_selected_fragments(
+        ligand,
+        selected_candidates,
+        assigned,
+        torsion_map,
+        out_dir,
+        config,
+        warnings,
+    )
     fragment_index_path = write_fragment_index(selected_fragments, out_dir)
     summary_path = write_summary(
         ligand,

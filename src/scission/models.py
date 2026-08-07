@@ -218,6 +218,8 @@ class FragmentConfig:
             conjugated neighborhoods near torsions.
         use_parent_fallback: Whether full-parent fallback fragments count as
             valid coverage during selection.
+        nproc: Worker budget for torsion screening (process pool) and
+            per-fragment Amber writes (thread pool). Default 1 (serial).
     """
 
     angle_step: int = 30
@@ -234,6 +236,7 @@ class FragmentConfig:
     clash_thresholds: ClashThresholds = field(default_factory=ClashThresholds)
     preserve_conjugated_neighbors: bool = True
     use_parent_fallback: bool = False
+    nproc: int = 1
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "FragmentConfig":
@@ -281,6 +284,7 @@ class FragmentConfig:
                 True,
             ),
             use_parent_fallback=payload.get("use_parent_fallback", False),
+            nproc=int(payload.get("nproc", 1)),
         )
 
 

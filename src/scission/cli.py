@@ -45,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
     fragment.add_argument("--outdir", required=True, type=Path)
     fragment.add_argument("--config", type=Path, default=None)
     fragment.add_argument(
+        "--nproc",
+        type=int,
+        default=None,
+        help=(
+            "Worker budget for torsion screening and per-fragment parmchk2/tleap "
+            "writes (default: config nproc or 1)."
+        ),
+    )
+    fragment.add_argument(
         "--acyclic-rotatable-only",
         action="store_true",
         help=(
@@ -153,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
                     config.restrict_to_bond_smarts + tuple(args.restrict_bond_smarts)
                 ),
             )
+        if args.nproc is not None:
+            config = replace(config, nproc=max(1, int(args.nproc)))
         result = fragment_ligand(
             InputBundle(
                 mol2_path=args.mol2,

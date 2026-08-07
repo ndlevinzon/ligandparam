@@ -46,6 +46,7 @@ Targeted wall-time and I/O reductions for HL wavefront scans (especially `--mode
 #### Scission / RDKit / graphs
 
 - **Vectorized `screen_candidate`** (numpy rotate + heavy–heavy clash); skip unused cap builds on the hot path.
+- **Parallel scission screen / writes** — pool over torsions for candidate screening (process pool) and over selected fragments for `parmchk2`/`tleap` (thread pool); `FragmentConfig.nproc` / CLI `--nproc` / fragmented-workflow `nproc` set the worker budget. Selection stays serial.
 - **Hoisted fragmentation topology** + caches for rotatable bonds / ring edges on `Ligand`.
 - **Cached RDKit mol** and process-wide compiled SMARTS for central bonds.
 - **Faster `RotateMask` / graph bipartition** (`ComponentBeyondBond`) without defensive `deepcopy(GetGraph())` on every call.
