@@ -195,7 +195,10 @@ def main(argv: list[str] | None = None) -> int:
         logger=logger,
     )
     if result is not None:
-        logger.info("Done. merged_frcmod=%s", result.get("merged_frcmod"))
+        logger.info(
+            "Done (all fragment scans + merge finished). merged_frcmod=%s",
+            result.get("merged_frcmod"),
+        )
     return 0
 
 

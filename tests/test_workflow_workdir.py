@@ -160,7 +160,7 @@ class TestSplitFragmentNproc(unittest.TestCase):
         frag_b.rst7_path = Path("/tmp/f2/fragment.rst7")
 
         fake_pool = MagicMock()
-        fake_pool.map.return_value = [
+        results = [
             {
                 "fragment_id": "fragment_1",
                 "dir": "/tmp/f1",
@@ -174,6 +174,7 @@ class TestSplitFragmentNproc(unittest.TestCase):
                 "twist_result": {},
             },
         ]
+        fake_pool.imap_unordered.return_value = iter(results)
 
         # Patch symbols used after the in-function scission import.
         import scission
@@ -211,8 +212,8 @@ class TestSplitFragmentNproc(unittest.TestCase):
             )
 
         make_pool.assert_called_once_with(2)
-        fake_pool.map.assert_called_once()
-        jobs = fake_pool.map.call_args.args[1]
+        fake_pool.imap_unordered.assert_called_once()
+        jobs = fake_pool.imap_unordered.call_args.args[1]
         self.assertEqual(len(jobs), 2)
         self.assertEqual(jobs[0]["wf_nproc"], 4)
         self.assertEqual(jobs[1]["wf_nproc"], 4)

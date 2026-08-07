@@ -895,7 +895,9 @@ class Wavefront(object):
         self._cleanup_completed()
         self._print_progress(0, 0)
         results = self.sort_results()
-        print("Wavefront calculation completed.")
+        print("[wavefront] finished this scan "
+              f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
+              f"checkpoint={getattr(self, 'checkpoint', None)})")
         return results
 
 
@@ -1035,7 +1037,9 @@ class Wavefront(object):
         self._print_progress(0, 0)
 
         results = self.sort_results()
-        print("Wavefront calculation completed.")
+        print("[wavefront] finished this scan "
+              f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
+              f"checkpoint={getattr(self, 'checkpoint', None)})")
         return results
 
 
@@ -1463,7 +1467,10 @@ class Wavefront(object):
                 f"node(s)."
             )
         else:
-            print("Wavefront calculation completed successfully.")
+            print(
+                "[wavefront] summary: no failed nodes "
+                f"({len(soft)} soft-accepted)."
+            )
     
     
 
@@ -1847,7 +1854,7 @@ def run_dihed_wavefront(
 
     for i, rcs in enumerate(rcs):
         print(f"Angle: {rcs}, Energy: {energies[i]}")
-    print(f"Wavefront scan completed. Results written to {args.out}.")
+    print(f"[wavefront] finished this scan -> {args.out}")
 
     out_path = Path(args.out).resolve()
     dat = out_path.with_suffix(".dat")

@@ -1901,7 +1901,7 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
 
     fh.write("print(f\"[fit-apply] saving {args.oparm}\", flush=True)\n")
     fh.write("p.save(args.oparm,overwrite=True)\n")
-    fh.write("print(\"[fit-apply] done\", flush=True)\n")
+    fh.write("print(f\"[fit-apply] finished applying -> {args.oparm}\", flush=True)\n")
     fh.close()
 
     

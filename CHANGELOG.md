@@ -38,6 +38,7 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - **Charge normalization** — safe for nonzero `net_charge`, tiny diffs, and `|diff| > natoms*precision` (residual on largest-|q| atom); asserts final sum.
 - **Docs / packaging** — READMEs clarify `src/` is runtime SoT vs optional `*-main/` trees; `numpy<2` documented; optional `ligandparam[ml-potentials]` for MACE / TorchANI.
 - **GenDihedFit HL/LL mismatch** — when wavefront HL and LL JSON scans differ in length (failed / soft-opt holes), align on shared `dXXX` scan angles instead of aborting; raise only if fewer than 3 common points remain.
+- **Fragment-scan completion logs** — per-scan / per-fragment messages no longer say bare “done/completed”; parent logs `[frag-twist] all N fragment twist job(s) finished` only after the fragment pool joins, and CLI `Done` only after merge.
 
 ---
 

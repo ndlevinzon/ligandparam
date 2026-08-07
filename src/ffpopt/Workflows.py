@@ -1438,6 +1438,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
         workdir=frag_dir,
         **twist_kwargs,
     )
+    log.info("[frag-twist] %s: twist workflow finished", fragment.fragment_id)
     return {
         "fragment_id": fragment.fragment_id,
         "dir": str(frag_dir),
@@ -1695,15 +1696,53 @@ def run_fragmented_dihed_twist_workflow(
     )
 
     if n_frag_workers == 1:
-        per_fragment_results = [_run_fragment_twist_job(job) for job in runnable]
+        per_fragment_results = []
+        for i, job in enumerate(runnable, start=1):
+            result = _run_fragment_twist_job(job)
+            per_fragment_results.append(result)
+            log.info(
+                "[frag-twist] fragment job finished (%s/%s): %s",
+                i,
+                len(runnable),
+                result["fragment_id"],
+            )
     else:
         pool = _make_nondaemon_spawn_pool(n_frag_workers)
         try:
-            # map preserves runnable order
-            per_fragment_results = pool.map(_run_fragment_twist_job, runnable)
+            # Unordered so progress logs appear as each fragment finishes;
+            # restore runnable order afterward for stable merge input.
+            by_id: dict[str, dict] = {}
+            finished = 0
+            for result in pool.imap_unordered(
+                _run_fragment_twist_job, runnable
+            ):
+                finished += 1
+                by_id[result["fragment_id"]] = result
+                log.info(
+                    "[frag-twist] fragment job finished (%s/%s): %s",
+                    finished,
+                    len(runnable),
+                    result["fragment_id"],
+                )
+            missing = [
+                j["fragment_id"] for j in runnable if j["fragment_id"] not in by_id
+            ]
+            if missing:
+                raise RuntimeError(
+                    "fragment pool returned incomplete results; missing: "
+                    + ", ".join(missing)
+                )
+            per_fragment_results = [
+                by_id[j["fragment_id"]] for j in runnable
+            ]
         finally:
             pool.close()
             pool.join()
+
+    log.info(
+        "[frag-twist] all %s fragment twist job(s) finished",
+        len(per_fragment_results),
+    )
 
     fragment_dirs_for_merge = [Path(r["dir"]) for r in per_fragment_results]
 
