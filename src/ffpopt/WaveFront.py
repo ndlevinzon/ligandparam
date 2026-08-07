@@ -39,7 +39,7 @@ def _struct_from_coords(coords) -> Struct:
 
 
 def _run_node_job(job: dict) -> dict:
-    """Worker entry: slim angle/coords job in → slim result out (no ``los``)."""
+    """Worker entry: slim angle/coords job in -> slim result out (no ``los``)."""
     node = WavefrontNode.from_job(job, _WORKER["los"], _WORKER["con"])
     node.calculate()
     return node.to_result()

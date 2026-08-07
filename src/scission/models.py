@@ -184,7 +184,7 @@ class FragmentConfig:
             to only the torsions whose central bond matches one of the
             patterns. Each pattern must mark the central bond atoms with
             atom-map numbers ``:1`` and ``:2``. Empty (the default) means no
-            restriction — every enumerated rotatable torsion is fragmented.
+            restriction - every enumerated rotatable torsion is fragmented.
             When non-empty, rotatable torsions whose central bond matches no
             pattern are dropped before fragment selection and reported under
             ``rejected_torsions``. This is an allow-list applied *after*

@@ -1353,7 +1353,7 @@ def build_fixed_geometry_ll_cache(system, args):
     When only torsion force constants change, the non-fitted MM energy at a
     fixed geometry is constant. Cache that base once (single-point with the
     fitted dihedrals deleted), then each NL iteration adds analytical torsion
-    terms — avoiding parm7 rewrite + ``GeomOpt`` per geometry per step.
+    terms - avoiding parm7 rewrite + ``GeomOpt`` per geometry per step.
     """
     import os
     import numpy as np
@@ -1756,7 +1756,7 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
 
         for masks in allmasks:
             mstr = ",".join(["f\"%s\""%(mask) for mask in masks])
-            # Do not embed mstr in the print string — it contains f\"...\" and
+            # Do not embed mstr in the print string - it contains f\"...\" and
             # would produce a SyntaxError in the generated script.
             fh.write(
                 f"print(\"[fit-apply]   {idfcn+1}/{n_ops} delete+add "

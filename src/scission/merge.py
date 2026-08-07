@@ -86,14 +86,14 @@ def discover_fragment_dirs(root: Path) -> list[Path]:
     whose ``itX.frcmod`` files live directly in the fragment directory, and a
     multi-coupling-group fragment whose fits live in ``coupling_NN/``
     subdirectories of the fragment directory. For the latter, the
-    ``coupling_NN`` subdirectories — not the fragment directory itself — are
+    ``coupling_NN`` subdirectories - not the fragment directory itself - are
     the mergeable run directories.
 
     Args:
         root: Parent directory containing fragment subdirectories.
 
-    A fragment that produced no ``itX.frcmod`` at all — because its starting
-    parameters were already good or its high-level profile was flat — is
+    A fragment that produced no ``itX.frcmod`` at all - because its starting
+    parameters were already good or its high-level profile was flat - is
     skipped with a :class:`MergeWarning` rather than silently dropped.
 
     Returns:
@@ -225,7 +225,7 @@ def _load_fit_param_keys(
     scanned bonds, and ``itXX.fit.json`` records that family in its top-level
     ``params`` block. Merging only the scanned (plotted) subset leaves the
     parent ligand with half a fitted torsional surface and half the old generic
-    parameters, so the fitted set — not the plotted set — is what gates the
+    parameters, so the fitted set - not the plotted set - is what gates the
     merge.
 
     Args:

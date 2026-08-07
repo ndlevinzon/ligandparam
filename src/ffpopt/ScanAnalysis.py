@@ -17,7 +17,7 @@ import numpy as np
 class ScanCompareConfig:
     """ Tunable thresholds for :func:`compare_scans`.
 
-    Defaults are reasonable starting points for kcal/mol scans on a ~10°
+    Defaults are reasonable starting points for kcal/mol scans on a ~10 deg
     grid; tighten or loosen per workflow.
 
     Attributes
@@ -148,7 +148,7 @@ def _interpolate_to(
 def _find_periodic_extrema(
     angles: np.ndarray, energies: np.ndarray, prominence: float
 ) -> list[tuple[float, float, str]]:
-    """ Detect maxima and minima of a periodic 0–360° energy profile.
+    """ Detect maxima and minima of a periodic 0-360 deg energy profile.
 
     Returns ``[(angle, energy, kind), ...]`` with ``kind in {'max', 'min'}``.
     Wrap-around is handled by tiling one extra cycle on each side and
@@ -336,10 +336,10 @@ def compare_scans(
             )
 
     if unmatched_hl:
-        ang_str = ", ".join(f"{hl_extrema[i][0]:.1f}°" for i in unmatched_hl)
+        ang_str = ", ".join(f"{hl_extrema[i][0]:.1f} deg" for i in unmatched_hl)
         reasons.append(f"unmatched HL extrema at angle(s): {ang_str}")
     if unmatched_ll:
-        ang_str = ", ".join(f"{ll_extrema[j][0]:.1f}°" for j in unmatched_ll)
+        ang_str = ", ".join(f"{ll_extrema[j][0]:.1f} deg" for j in unmatched_ll)
         reasons.append(f"unmatched LL extrema at angle(s): {ang_str}")
 
     bad_pairs = [
@@ -352,7 +352,7 @@ def compare_scans(
         reasons.append(
             f"matched-pair energy delta {abs(worst[3]):.3f} kcal/mol "
             f"exceeds tol {config.energy_tol} "
-            f"(at HL {hl_extrema[worst[0]][0]:.1f}°)"
+            f"(at HL {hl_extrema[worst[0]][0]:.1f} deg)"
         )
 
     return ScanComparison(
@@ -374,7 +374,7 @@ def load_scan_dat(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
 
     The companion file written by :func:`ffpopt.WaveFront.run_dihed_wavefront`
     has three columns per line: ``angle e_shifted e_unshifted``. This
-    function reads the first two — the shifted energies are already in
+    function reads the first two - the shifted energies are already in
     kcal/mol.
 
     Parameters
@@ -442,7 +442,7 @@ def load_scan_json(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
 def _load_any(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """ Dispatch a scan-file loader by extension.
 
-    ``.dat`` → :func:`load_scan_dat`; ``.json`` → :func:`load_scan_json`.
+    ``.dat`` -> :func:`load_scan_dat`; ``.json`` -> :func:`load_scan_json`.
     Any other extension raises ``ValueError``.
 
     Parameters
@@ -546,7 +546,7 @@ def _load_structure_image_array(path: Path):
     """
     suffix = path.suffix.lower()
     if not path.exists():
-        print(f"[plot] structure image missing: {path} — skipping panel")
+        print(f"[plot] structure image missing: {path} - skipping panel")
         return None
     if suffix in {".png", ".jpg", ".jpeg"}:
         import matplotlib.image as mpimg
@@ -578,7 +578,7 @@ def _load_structure_image_array(path: Path):
                 return None
         print(
             f"[plot] cannot rasterize {path}: install `cairosvg` or put "
-            f"`rsvg-convert` on PATH — skipping structure panel"
+            f"`rsvg-convert` on PATH - skipping structure panel"
         )
         return None
     print(f"[plot] unsupported structure-image extension {suffix!r} ({path})")
@@ -739,11 +739,11 @@ def plot_comparison(
         verdict = "FAIL"
     header = title if title else f"{hl_label} vs {ll_label}"
     fig.suptitle(
-        f"{header}  —  {verdict}  "
+        f"{header}  -  {verdict}  "
         f"(barrier HL={comparison.barrier_hl:.2f}, LL={comparison.barrier_ll:.2f} kcal/mol)",
         y=0.995,
     )
-    ax.set_xlabel("Dihedral angle (°)")
+    ax.set_xlabel("Dihedral angle (deg)")
     ax.set_ylabel("Energy (kcal/mol, min-shifted)")
     ax.set_xlim(0.0, 360.0)
     ax.grid(alpha=0.3)
@@ -751,7 +751,7 @@ def plot_comparison(
 
     if ax_text is not None:
         reasons_text = "Failed criteria:\n" + "\n".join(
-            f"• {r}" for r in comparison.reasons
+            f"* {r}" for r in comparison.reasons
         )
         ax_text.text(
             0.01, 0.97, reasons_text,

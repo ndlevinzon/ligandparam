@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Fit dihedral corrections with ffpopt after ligandparam "
-            "(fragmented twist → merged frcmod; lib unchanged)."
+            "(fragmented twist -> merged frcmod; lib unchanged)."
         )
     )
     parser.add_argument(

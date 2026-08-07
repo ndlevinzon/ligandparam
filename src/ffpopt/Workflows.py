@@ -11,11 +11,11 @@ When to use which entry point
     ``frcmod`` triplet (e.g. ligandparam FreeLigand). Fragments the ligand
     with ``scission``, fits torsions per fragment against a high-level model,
     and merges DIHE terms into a new parent ``frcmod``. The ``lib`` is left
-    unchanged — reuse the original library with the merged frcmod in LEaP.
+    unchanged - reuse the original library with the merged frcmod in LEaP.
 
 ``run_dihed_twist_workflow``
     Single-molecule path when you already have ``parm7`` / ``rst7`` (via
-    ``ffpopt-PrepareInput.py`` → ``start.json``) and known rotatable central
+    ``ffpopt-PrepareInput.py`` -> ``start.json``) and known rotatable central
     bonds (``bond=[(i, j), ...]``, **0-based** atom indices). CLI-style
     ``"i,j"`` strings are still accepted for compatibility. Use
     ``bytype=True`` if you need a frcmod-writable global parameter set.
@@ -91,7 +91,7 @@ def _run_current_python(
     """Run ``script`` with ``sys.executable`` (same env as the parent process).
 
     Bare ``python3`` on HPC often resolves to a system interpreter without
-    ParmEd / ffpopt, which breaks generated fit scripts (``it01.py``, …).
+    ParmEd / ffpopt, which breaks generated fit scripts (``it01.py``, ...).
     """
     import os
 
@@ -145,8 +145,8 @@ def normalize_bond_pairs0(bond) -> list[BondPair0]:
     bond
         Iterable of:
 
-        * ``(i, j)`` or ``[i, j]`` — **0-based** atom indices (preferred API)
-        * ``"i,j"`` — CLI string form (also **0-based**)
+        * ``(i, j)`` or ``[i, j]`` - **0-based** atom indices (preferred API)
+        * ``"i,j"`` - CLI string form (also **0-based**)
 
     Returns
     -------
@@ -308,7 +308,7 @@ def _resolve_scans_and_params(mol, bonds, nprim: int, bytype: bool):
     scans : list of _TwistParam
         One entry per bond (its first matching proper dihedral).
     params : dict
-        Maps parameter name → ``{'nprim': nprim, 'masks': ...}`` for the
+        Maps parameter name -> ``{'nprim': nprim, 'masks': ...}`` for the
         ``ffpopt-GenDihedFit.py`` input.
     s_template : dict
         Per-system fit-input template with ``params`` filled in and
@@ -410,7 +410,7 @@ def _run_one_scan(
     inp_path = str(_in_workdir(workdir, inp))
     out_path = str(_in_workdir(workdir, out))
     if skip_existing and Path(out_path).exists():
-        log.info("[twist] %s exists — skipping.", out_path)
+        log.info("[twist] %s exists - skipping.", out_path)
         return None
 
     dihed_str = ",".join(str(i) for i in dihed_idxs)
@@ -450,7 +450,7 @@ def _write_fit_json(
     scans : list of _TwistParam
         Per-bond scan records from :func:`_resolve_scans_and_params`.
     params : dict
-        Parameter family → fit-input metadata.
+        Parameter family -> fit-input metadata.
     s_template : dict
         Per-system fit-input template with ``params`` filled in.
     hl_prefix : str
@@ -543,9 +543,9 @@ def _run_gendihedfit(
     frcmod_out = _in_workdir(workdir, f"{citname}.frcmod").resolve()
     fit_json = str(_in_workdir(workdir, f"{citname}.fit.json").resolve())
     if skip_existing and py_out.exists():
-        log.info("[twist] %s exists — skipping GenDihedFit.", py_out)
+        log.info("[twist] %s exists - skipping GenDihedFit.", py_out)
         return
-    log.info("[twist] GenDihedFit → %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
+    log.info("[twist] GenDihedFit -> %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
     _run_ffpopt_bin(
         "ffpopt-GenDihedFit.py",
         f"--nlmaxiter={nlmaxiter}",
@@ -661,17 +661,17 @@ def _apply_fit_and_prepare(
     inp_path = _in_workdir(workdir, inp).resolve()
     if skip_existing and parm_out.exists() and json_out.exists():
         log.info(
-            "[twist] %s & %s exist — skipping apply+prepare.",
+            "[twist] %s & %s exist - skipping apply+prepare.",
             parm_out,
             json_out,
         )
         return
-    log.info("[twist] applying fit → %s (in-process: %s)", parm_out, py_script)
+    log.info("[twist] applying fit -> %s (in-process: %s)", parm_out, py_script)
     sys.stdout.flush()
     _run_fit_script_inprocess(py_script, origparm_path, parm_out.resolve())
-    log.info("[twist] fit script finished → %s", parm_out.resolve())
+    log.info("[twist] fit script finished -> %s", parm_out.resolve())
     sys.stdout.flush()
-    log.info("[twist] PrepareInput → %s", json_out)
+    log.info("[twist] PrepareInput -> %s", json_out)
     _run_ffpopt_bin(
         "ffpopt-PrepareInput.py",
         "--update",
@@ -784,7 +784,7 @@ def run_dihed_twist_workflow(
         per-torsion drawings. Default is None.
     workdir : path-like, optional
         Directory for relative inputs/outputs and subprocess ``cwd``. When
-        set, this workflow never calls ``os.chdir`` — paths are resolved
+        set, this workflow never calls ``os.chdir`` - paths are resolved
         under ``workdir`` and shell-outs use ``subprocess(..., cwd=workdir)``.
         Default is None (use the process cwd / relative paths as given).
     **standard_kwargs
@@ -832,7 +832,7 @@ def run_dihed_twist_workflow(
     std = {**std_defaults, **standard_kwargs}
     model = std["model"]
 
-    # SimpleNamespace mirroring the CLI's args — needed by los.SetArgs.
+    # SimpleNamespace mirroring the CLI's args - needed by los.SetArgs.
     bonds0 = normalize_bond_pairs0(bond)
     inp_path = str(_in_workdir(wd, inp).resolve())
     args = SimpleNamespace(
@@ -932,13 +932,13 @@ def run_dihed_twist_workflow(
             if r.is_close:
                 reason = "flat (HL barrier below threshold)" if r.is_flat \
                     else "agrees with HL within thresholds"
-                log.info("[twist] %s: %s — dropping from iterative fit", idx, reason)
+                log.info("[twist] %s: %s - dropping from iterative fit", idx, reason)
             else:
                 kept_bonds.append(bond)
                 reasons = "; ".join(r.reasons) if r.reasons else "extrema disagree"
                 log.info("[twist] %s: refit needed (%s)", idx, reasons)
         if not kept_bonds:
-            log.info("[twist] all dihedrals already agree — skipping Phase 3")
+            log.info("[twist] all dihedrals already agree - skipping Phase 3")
             return results
         if len(kept_bonds) < len(bonds_parsed):
             scans, params, s_template = _resolve_scans_and_params(
@@ -966,7 +966,7 @@ def run_dihed_twist_workflow(
         )
         results["fit_jsons"].append(fit_json)
 
-        # 3b. GenDihedFit → itNN.py. FUTURE: replace subprocess with API call.
+        # 3b. GenDihedFit -> itNN.py. FUTURE: replace subprocess with API call.
         _run_gendihedfit(
             citname,
             nlmaxiter=args.nlmaxiter,
@@ -1019,8 +1019,8 @@ def run_dihed_twist_workflow(
             still_off_idxs = [idx for idx, r in iter_cmp.items() if not r.is_close]
 
             if not still_off_idxs:
-                # All bonds converged this iteration — break in both modes.
-                log.info("[twist] all dihedrals converged at %s — stopping early", citname)
+                # All bonds converged this iteration - break in both modes.
+                log.info("[twist] all dihedrals converged at %s - stopping early", citname)
                 results["early_stopped_at"] = citname
                 break
 
@@ -1044,7 +1044,7 @@ def run_dihed_twist_workflow(
                     ", ".join(still_off_idxs),
                 )
             else:
-                # all_or_nothing mode (or drop mode with nothing converged) —
+                # all_or_nothing mode (or drop mode with nothing converged) -
                 # just log and continue with the same set.
                 log.info(
                     "[twist] %s: %s dihedral(s) still need refit: %s",
@@ -1108,7 +1108,7 @@ def _load_existing_fragments(out_dir: Path):
 def _build_structure_image_map(frag_dir: Path, fit_torsions: list) -> dict:
     """ Locate scission's per-torsion 2D drawings for one fragment.
 
-    Reads ``manifest.json`` for the authoritative ``label → image path``
+    Reads ``manifest.json`` for the authoritative ``label -> image path``
     mapping; for any label missing from the manifest (older runs, or rdkit
     unavailable when the fragment was written), falls back to the standard
     ``fragment_dir/torsion_{safe_name(label)}.svg`` filename if present.
@@ -1192,7 +1192,7 @@ def _prepare_fragment_input(
     """
     if fragment.parm7_path is None or fragment.rst7_path is None:
         raise RuntimeError(
-            f"fragment {fragment.fragment_id} has no parm7/rst7 — scission "
+            f"fragment {fragment.fragment_id} has no parm7/rst7 - scission "
             f"likely failed to run tleap. Check that AmberTools is on PATH."
         )
     log = _resolve_logger(logger)
@@ -1205,9 +1205,9 @@ def _prepare_fragment_input(
     parm7 = _as_path(fragment.parm7_path).resolve()
     rst7 = _as_path(fragment.rst7_path).resolve()
     if skip_existing and start_json.exists():
-        log.info("[frag-twist] %s exists — skipping PrepareInput", start_json)
+        log.info("[frag-twist] %s exists - skipping PrepareInput", start_json)
         return str(start_json)
-    log.info("[frag-twist] PrepareInput → %s (cwd=%s)", start_json, frag_dir)
+    log.info("[frag-twist] PrepareInput -> %s (cwd=%s)", start_json, frag_dir)
     _run_ffpopt_bin(
         "ffpopt-PrepareInput.py",
         f"--parm={parm7}",
@@ -1254,7 +1254,7 @@ def run_fragmented_dihed_twist_workflow(
     DIHE terms back into a unified parent ``frcmod`` via
     ``scission.merge.merge_fragment_frcmods``. Like
     :func:`run_dihed_twist_workflow`, this must be called from inside an
-    ``if __name__ == "__main__":`` guard — the wavefront uses ``spawn``-mode
+    ``if __name__ == "__main__":`` guard - the wavefront uses ``spawn``-mode
     multiprocessing. See the ``Workflows`` RST page for the full on-disk
     layout and the re-running semantics.
 
@@ -1277,14 +1277,14 @@ def run_fragmented_dihed_twist_workflow(
         Optional logger for progress (default: ``ffpopt.workflows``).
     fragment_config : scission.FragmentConfig, optional
         Override scission's fragmentation config. Default is None (uses
-        ``FragmentConfig()`` — acyclic rotatable torsions, 30° step, etc.).
+        ``FragmentConfig()`` - acyclic rotatable torsions, 30 deg step, etc.).
     rotatable_bond_smarts : str or iterable of str, optional
         Extra SMARTS patterns nominating additional central bonds as
         rotatable, forwarded to ``scission.FragmentConfig.rotatable_bond_smarts``.
         Each pattern must map the central bond atoms with atom-map numbers
         ``:1`` and ``:2`` (e.g. ``"[C:1](=[O])[N:2]"`` to make amide-like
         single bonds rotatable, or ``"[C:1]=[N:2]"`` for exocyclic imines).
-        Patterns add to — they do not replace — scission's default rotatable
+        Patterns add to - they do not replace - scission's default rotatable
         bond identification. A single string is accepted as shorthand for a
         one-element list. When ``fragment_config`` is also supplied, these
         patterns are appended to ``fragment_config.rotatable_bond_smarts``.
@@ -1381,7 +1381,7 @@ def run_fragmented_dihed_twist_workflow(
     )
     if existing_fragments is not None:
         log.info(
-            "[frag-twist] %s/fragment_index.json exists — "
+            "[frag-twist] %s/fragment_index.json exists - "
             "skipping scission, reusing %s fragment(s)",
             out_dir_path,
             len(existing_fragments),
@@ -1389,7 +1389,7 @@ def run_fragmented_dihed_twist_workflow(
         fragmentation_dump = None
         fragments_iter = existing_fragments
     else:
-        log.info("[frag-twist] fragmenting parent → %s", out_dir_path)
+        log.info("[frag-twist] fragmenting parent -> %s", out_dir_path)
         frag_result = fragment_ligand(input_bundle, out_dir_path, config)
         log.info(
             "[frag-twist] selected %s fragment(s)",
@@ -1400,7 +1400,7 @@ def run_fragmented_dihed_twist_workflow(
 
     # bytype is forced True here: the per-fragment fits are merged back into
     # the parent frcmod via scission.merge.merge_fragment_frcmods, which can
-    # only map fragment-fit DIHE terms onto parent atoms by atom type — the
+    # only map fragment-fit DIHE terms onto parent atoms by atom type - the
     # fragment's atom names don't exist in the parent topology.
     twist_kwargs = dict(
         delta=delta,
@@ -1427,14 +1427,14 @@ def run_fragmented_dihed_twist_workflow(
 
     for fragment in fragments_iter:
         if not fragment.fit_torsions:
-            log.info("[frag-twist] %s: no fit_torsions — skipping", fragment.fragment_id)
+            log.info("[frag-twist] %s: no fit_torsions - skipping", fragment.fragment_id)
             continue
         # scission fit_torsions use 1-based fragment indices; ffpopt wants 0-based.
         bonds = bonds0_from_scission_fit_torsions(fragment.fit_torsions)
         frag_dir = _as_path(fragment.manifest_path).parent.resolve()
         structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
         log.info(
-            "[frag-twist] %s: %s bond(s) %s → running twist in %s",
+            "[frag-twist] %s: %s bond(s) %s -> running twist in %s",
             fragment.fragment_id,
             len(bonds),
             bonds,
@@ -1467,11 +1467,11 @@ def run_fragmented_dihed_twist_workflow(
 
     if not fragment_dirs_for_merge:
         raise RuntimeError(
-            "no fragments had fittable torsions — nothing to merge"
+            "no fragments had fittable torsions - nothing to merge"
         )
 
     log.info(
-        "[frag-twist] merging %s fragment frcmod(s) → %s",
+        "[frag-twist] merging %s fragment frcmod(s) -> %s",
         len(fragment_dirs_for_merge),
         merged_frcmod_path,
     )

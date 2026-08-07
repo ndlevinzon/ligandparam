@@ -216,7 +216,7 @@ def _heavy_clash_tables(
 
     Caps were previously built each angle then skipped in ``_minimum_margin``
     (string cap ids fail the ``isinstance(..., int)`` gate). Screening only
-    scores retained heavy–heavy contacts with graph distance > 2.
+    scores retained heavy-heavy contacts with graph distance > 2.
     """
 
     heavy_idxs = [
@@ -280,7 +280,7 @@ def _minimum_margin(
     """Measure the worst nonbonded margin among retained heavy atoms.
 
     ``caps`` is accepted for API compatibility but ignored: historical scoring
-    never counted cap–atom pairs (cap ids are non-integers).
+    never counted cap-atom pairs (cap ids are non-integers).
 
     Args:
         ligand: Parent ligand record.

@@ -60,7 +60,7 @@ def _formal_charge_hint(atom_type: str, element: str, degree: int, partial_charg
 
 def infer_formal_charge(
     element: str,
-    degree: int,
+   degree: int,
     *,
     atom_type: str = "",
     partial_charge: float = 0.0,
@@ -69,7 +69,7 @@ def infer_formal_charge(
     """Infer a formal charge for an Amber/GAFF atom.
 
     Quaternary nitrogen (four explicit bonds) is treated as ``N+`` even when the
-    MOL2 partial charge is fractional (~0.6–1.0), which matches GAFF ``n4``.
+    MOL2 partial charge is fractional (~0.6-1.0), which matches GAFF ``n4``.
     """
 
     hint = _formal_charge_hint(atom_type, element, degree, partial_charge)

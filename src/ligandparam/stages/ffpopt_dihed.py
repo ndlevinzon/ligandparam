@@ -122,7 +122,7 @@ class StageDihedTwistCorrection(AbstractStage):
         nproc_eff = self.nproc if nproc is None else nproc
 
         self.logger.info(
-            "Dihed twist correction: mol2=%s lib=%s frcmod=%s → %s (model=%s)",
+            "Dihed twist correction: mol2=%s lib=%s frcmod=%s -> %s (model=%s)",
             self.in_mol2,
             self.in_lib,
             self.in_frcmod,

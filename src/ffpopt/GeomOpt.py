@@ -246,7 +246,7 @@ def _run_geometric_with_watchdog(
     the job shows *no* progress for ``stall_timeout_sec``. Progress is any of:
     log growth, increasing process-tree CPU time, or updates under
     ``activity_dir`` (typically geomeTRIC's ``*.tmp`` folder). Quiet logs alone
-    are not enough to declare a stall — ML / xTB gradient evaluations can sit
+    are not enough to declare a stall - ML / xTB gradient evaluations can sit
     for many minutes between log lines.
 
     Set ``FFPOPT_GEOMETRIC_STALL_SEC=0`` to disable stall kills (B-matrix wedge
@@ -772,7 +772,7 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
         except Exception as e:
             # geomeTRIC sometimes cannot recover its IC system under frozen
             # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
-            # watchdog, …). Fall back to ASE BFGS with the same constraints.
+            # watchdog, ...). Fall back to ASE BFGS with the same constraints.
             _geomopt_fallback_note("geomeTRIC", e, "ASE")
             out = GeomOpt_ASE(los,struct,constraints,restraints)
     return out

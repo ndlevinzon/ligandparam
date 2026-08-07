@@ -27,7 +27,7 @@ _DEFAULT_TBLITE: dict[str, Any] = {
 # Prefer eeq when supported; fall back handled in make_tblite_calculator.
 _DEFAULT_GUESS = "eeq"
 
-# Env → parameter mapping.
+# Env -> parameter mapping.
 _ENV_MAP = {
     "FFPOPT_XTB_MAX_ITER": ("max_iterations", int),
     "FFPOPT_XTB_ETEMP": ("electronic_temperature", float),
@@ -236,7 +236,7 @@ def run_tblite_with_scf_retries(atoms, calc):
         try:
             new_calc = make_tblite_calculator(**cfg)
         except TypeError:
-            # Annealing / kwargs unsupported — skip this rung.
+            # Annealing / kwargs unsupported - skip this rung.
             continue
         atoms.calc = new_calc
         try:
