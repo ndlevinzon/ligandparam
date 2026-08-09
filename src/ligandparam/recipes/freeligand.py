@@ -45,7 +45,10 @@ class FreeLigand(Recipe):
     leaprc : list of str, optional
         Leaprc files for the Leap stage. Default ``["leaprc.gaff2"]``.
     force_gaussian_rerun : bool, optional
-        Rerun Gaussian even if output logs already exist.
+        If True, re-run Gaussian stages even when logs already show
+        ``Normal termination``. Exposed on ``lig-getparam`` as ``-O`` /
+        ``--force-gaussian-rerun``. Default False (skip complete jobs;
+        incomplete orientation ESP jobs are re-run individually).
     orientation_protocol : {"so3_n28", "legacy_euler"}, optional
         Multi-RESP orientation set. Default ``so3_n28`` (28 quaternion-packed
         orientations). ``legacy_euler`` restores the older alpha/beta grid.

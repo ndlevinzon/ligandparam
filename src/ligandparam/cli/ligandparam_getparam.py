@@ -51,6 +51,7 @@ def worker(
     nprocs: int = 1,
     mem: int = 1,
     reference_pdb: str = None,
+    force_gaussian_rerun: bool = False,
 ) -> Path:
     """Execute a ligand parameterization recipe for one ligand.
 
@@ -85,6 +86,7 @@ def worker(
     logger.info(f"Net charge: {net_charge}")
     logger.info(f"Atom type: {atom_type}")
     logger.info(f"Charge model: {charge_model}")
+    logger.info(f"force_gaussian_rerun (-O): {force_gaussian_rerun}")
     if model is not None:
         logger.info(f"Using DeepMD model: {model}")
     if sqm:
@@ -123,6 +125,7 @@ def worker(
         sqm=sqm,
         nproc=nprocs,
         mem=mem,
+        force_gaussian_rerun=force_gaussian_rerun,
     )
     logger.info(f"Recipe selected: {recipe_name}")
     recipe.setup()
@@ -194,6 +197,16 @@ def main():
     parser.add_argument("-n", "--nproc", type=int, default=1, help="Number of processes to use (default: 1)")
     parser.add_argument("-mem", "--mem", type=int, default=1, help="Memory in GB to allocate for the process (default: 1GB)")
     parser.add_argument("-ref", "--reference_pdb", type=str, default=None, help="Reference PDB file for name fixing (optional)")
+    parser.add_argument(
+        "-O",
+        "--force-gaussian-rerun",
+        action="store_true",
+        help=(
+            "Force re-run of Gaussian stages even when logs already show "
+            "Normal termination. By default, complete jobs are skipped and "
+            "only incomplete orientation ESP jobs are re-run."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -211,6 +224,7 @@ def main():
         nprocs=args.nproc,
         mem=args.mem,
         reference_pdb=args.reference_pdb,
+        force_gaussian_rerun=args.force_gaussian_rerun,
     )
 
 

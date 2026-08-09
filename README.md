@@ -212,6 +212,14 @@ lig-scission --help
 smiles-to-pdb --help
 ```
 
+Re-run after walltime without repeating finished Gaussian work (default):
+complete logs are skipped, and only incomplete orientation ESP jobs are
+re-submitted. Force all Gaussian jobs again with ``-O``:
+
+```bash
+lig-getparam -i ligand.pdb -r LIG -d param -rn freeligand -O
+```
+
 ---
 
 ## Examples

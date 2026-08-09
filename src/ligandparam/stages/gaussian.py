@@ -28,6 +28,70 @@ logger = logging.getLogger("ligandparam.gaussian")
 _CALCFC_MAX_ATOMS = 50
 
 
+def _gaussian_log_is_complete(path: Path | str | None) -> bool:
+    """Return True if ``path`` exists and ends with Normal termination."""
+    if path is None:
+        return False
+    return GaussianReader(Path(path)).check_complete()
+
+
+def _should_skip_gaussian_job(
+    *,
+    force_rerun: bool,
+    final_log: Path | str | None,
+    cwd_log: Path | str | None = None,
+    logger: logging.Logger | None = None,
+    promote_cwd_to_final: bool = True,
+) -> bool:
+    """Decide whether an existing Gaussian job can be skipped on resume.
+
+    Checks ``final_log`` first, then ``cwd_log`` (e.g. ``gaussianCalcs/*.log``
+    before it was moved). Incomplete logs trigger a re-run of that job only.
+    Pass ``force_rerun=True`` (CLI ``-O``) to ignore complete logs.
+    """
+    log = logger or logging.getLogger("ligandparam.gaussian")
+    final_path = Path(final_log) if final_log is not None else None
+    cwd_path = Path(cwd_log) if cwd_log is not None else None
+
+    if force_rerun:
+        log.info(
+            "force_gaussian_rerun (-O): ignoring existing Gaussian logs and re-running"
+        )
+        return False
+
+    if final_path is not None and _gaussian_log_is_complete(final_path):
+        log.info("Skipping Gaussian job (already complete): %s", final_path)
+        return True
+
+    if cwd_path is not None and _gaussian_log_is_complete(cwd_path):
+        log.info("Skipping Gaussian job (already complete): %s", cwd_path)
+        if (
+            promote_cwd_to_final
+            and final_path is not None
+            and cwd_path.resolve() != final_path.resolve()
+        ):
+            try:
+                final_path.parent.mkdir(parents=True, exist_ok=True)
+                sh.copy2(cwd_path, final_path)
+                log.info("Promoted complete Gaussian log -> %s", final_path)
+            except OSError as exc:
+                log.warning(
+                    "Could not promote complete log %s -> %s (%s)",
+                    cwd_path,
+                    final_path,
+                    exc,
+                )
+        return True
+
+    for path in (final_path, cwd_path):
+        if path is not None and path.exists() and not _gaussian_log_is_complete(path):
+            log.info(
+                "Incomplete Gaussian log found (%s); will re-run this job",
+                path,
+            )
+    return False
+
+
 def _orientation_id_from_paths(in_com: str | Path, out_log: str | Path) -> str:
     """Stable board id: ``q012`` or ``0.00_30.00_0.00`` from ``*_rot_<id>.*``."""
     stem = Path(in_com).stem
@@ -306,17 +370,12 @@ class GaussianMinimizeRESP(AbstractStage):
                 )
             )
 
-        gau_complete = False
-        # Check if the Gaussian calculation has already been run
-        if os.path.exists(self.out_gaussian_log):
-            reader = GaussianReader(self.out_gaussian_log)
-            if reader.check_complete():
-                self.logger.info("Gaussian calculation already complete")
-                gau_complete = True
-
-        # Check if the Gaussian calculation should be rerun
-        if self.force_gaussian_rerun:
-            gau_complete = False
+        gau_complete = _should_skip_gaussian_job(
+            force_rerun=bool(self.force_gaussian_rerun),
+            final_log=self.out_gaussian_log,
+            cwd_log=self.out_log,
+            logger=self.logger,
+        )
 
         if not gau_complete:
             gau.write(dry_run=False)
@@ -352,6 +411,10 @@ class GaussianMinimizeRESP(AbstractStage):
 
             # Move the Gaussian log file to the output location
             sh.move(self.out_log, self.out_gaussian_log)
+        else:
+            self.logger.info(
+                "Gaussian minimize/RESP already complete; skipping execution"
+            )
 
         return
 
@@ -496,17 +559,12 @@ class GaussianRESP(AbstractStage):
             )
         )
 
-        gau_complete = False
-        # Check if the Gaussian calculation has already been run
-        if os.path.exists(self.out_gaussian_log):
-            reader = GaussianReader(self.out_gaussian_log)
-            if reader.check_complete():
-                self.logger.info("Gaussian calculation already complete")
-                gau_complete = True
-
-        # Check if the Gaussian calculation should be rerun
-        if self.force_gaussian_rerun:
-            gau_complete = False
+        gau_complete = _should_skip_gaussian_job(
+            force_rerun=bool(self.force_gaussian_rerun),
+            final_log=self.out_gaussian_log,
+            cwd_log=self.out_log,
+            logger=self.logger,
+        )
 
         if not gau_complete:
             gau.write(dry_run=False)
@@ -515,6 +573,10 @@ class GaussianRESP(AbstractStage):
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """Execute the Gaussian RESP calculation.
+
+        Skips when an existing log already shows ``Normal termination``, unless
+        ``force_gaussian_rerun`` / CLI ``-O`` is set. Incomplete logs are
+        re-run.
 
         Parameters
         ----------
@@ -542,6 +604,8 @@ class GaussianRESP(AbstractStage):
 
             # Move the Gaussian log file to the output location
             sh.move(self.out_log, self.out_gaussian_log)
+        else:
+            self.logger.info("Gaussian RESP already complete; skipping execution")
 
         return
 
@@ -778,6 +842,11 @@ class StageGaussianRotation(AbstractStage):
         )
         self.setup(self.out_gaussian_label)
 
+        if self.force_gaussian_rerun:
+            self.logger.info(
+                "force_gaussian_rerun (-O): all orientation ESP jobs will be re-run"
+            )
+
         status_path = self.gaussian_cwd / ".rot_progress.json"
         board_path = self.gaussian_cwd / "ROT_STATUS.txt"
         store = JobProgressStore(
@@ -794,7 +863,7 @@ class StageGaussianRotation(AbstractStage):
             job_id = _orientation_id_from_paths(in_com, out_log)
             already_done = (
                 not self.force_gaussian_rerun
-                and GaussianReader(out_log).check_complete()
+                and _gaussian_log_is_complete(out_log)
             )
             if already_done:
                 store.register(
@@ -804,8 +873,15 @@ class StageGaussianRotation(AbstractStage):
                     detail=f"already complete | {out_log.name}",
                     log_path=str(out_log),
                 )
-                self.logger.info(f"Skipping complete {out_log.name}")
+                self.logger.info(
+                    "Skipping complete orientation ESP: %s", out_log.name
+                )
                 continue
+            if out_log.exists() and not self.force_gaussian_rerun:
+                self.logger.info(
+                    "Incomplete orientation ESP log (%s); will re-run this job",
+                    out_log.name,
+                )
             store.register(
                 job_id,
                 status="queued",
@@ -833,8 +909,11 @@ class StageGaussianRotation(AbstractStage):
         total = len(self.in_coms)
         finished = total - len(pending)
         self.logger.info(
-            f"Gaussian rotation status board: {board_path} "
-            f"({finished} already complete, {len(pending)} pending)"
+            "Gaussian rotation status board: %s "
+            "(%s already complete, %s pending)",
+            board_path,
+            finished,
+            len(pending),
         )
         watcher = JobBoardWatcher(
             store,
