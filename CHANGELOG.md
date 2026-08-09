@@ -41,6 +41,7 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - **Fragment-scan completion logs** — per-scan / per-fragment messages no longer say bare “done/completed”; parent logs `[frag-twist] all N fragment twist job(s) finished` only after the fragment pool joins, and CLI `Done` only after merge.
 - **Fragment live status board** — parallel fragment twist runs write an ASCII board (`FRAG_STATUS.txt` + parent log) with per-fragment name / status / stage / detail; wavefront spam goes to `<frag>/frag-twist.log` instead of interleaving on the console.
 - **Gaussian orientation status board** — FreeLigand / multi-ESP `StageGaussianRotation` writes the same style of board (`gaussianCalcs/ROT_STATUS.txt`) tracking each orientation/angle (`q012` or Euler triple), status, stage (`gaussian` / finished), and log detail while jobs run in parallel.
+- **Slurm-friendly console logging** — per-fragment / recipe `.log` content is teed to stdout (INFO) and stderr (WARNING+) with timestamps and tags (`[ligandparam]`, `[ffpopt]`, `[ffpopt:<fragment_id>]`) so job `.out` / `.err` capture the full trail.
 
 ---
 

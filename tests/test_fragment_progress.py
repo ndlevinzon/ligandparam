@@ -43,12 +43,34 @@ class TestFragmentProgressStore(unittest.TestCase):
 
 
 class TestFragmentStdioRedirect(unittest.TestCase):
-    def test_print_goes_to_file(self):
+    def test_print_goes_to_file_and_console(self):
+        import io
+        import sys
+
         with tempfile.TemporaryDirectory() as td:
             log_path = Path(td) / "frag-twist.log"
-            with fragment_stdio_to_file(log_path):
-                print("hello-fragment")
+            fake_out = io.StringIO()
+            old = sys.stdout
+            try:
+                sys.stdout = fake_out
+                with fragment_stdio_to_file(log_path, fragment_id="fragment_1"):
+                    print("hello-fragment")
+            finally:
+                sys.stdout = old
             self.assertIn("hello-fragment", log_path.read_text(encoding="utf-8"))
+            console = fake_out.getvalue()
+            self.assertIn("hello-fragment", console)
+            self.assertIn("[ffpopt:fragment_1]", console)
+
+
+class TestConsoleFormat(unittest.TestCase):
+    def test_format_console_line_tags_message(self):
+        from ffpopt.console import format_console_line
+
+        line = format_console_line("wavefront step\n", tag="ffpopt:fragment_2")
+        self.assertIn("[ffpopt:fragment_2]", line)
+        self.assertIn("wavefront step", line)
+        self.assertRegex(line, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ")
 
 
 class TestFragmentBoardWatcher(unittest.TestCase):

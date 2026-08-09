@@ -1,9 +1,7 @@
 """CLI entry point for batch ligand parameterization."""
 
-import logging
 from pathlib import Path
 
-from ligandparam import __version__
 from ligandparam.stages import PDB_Name_Fixer
 
 
@@ -11,6 +9,9 @@ def set_file_logger(
     logfilename: Path, logname: str = None, filemode: str = "a"
 ) -> logging.Logger:
     """Set up a file logger for the ligand parameterization process.
+
+    Also mirrors INFO to stdout and WARNING+ to stderr with timestamps and a
+    ``[ligandparam]`` tag so Slurm ``.out`` / ``.err`` capture the same trail.
 
     Parameters
     ----------
@@ -27,22 +28,13 @@ def set_file_logger(
     logger : logging.Logger
         A configured logger instance that writes logs to the specified file.
     """
+    from ligandparam.log import set_file_logger as _set_file_logger
+
     if logname is None:
         logname = Path(logfilename).stem
-    logger = logging.getLogger(logname)
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "{asctime} - {levelname} - {version} {message}",
-        style="{",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        defaults={"version": __version__},
+    return _set_file_logger(
+        logfilename, logname=logname, filemode=filemode, also_console=True
     )
-    file_handler = logging.FileHandler(filename=logfilename, mode=filemode)
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    return logger
 
 
 def worker(
@@ -75,7 +67,7 @@ def worker(
     binder_pdb = cwd / mol
     logger = set_file_logger(binder_dir / f"{resname}.log", filemode="w")
 
-    print("Working on ligand:", resname)
+    logger.info("Working on ligand: %s", resname)
     if not binder_pdb.is_file():
         raise FileNotFoundError(
             f"Input file {binder_pdb} does not exist. Please provide a valid PDB file."

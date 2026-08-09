@@ -4,16 +4,17 @@ Thin wrappers around :mod:`ffpopt.progress_board` with fragment-oriented names.
 Workers write stage updates into a shared JSON status file. The parent process
 renders an ASCII board (and ``FRAG_STATUS.txt``) so interleaved wavefront spam
 does not obscure which fragment is doing what. Detailed per-fragment output is
-intended to live in ``<frag_dir>/frag-twist.log``.
+intended to live in ``<frag_dir>/frag-twist.log`` and is also teed to the
+console (Slurm ``.out`` / ``.err``) with timestamps and an ``[ffpopt:...]`` tag.
 """
 
 from __future__ import annotations
 
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Optional
 
+from .console import attach_console_handlers, console_formatter, tee_stdio_to_file
 from .progress_board import JobBoardWatcher, JobProgressStore, format_job_board
 
 PathLike = str | Path
@@ -108,48 +109,36 @@ def format_fragment_board(
 
 
 @contextmanager
-def fragment_stdio_to_file(log_path: Path) -> Iterator[None]:
-    """Redirect ``stdout`` / ``stderr`` to ``log_path`` for this process.
+def fragment_stdio_to_file(
+    log_path: Path,
+    *,
+    fragment_id: str | None = None,
+) -> Iterator[None]:
+    """Tee stdout/stderr to ``log_path`` and the parent console.
 
-    Wavefront and fit-apply still use ``print``; under parallel fragment pools
-    those lines would otherwise interleave on the parent console.
+    Wavefront and fit-apply still use ``print``. Under parallel fragment pools
+    those lines are tagged ``[ffpopt:<fragment_id>]`` on the console so Slurm
+    captures them while the per-fragment ``.log`` stays complete.
     """
-    log_path = Path(log_path)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(log_path, "a", encoding="utf-8", buffering=1)
-    old_out, old_err = sys.stdout, sys.stderr
-    try:
-        sys.stdout = fh  # type: ignore[assignment]
-        sys.stderr = fh  # type: ignore[assignment]
+    tag = f"ffpopt:{fragment_id}" if fragment_id else "ffpopt"
+    with tee_stdio_to_file(log_path, tag=tag):
         yield
-    finally:
-        sys.stdout = old_out
-        sys.stderr = old_err
-        try:
-            fh.flush()
-            fh.close()
-        except OSError:
-            pass
 
 
 def make_fragment_file_logger(fragment_id: str, log_path: Path):
-    """Logger that writes only to the fragment log (does not propagate)."""
+    """Logger that writes to the fragment log and mirrors to the console."""
     import logging
 
     name = f"ffpopt.workflows.frag.{fragment_id}"
+    tag = f"ffpopt:{fragment_id}"
     logger = logging.getLogger(name)
     logger.handlers.clear()
     logger.propagate = False
     logger.setLevel(logging.INFO)
     handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-    handler.setFormatter(
-        logging.Formatter(
-            "{asctime} - {levelname} - {message}",
-            style="{",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
+    handler.setFormatter(console_formatter(tag))
     logger.addHandler(handler)
+    attach_console_handlers(logger, tag=tag)
     return logger
 
 

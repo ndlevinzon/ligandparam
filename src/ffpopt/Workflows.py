@@ -73,8 +73,18 @@ def _subprocess_cwd(workdir: Optional[Path]) -> Optional[str]:
 
 
 def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
-    """Return ``logger`` or the module logger for workflow progress messages."""
-    return logger if logger is not None else _LOG
+    """Return ``logger`` or the module logger for workflow progress messages.
+
+    Ensures ``ffpopt.*`` loggers mirror INFO to stdout and WARNING+ to stderr
+    with timestamps and an ``[ffpopt]`` tag (Slurm-friendly).
+    """
+    log = logger if logger is not None else _LOG
+    name = getattr(log, "name", "") or ""
+    if name == "ffpopt" or name.startswith("ffpopt."):
+        from .console import attach_console_handlers
+
+        attach_console_handlers(log, tag="ffpopt")
+    return log
 
 
 def _ffpopt_bin_script(script_name: str) -> str:
@@ -1474,7 +1484,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
     )
 
     try:
-        with fragment_stdio_to_file(frag_log_path):
+        with fragment_stdio_to_file(frag_log_path, fragment_id=fragment_id):
             start_json = _prepare_fragment_input(
                 fragment,
                 skip_existing=job["skip_existing"],
