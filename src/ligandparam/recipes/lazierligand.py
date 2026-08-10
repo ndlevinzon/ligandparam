@@ -4,6 +4,7 @@ from typing import Optional, Union, Any
 from typing_extensions import override
 
 from ligandparam.parametrization import Recipe
+from ligandparam.recipes.common import charge_update_parmchk_leap_stages
 from ligandparam.stages import StageInitialize, StageParmChk, StageLeap, StageUpdate, StageNormalizeCharge
 
 
@@ -94,22 +95,14 @@ class LazierLigand(Recipe):
                 **self.kwargs,
             ),
             # Keep nonminimized coordinates; replace charges from fixed_charge_mol2
-            StageUpdate(
-                "UpdateCharges",
-                main_input=nonminimized_mol2,
-                cwd=self.cwd,
-                source_mol2=fixed_charge_mol2,
-                out_mol2=nonminimized_mol2,
-                update_charges=True,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
+            *charge_update_parmchk_leap_stages(
+                recipe=self,
+                initial_mol2=nonminimized_mol2,
+                final_mol2=fixed_charge_mol2,
+                nonminimized_mol2=nonminimized_mol2,
+                frcmod=frcmod,
+                lib=lib,
             ),
-            StageParmChk("ParmChk", main_input=nonminimized_mol2, cwd=self.cwd, out_frcmod=frcmod,
-                         logger=self.logger,
-                         **self.kwargs),
-            StageLeap("Leap", main_input=nonminimized_mol2, cwd=self.cwd, in_frcmod=frcmod, out_lib=lib,
-                      logger=self.logger, **self.kwargs),
         ]
 
     @override

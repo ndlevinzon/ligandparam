@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.interfaces import Antechamber
-from ligandparam.io.gaussianIO import GaussianReader
+from ligandparam.io.gaussian_io import GaussianReader
 
 from ligandparam.multiresp import parmhelper
 from ligandparam.multiresp.residueresp import ResidueResp

@@ -20,12 +20,15 @@ _EXPORTS = {
     "StageMatchAtomNames": ".typematching",
     "SDFToPDB": ".sdfconverters",
     "SDFToPDBBatch": ".sdfconverters",
-    "StageSmilesToPDB": ".smilestopdb",
+    "StageSmilesToPDB": ".smiles_to_pdb",
     "LigHFix": ".lighfix",
     "StageDisplaceMol": ".displacemol",
     "PDB_Name_Fixer": ".pdb_names",
     "DPMinimize": ".deepmd",
     "StageDihedTwistCorrection": ".ffpopt_dihed",
+    "StageBuild": ".build_system",
+    "StageSageCreate": ".generate_sage_params",
+    "StageSageToAmber": ".generate_sage_params",
 }
 
 __all__ = list(_EXPORTS)
@@ -33,7 +36,7 @@ __all__ = list(_EXPORTS)
 
 def __getattr__(name: str) -> Any:
     if name == "StageSmilestoPDB":
-        from .smilestopdb import StageSmilesToPDB as StageSmilestoPDB
+        from .smiles_to_pdb import StageSmilesToPDB as StageSmilestoPDB
 
         return StageSmilestoPDB
     mod = _EXPORTS.get(name)

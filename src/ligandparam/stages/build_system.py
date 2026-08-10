@@ -7,7 +7,7 @@ import MDAnalysis as mda
 
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.interfaces import Leap
-from ligandparam.io.leapIO import LeapWriter
+from ligandparam.io.leap_io import LeapWriter
 from ligandparam.log import get_logger
 
 

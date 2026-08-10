@@ -1,11 +1,11 @@
-from typing import Optional,  Any
+from typing import Optional, Any
 
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.log import get_logger
 
 
 class TestStage(AbstractStage):
-    """Minimal stage used for testing the stage interface."""
+    """Minimal stage used for testing the stage interface (dev/stub; not exported)."""
 
     def __init__(self, name, **kwargs) -> None:
         self.name = name

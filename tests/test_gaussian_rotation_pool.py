@@ -59,26 +59,26 @@ def _import_gaussian_stage():
 
 class TestSplitGaussianJobBudget(unittest.TestCase):
     def test_single_job_uses_all_cores(self):
-        from ligandparam.gaussian_budget import split_gaussian_job_budget
+        from ffpopt.runtime.fast_wavefront import split_core_budget as split_gaussian_job_budget
 
         self.assertEqual(split_gaussian_job_budget(16, 1), (1, 16))
 
     def test_so3_n28_with_28_cores(self):
-        from ligandparam.gaussian_budget import split_gaussian_job_budget
+        from ffpopt.runtime.fast_wavefront import split_core_budget as split_gaussian_job_budget
 
         n_workers, nproc = split_gaussian_job_budget(28, 28)
         self.assertEqual((n_workers, nproc), (28, 1))
         self.assertLessEqual(n_workers * nproc, 28)
 
     def test_more_jobs_than_cores(self):
-        from ligandparam.gaussian_budget import split_gaussian_job_budget
+        from ffpopt.runtime.fast_wavefront import split_core_budget as split_gaussian_job_budget
 
         n_workers, nproc = split_gaussian_job_budget(16, 28)
         self.assertEqual((n_workers, nproc), (16, 1))
         self.assertLessEqual(n_workers * nproc, 16)
 
     def test_fat_jobs_when_few_orientations(self):
-        from ligandparam.gaussian_budget import split_gaussian_job_budget
+        from ffpopt.runtime.fast_wavefront import split_core_budget as split_gaussian_job_budget
 
         n_workers, nproc = split_gaussian_job_budget(16, 4)
         self.assertEqual((n_workers, nproc), (4, 4))

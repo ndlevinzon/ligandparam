@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
 
-def ReadMol2(fname):
-    import parmed
-    pmol = parmed.load_file(fname)
-    
-    for a in pmol.atoms:
-        if isinstance(a.type,int):
-            for elem,num in parmed.periodic_table.AtomicNum.items():
-                if num == a.atomic_number:
-                    a.type = elem
-                    break
-    return pmol
+from ffpopt.Reader import ReadMol2  # noqa: F401  — write-once (Reader)
 
-    
+
 def ConvertMol2toRDKIT(pmol):
     import copy
     from io import StringIO

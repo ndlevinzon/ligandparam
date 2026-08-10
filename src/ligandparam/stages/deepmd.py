@@ -14,7 +14,7 @@ from ase.calculators.calculator import Calculator, all_changes
 
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.io.coordinates import Coordinates, SimpleXYZ, Mol2Writer
-from ligandparam.io.gaussianIO import GaussianWriter, GaussianInput, GaussianReader
+from ligandparam.io.gaussian_io import GaussianWriter, GaussianInput, GaussianReader
 from ligandparam.interfaces import Gaussian, Antechamber
 from ligandparam.log import get_logger
 

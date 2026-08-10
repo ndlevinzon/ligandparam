@@ -6,3 +6,6 @@ __all__ = [
     "AmberLigandBundle",
     "resolve_getparam_bundle",
 ]
+
+# Package layout: format helpers live here (smiles, gaussian_io, leap_io,
+# coordinates, orientations). Stages/recipes orchestrate; cli/ is the user entry.

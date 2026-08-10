@@ -17,16 +17,11 @@ _LOG = logging.getLogger("ffpopt.cpefit.parallel_esp")
 def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
     """Split a core budget across concurrent jobs and per-job threads.
 
-    Prefers as many concurrent jobs as possible up to ``min(total_cores, n_jobs)``,
-    with ``n_workers * nproc_per_job <= total_cores``.
+    Canonical implementation: :func:`ffpopt.runtime.fast_wavefront.split_core_budget`.
     """
-    total = max(1, int(total_cores))
-    n_jobs = max(1, int(n_jobs))
-    if n_jobs == 1:
-        return 1, total
-    n_workers = min(total, n_jobs)
-    nproc_per_job = max(1, total // n_workers)
-    return n_workers, nproc_per_job
+    from ffpopt.runtime.fast_wavefront import split_core_budget as _split
+
+    return _split(total_cores, n_jobs)
 
 
 def _aiopts_dict(aiopts: AbInitioOptions) -> dict:

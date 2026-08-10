@@ -3,6 +3,12 @@
 AMBER-aware torsion fragment generation, vendored under ``src/scission`` next to
 ``ligandparam`` and ``ffpopt``.
 
+## Package layout
+
+Flat package (intentional): snake_case modules, thin public ``__init__.py``,
+``cli.py`` entrypoint, ``io.py`` / ``models.py`` for I/O and dataclasses.
+No ffpopt/ligandparam imports — keep that edge one-way.
+
 Used by ``ffpopt.Workflows.run_fragmented_dihed_twist_workflow`` and by the
 standalone CLIs:
 
@@ -16,6 +22,9 @@ lig-scission fragment -d CHA3 -r CHA --label chaps
 
 Requires AmberTools (``tleap``) on ``PATH`` for ``parm7``/``rst7`` writing.
 RDKit is already a ligandparam dependency and is used for SMARTS / drawings.
+
+``split_core_budget`` in ``parallel.py`` is kept local (algorithm synced with
+``ffpopt.runtime.fast_wavefront.split_core_budget``).
 
 Runtime package is this ``src/scission`` tree. An optional ``scission-main/``
 checkout (gitignored) may exist as an upstream reference for historical docs /

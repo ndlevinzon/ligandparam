@@ -10,7 +10,7 @@ from typing import Optional,  Union, Any
 from pathlib import Path
 import shutil
 from ligandparam.stages.abstractstage import AbstractStage
-from ligandparam.io.leapIO import LeapWriter
+from ligandparam.io.leap_io import LeapWriter
 from ligandparam.interfaces import Leap
 from ligandparam.utils import find_word_and_get_line
 

@@ -1,30 +1,6 @@
 #!/usr/bin/env python3
+"""UFF radii — re-exported from :mod:`ffpopt.constants.PeriodicTable`."""
 
+from ffpopt.constants.PeriodicTable import GetUffRadius
 
-def GetUffRadius(z):
-    #
-    # Returns radius in Angstrom
-    #
-    from ndfes.constants import AU_PER_ANGSTROM
-    diam = [ 4.0, #// dummy
-             2.886, 2.362, #// 1s (2)
-             2.451, 2.745, #// 2s (4)
-             4.083, 3.851, 3.660, 3.500, 3.364, 3.243, #// 2p (10)
-             2.983, 3.021, #// 3s (12)
-             4.499, 4.295, 4.147, 4.035, 3.947, 3.868, #// 3p (18)
-             3.812, 3.399, #// 4s (20)
-             3.295, 3.175, 3.144, 3.023, 2.961, #// 3d
-             2.912, 2.872, 2.834, 3.495, 2.763, #// 3d (30)
-             4.383, 4.28, 4.23, 4.205, 4.189, 4.141, #// 4p  (36)
-             4.114, 3.641, #// 5s (38)
-             3.345, 3.124, 3.165, 3.052, 2.998, 
-             2.963, 2.929, 2.899, 3.148, 2.848, #// 4d (48)
-             4.463, 4.392, 4.42, 4.47, 4.5, 4.404 ] #// 5p (54)
-
-    x = None
-    if z >= 0 and z < len(diam):
-        x = AU_PER_ANGSTROM() * 0.5 * diam[z]
-    else:
-        raise Exception(f"Invalid atomic number {z}")
-    return x
-
+__all__ = ["GetUffRadius"]

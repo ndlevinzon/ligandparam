@@ -8,5 +8,5 @@ Input and Output Utilities
 
     ./io/coordinates.rst
     ./io/orientations.rst
-    ./io/gaussianIO.rst
-    ./io/leapIO.rst
+    ./io/gaussian_io.rst
+    ./io/leap_io.rst

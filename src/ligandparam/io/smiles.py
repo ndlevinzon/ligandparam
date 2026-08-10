@@ -35,32 +35,6 @@ class PDBFromSMILES:
         self.mol = None
         return
 
-    
-    def write_pdb(self, filename, randomSeed=0xf00d, *, minimize: bool = False):
-        """Embed the molecule and write a cleaned PDB file.
-
-        Parameters
-        ----------
-        filename : str
-            Output PDB path.
-        randomSeed : int, optional
-            Random seed for the embedding algorithm.
-        minimize : bool, optional
-            If True, run MMFF (or UFF) optimization after embedding.
-        """
-        params = rdkit.Chem.AllChem.ETKDGv3()
-        params.randomSeed = randomSeed
-        rdkit.Chem.AllChem.EmbedMolecule(self.mol, params)
-        if minimize:
-            if rdkit.Chem.AllChem.MMFFHasAllMoleculeParams(self.mol):
-                rdkit.Chem.AllChem.MMFFOptimizeMolecule(self.mol)
-            else:
-                rdkit.Chem.AllChem.UFFOptimizeMolecule(self.mol)
-        rdkit.Chem.rdmolfiles.MolToPDBFile(self.mol, filename)
-        self.pdb_filename = filename
-        clean_pdb(self.pdb_filename, self.resname)
-        return
-    
     def mol_from_smiles(self, addHs=True):
         """Build an RDKit molecule from the stored SMILES string.
 
@@ -73,9 +47,54 @@ class PDBFromSMILES:
         if addHs:
             mol = rdkit.Chem.rdmolops.AddHs(mol)
         self.mol = mol
-        return 
-    
-class MolFromPDB:
+        return
+
+    def build_embedded_mol(
+        self,
+        randomSeed=0xF00D,
+        *,
+        minimize: bool = False,
+        addHs: bool = True,
+    ):
+        """Parse SMILES, embed 3D coordinates, optionally minimize; set ``self.mol``."""
+        self.mol_from_smiles(addHs=addHs)
+        params = rdkit.Chem.AllChem.ETKDGv3()
+        params.randomSeed = randomSeed
+        rdkit.Chem.AllChem.EmbedMolecule(self.mol, params)
+        if minimize:
+            if rdkit.Chem.AllChem.MMFFHasAllMoleculeParams(self.mol):
+                rdkit.Chem.AllChem.MMFFOptimizeMolecule(self.mol)
+            else:
+                rdkit.Chem.AllChem.UFFOptimizeMolecule(self.mol)
+        return self.mol
+
+    def write_pdb(self, filename, randomSeed=0xf00d, *, minimize: bool = False):
+        """Embed the molecule and write a cleaned PDB file.
+
+        Parameters
+        ----------
+        filename : str
+            Output PDB path.
+        randomSeed : int, optional
+            Random seed for the embedding algorithm.
+        minimize : bool, optional
+            If True, run MMFF (or UFF) optimization after embedding.
+        """
+        if self.mol is None:
+            self.build_embedded_mol(randomSeed, minimize=minimize)
+        else:
+            params = rdkit.Chem.AllChem.ETKDGv3()
+            params.randomSeed = randomSeed
+            rdkit.Chem.AllChem.EmbedMolecule(self.mol, params)
+            if minimize:
+                if rdkit.Chem.AllChem.MMFFHasAllMoleculeParams(self.mol):
+                    rdkit.Chem.AllChem.MMFFOptimizeMolecule(self.mol)
+                else:
+                    rdkit.Chem.AllChem.UFFOptimizeMolecule(self.mol)
+        rdkit.Chem.rdmolfiles.MolToPDBFile(self.mol, filename)
+        self.pdb_filename = filename
+        clean_pdb(self.pdb_filename, self.resname)
+        return
     """Load a PDB file into both RDKit and MDAnalysis representations."""
 
     def __init__(self, pdb_filename, removeHs=False):

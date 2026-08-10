@@ -22,7 +22,11 @@ _LOG = logging.getLogger("scission.parallel")
 
 
 def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
-    """Prefer as many workers as possible with ``workers * per_job <= total``."""
+    """Prefer as many workers as possible with ``workers * per_job <= total``.
+
+    Keep algorithm in sync with ``ffpopt.runtime.fast_wavefront.split_core_budget``
+    (scission stays free of ffpopt imports).
+    """
     total = max(1, int(total_cores))
     n_jobs = max(1, int(n_jobs))
     if n_jobs == 1:

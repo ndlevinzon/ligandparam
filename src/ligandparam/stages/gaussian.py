@@ -11,7 +11,7 @@ import shutil as sh
 
 from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.io.coordinates import Coordinates, SimpleXYZ, Mol2Writer
-from ligandparam.io.gaussianIO import GaussianWriter, GaussianInput, GaussianReader
+from ligandparam.io.gaussian_io import GaussianWriter, GaussianInput, GaussianReader
 from ligandparam.io.orientations import (
     get_quaternion_pack,
     minimum_pairwise_rotation_angle,
@@ -19,13 +19,28 @@ from ligandparam.io.orientations import (
 )
 from ligandparam.interfaces import Gaussian, Antechamber
 from ligandparam.log import get_logger
-from ligandparam.gaussian_budget import split_gaussian_job_budget
+from ffpopt.runtime.fast_wavefront import split_core_budget as split_gaussian_job_budget
 
 #
 logger = logging.getLogger("ligandparam.gaussian")
 
 # Use Opt(CalcFC) below this atom count; plain Opt at or above it.
 _CALCFC_MAX_ATOMS = 50
+
+_GAUSSIAN_PATH_OPTS = (
+    "gaussian_root",
+    "gauss_exedir",
+    "gaussian_binary",
+    "gaussian_scratch",
+)
+
+
+def apply_gaussian_env_paths(obj, kwargs) -> None:
+    """Set Gaussian installation path attributes on ``obj`` from ``kwargs``."""
+    for opt in _GAUSSIAN_PATH_OPTS:
+        setattr(obj, opt, kwargs.get(opt, ""))
+    if getattr(obj, "gaussian_binary", None) is None:
+        obj.gaussian_binary = "g16"
 
 
 def _gaussian_log_is_complete(path: Path | str | None) -> bool:
@@ -266,26 +281,7 @@ class GaussianMinimizeRESP(AbstractStage):
         return
 
     def _validate_input_paths(self, **kwargs):
-        """
-        Validate and set input paths for Gaussian execution.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments containing Gaussian path options.
-
-        Raises
-        ------
-        ValueError
-            If a required option is missing.
-        """
-        for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
-            try:
-                setattr(self, opt, kwargs.get(opt, ""))
-            except KeyError:
-                raise ValueError(f"ERROR: Please provide {opt} option as a keyword argument.")
-        if self.gaussian_binary is None:
-            self.gaussian_binary = "g16"
+        apply_gaussian_env_paths(self, kwargs)
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """Append a stage to the current stage.
@@ -477,26 +473,7 @@ class GaussianRESP(AbstractStage):
         return
 
     def _validate_input_paths(self, **kwargs):
-        """
-        Validate and set input paths for Gaussian execution.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments containing Gaussian path options.
-
-        Raises
-        ------
-        ValueError
-            If a required option is missing.
-        """
-        for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
-            try:
-                setattr(self, opt, kwargs.get(opt, ""))
-            except KeyError:
-                raise ValueError(f"ERROR: Please provide {opt} option as a keyword argument.")
-        if self.gaussian_binary is None:
-            self.gaussian_binary = "g16"
+        apply_gaussian_env_paths(self, kwargs)
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """Append a stage to the current stage.
@@ -687,26 +664,7 @@ class StageGaussianRotation(AbstractStage):
         self.xyz = Path(self.gaussian_cwd, f"{self.out_gaussian_label}_rotations.xyz")
 
     def _validate_input_paths(self, **kwargs):
-        """
-        Validate and set input paths for Gaussian execution.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments containing Gaussian path options.
-
-        Raises
-        ------
-        ValueError
-            If a required option is missing.
-        """
-        for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
-            try:
-                setattr(self, opt, kwargs.get(opt, ""))
-            except KeyError:
-                raise ValueError(f"ERROR: Please provide {opt} option as a keyword argument.")
-        if self.gaussian_binary is None:
-            self.gaussian_binary = "g16"
+        apply_gaussian_env_paths(self, kwargs)
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """Append a stage to the current stage.
@@ -1025,26 +983,7 @@ class StageGaussiantoMol2(AbstractStage):
         self._add_outputs(self.out_mol2)
 
     def _validate_input_paths(self, **kwargs) -> None:
-        """
-        Validate and set input paths for Gaussian execution.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments containing Gaussian path options.
-
-        Raises
-        ------
-        ValueError
-            If a required option is missing.
-        """
-        for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
-            try:
-                setattr(self, opt, kwargs.get(opt, ""))
-            except KeyError:
-                raise ValueError(f"ERROR: Please provide {opt} option as a keyword argument.")
-        if self.gaussian_binary is None:
-            self.gaussian_binary = "g16"
+        apply_gaussian_env_paths(self, kwargs)
 
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """Append the stage to the current stage."""

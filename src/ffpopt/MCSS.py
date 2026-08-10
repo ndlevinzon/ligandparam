@@ -245,37 +245,7 @@ def mcss(mol2str_1, mol2str_2, maxtime=60, isotope_map=None, selec=''):
 
 
 
-def FixParmedAtomicNumbers(mol):
-    """Replace parmed atomic_numbers attribute for atom types matching gaff or gaff2
-
-    Parameters
-    ----------
-    mol : parmed Structure or ResidueTemplate
-        This object should contain an array mol.atoms with the .atomic_number attribute
-    """
-    
-    # Example mapping for common GAFF2 atom types to atomic numbers
-    # This is a simplified example; a more robust mapping might be needed for all GAFF2 types.
-    gaff2_type_to_atomic_number = {
-        'c': 6, 'c1': 6, 'c2': 6, 'c3': 6, 'ca': 6, 'cc': 6, 'cd': 6, 'ce': 6, 'cf': 6, 'cg': 6,
-        'ch': 6, 'ci': 6, 'cj': 6, 'ck': 6, 'cl': 6, 'cm': 6, 'cn': 6, 'cp': 6, 'cq': 6, 'cr': 6,
-        'cx': 6, 'cy': 6, 'cz': 6, 'n': 7, 'n1': 7, 'n2': 7, 'n3': 7, 'na': 7, 'nb': 7, 'nc': 7,
-        'nd': 7, 'ne': 7, 'nf': 7, 'nh': 7, 'no': 7, 'nt': 7, 'o': 8, 'oh': 8, 'os': 8, 'ow': 8,
-        'oy': 8, 'p': 15, 'pb': 15, 'pc': 15, 'pd': 15, 'pe': 15, 'pf': 15, 's': 16, 'sh': 16,
-        'ss': 16, 'sx': 16, 'sy': 16, 'f': 9, 'cl': 17, 'br': 35, 'i': 53, 'h': 1, 'hc': 1, 'hp': 1,
-        'hs': 1, 'hw': 1
-    }
-
-    gaff_type_to_atomic_number = {
-        "c":6,"c1":6,"c2":6,"c3":6,"ca":6,"cp":6,"cq":6,"cc":6,"cd":6,"ce":6,"cf":6,"cg":6,"ch":6,"cx":6,"cy":6,"cu":6,"cv":6,"cz":6,"h1":1,"h2":1,"h3":1,"h4":1,"h5":1,"ha":1,"hc":1,"hn":1,"ho":1,"hp":1,"hs":1,"hw":1,"hx":1,"f":9, "cl":17,"br":35,"i":53, "n":7,  "n1":7, "n2":7, "n3":7, "n4":7, "na":7, "nb":7, "nc":7, "nd":7, "ne":7, "nf":7, "nh":7, "no":7, "ni":7, "nj":7, "nk":7, "nl":7, "nm":7, "nn":7, "np":7, "nq":7, "o":8,  "oh":8, "os":8, "op":8, "oq":8, "ow":8, "p2":15,"p3":15,"p4":15,"p5":15,"pb":15,"pc":15,"pd":15,"pe":15,"pf":15,"px":15,"py":15,"s":16, "s2":16,"s4":16,"s6":16,"sh":16,"ss":16,"sp":16,"sq":16,"sx":16,"sy":16
-        }
-
-    for atom in mol.atoms:
-        if atom.type in gaff2_type_to_atomic_number:
-            atom.atomic_number = gaff2_type_to_atomic_number[atom.type]
-        elif atom.type in gaff_type_to_atomic_number:
-            atom.atomic_number = gaff_type_to_atomic_number[atom.type]
-
+from ffpopt.Reader import FixParmedAtomicNumbers  # noqa: F401  — write-once (Reader)
 
 
 def parmed2mol2str(parmed_atoms):

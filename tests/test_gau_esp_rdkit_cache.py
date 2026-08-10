@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ligandparam.io.gaussianIO import GaussianReader
+from ligandparam.io.gaussian_io import GaussianReader
 from ligandparam.multiresp.respfunctions import ReadGauEsp, _coords_after_is_at
 
 
