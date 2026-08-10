@@ -378,7 +378,7 @@ def ChangeParmFromMultiDihedFcn(p,fcn):
     scee = 1.2
     scnb = 2.0
     xs = []
-    for prim in fcn.prim:
+    for prim in fcn.prims:
         per = prim.per
         ph = prim.phase
         fc = prim.fc
@@ -455,6 +455,8 @@ def GetDihedClasses(idxs=None):
         A dictionary where keys are integers representing the number of terms in the dihedral function, and values are lists of MultiDihedFcn objects.
         
     """
+    if idxs is None:
+        idxs = [0, 1, 2, 3]
     class1 = [MultiDihedFcn( idxs, [PrimDihedFcn(1,  0,1)] ),
               MultiDihedFcn( idxs, [PrimDihedFcn(1,  0,2)] ),
               MultiDihedFcn( idxs, [PrimDihedFcn(1,  0,3)] ) ]
@@ -606,19 +608,6 @@ def IsolatedLinearSolve(mol,idxs,losll,hlenes,nprim,pname):
     llenes *= KCAL_PER_EV
     hlenes *= KCAL_PER_EV
 
-    # for igeom,llgeom in enumerate(losll):
-    #     g = llgeom.GetASEAtoms()
-    #     o = FillConstraints(g,cons,force=True)
-    #     v = o[0].value
-    #     #if abs(360-v) < 0.5:
-    #     #    v = 0
-    #     print("%3i %8.2f %20.6f %20.6f"%( igeom,v,llenes[igeom],hlenes[igeom] ))
-
-    
-    hlenes -= np.amin(hlenes)
-    llenes -= np.amin(llenes)
-    
-
     angs = []
     for igeom,llgeom in enumerate(losll):
         g = llgeom.GetASEAtoms()
@@ -635,42 +624,70 @@ def IsolatedLinearSolve(mol,idxs,losll,hlenes,nprim,pname):
     angs = np.array( [x[0] for x in data] )
     llenes = np.array( [x[1] for x in data] )
     hlenes = np.array( [x[2] for x in data] )
-    y = hlenes-llenes
-    
+    # Shape match: free vertical offset only (not independent HL/LL min shifts).
+    y = hlenes - llenes
+    y_c = y - np.mean(y)
+
     npts = len(y)
-    npar = nprim + 1
+    if npts < nprim + 1:
+        raise ValueError(
+            f"IsolatedLinearSolve({pname}): need >= {nprim + 1} points, have {npts}"
+        )
 
     bestdfcn = None
     bestchisq = 1.e+30
     bestvalues = []
+    best_rank = None
     for ifcn,dfcn in enumerate(dfcns):
-        A = np.zeros( (npts,npar) )
+        A = np.zeros( (npts, nprim) )
         for iprim,prim in enumerate(dfcn.prims):
             A[:,iprim] = prim.CptEterm(angs)
-        A[:,nprim] = 1
-        #AtA = A.T @ A
-        #AtAinv = np.linalg.inv(AtA)
-        #x = AtAinv @ A.T @ y
-        x = np.linalg.pinv(A) @ y
-        const = x[-1]
-        dfcn.SetFCs( x[:-1] )
-        v = dfcn.CptEne(angs) + const
-        d = hlenes - (llenes + v)
-        chisq = np.dot(d,d)
+        A_c = A - np.mean(A, axis=0, keepdims=True)
+        x, _residues, rank, singular = np.linalg.lstsq(A_c, y_c, rcond=None)
+        if rank < nprim:
+            print(
+                f"[ffpopt] IsolatedLinearSolve({pname}) class {ifcn}: "
+                f"rank={rank}/{nprim}, s={singular}"
+            )
+        dfcn.SetFCs(x)
+        v = dfcn.CptEne(angs)
+        d = shape_match_delta(hlenes, llenes + v)
+        chisq = float(np.dot(d, d))
         if chisq < bestchisq:
             bestchisq = chisq
             bestdfcn = copy.deepcopy(dfcn)
             bestvalues = v
+            best_rank = rank
+
+    if bestdfcn is None:
+        raise ValueError(f"IsolatedLinearSolve({pname}): no usable Fourier class")
+    if best_rank is not None and best_rank < nprim:
+        print(
+            f"[ffpopt] IsolatedLinearSolve({pname}): best rank={best_rank} "
+            f"< nprim={nprim}"
+        )
+
+    # Display-only min shifts for iso.*.dat plots.
+    hl_plot = hlenes - np.amin(hlenes)
+    ll_plot = llenes - np.amin(llenes)
+    fit_raw = llenes + bestvalues
+    fit_plot = fit_raw - np.amin(fit_raw)
 
     fh = open(f"iso.{pname}.dat","w")
     fh.write("# %s\n"%(str(bestdfcn)))
     for i in range(npts):
         fh.write("%12.3f %20.10e %20.10e %20.10e\n"%\
-                 ( angs[i], hlenes[i], llenes[i],
-                   llenes[i]+bestvalues[i] ) )
+                 ( angs[i], hl_plot[i], ll_plot[i], fit_plot[i] ) )
     fh.close()
-    #exit(0)
     return bestdfcn
+
+
+def shape_match_delta(hlene, llene):
+    """Mean-centered HL−LL residual (free vertical offset; shape match only)."""
+    import numpy as np
+
+    d = np.asarray(hlene, dtype=float) - np.asarray(llene, dtype=float)
+    return d - np.mean(d)
     
 
 
@@ -974,26 +991,39 @@ class ProfileType(object):
 
         n_hl = len(self.loshl.structs)
         n_ll = len(self.losll.structs)
-        if n_hl != n_ll:
-            self.loshl, self.losll, info = align_scan_profiles(
-                self.loshl, self.losll, hl_path=self.hl, ll_path=self.ll
+        self.loshl, self.losll, info = align_scan_profiles(
+            self.loshl, self.losll, hl_path=self.hl, ll_path=self.ll
+        )
+        n_common = int(info.get("n_common", 0) or 0)
+        if n_common == 0:
+            raise ValueError(
+                f"Profile '{self.name}': HL/LL scans share no common angles "
+                f"(HL={n_hl}, LL={n_ll}); cannot fit."
             )
+        if (
+            n_hl != n_ll
+            or info.get("hl_only")
+            or info.get("ll_only")
+            or n_common != n_hl
+            or n_common != n_ll
+        ):
             import sys
+
             sys.stderr.write(
-                f"[ffpopt] Profile '{self.name}': HL/LL structure counts differed "
-                f"({n_hl} vs {n_ll}); aligned on {info['n_common']} shared scan "
-                f"angles (dropped HL-only={len(info['hl_only'])}, "
+                f"[ffpopt] Profile '{self.name}': HL/LL aligned on "
+                f"{n_common} shared scan angles "
+                f"(input HL={n_hl}, LL={n_ll}; "
+                f"dropped HL-only={len(info['hl_only'])}, "
                 f"LL-only={len(info['ll_only'])}).\n"
             )
-            if info["hl_only"] or info["ll_only"]:
-                if info["hl_only"]:
-                    sys.stderr.write(
-                        f"[ffpopt]   HL-only angles: {info['hl_only']}\n"
-                    )
-                if info["ll_only"]:
-                    sys.stderr.write(
-                        f"[ffpopt]   LL-only angles: {info['ll_only']}\n"
-                    )
+            if info["hl_only"]:
+                sys.stderr.write(
+                    f"[ffpopt]   HL-only angles: {info['hl_only']}\n"
+                )
+            if info["ll_only"]:
+                sys.stderr.write(
+                    f"[ffpopt]   LL-only angles: {info['ll_only']}\n"
+                )
         
         s = stride
         self.loshl.structs = self.loshl.structs[::s]
@@ -1300,59 +1330,141 @@ class FitInputType(object):
         return json.dumps(d,indent=4)
             
 
-    def make_initial_guesses(self):
-        """ Create initial guesses for the dihedral parameters based on the profiles.
+    def _ensure_dfcns_templates(self):
+        """Create phase=0 MultiDihedFcn shells for every ParamType if missing."""
+        for pname, ptype in self.ptypedict.items():
+            if ptype.dfcns is not None:
+                continue
+            idxs = [0, 1, 2, 3]
+            for s in self.systems:
+                for pinst in s.pinstances:
+                    if pinst.ptype is ptype or pinst.ptype.name == pname:
+                        if pinst.dihedidxs:
+                            idxs = list(pinst.dihedidxs[0])
+                            break
+                else:
+                    continue
+                break
+            import copy
 
-        This method iterates through the parameter types and their instances, finds the best profile for each dihedral type,
-        and computes the isolated linear solve to determine the dihedral function coefficients.
+            classes = GetDihedClasses(idxs=idxs).get(ptype.nprim)
+            if not classes:
+                raise ValueError(
+                    f"No dihedral Fourier template for {pname} nprim={ptype.nprim}"
+                )
+            ptype.dfcns = copy.deepcopy(classes[0])
+            ptype.dfcns.SetFCs([0.0] * ptype.nprim)
+
+    def _count_fit_points(self):
+        return sum(len(p.losll.structs) for s in self.systems for p in s.profiles)
+
+    def make_initial_guesses(self, args=None, caches=None):
+        """Create initial FC guesses matching the NL (all-torsions-deleted) model.
+
+        Prefers a joint linear least-squares solve over all fitted parameter types
+        using the fixed-geometry LL cache. Falls back to per-type isolated LS when
+        the joint design is rank-deficient or no cache is available.
+
+        Parameters
+        ----------
+        args : optional
+            Wavefront/calculator args used to build the LL cache when ``caches``
+            is omitted and reopt mode is off.
+        caches : list, optional
+            Per-system outputs of :func:`build_fixed_geometry_ll_cache`.
 
         Returns
         -------
-        list
-            A list of dihedral parameters computed from the best profiles for each parameter type.
-
+        numpy.ndarray
+            Force-constant vector in :meth:`get_params` order.
         """
+        import numpy as np
+
+        self._ensure_dfcns_templates()
+        n = self.get_num_params()
+        if n == 0:
+            return np.array([], dtype=float)
+
+        npts = self._count_fit_points()
+        if npts == 0:
+            raise ValueError(
+                "make_initial_guesses: no usable HL/LL profile geometries to fit"
+            )
+        if npts < n + 1:
+            raise ValueError(
+                f"make_initial_guesses: need >= {n + 1} scan points for "
+                f"{n} parameters; have {npts}"
+            )
+
+        if caches is None and args is not None and not use_dihed_fit_reopt():
+            caches = [
+                build_fixed_geometry_ll_cache(s, args) for s in self.systems
+            ]
+
+        if caches is not None:
+            try:
+                x, info = joint_linear_solve_from_caches(self, caches)
+                print(
+                    f"[ffpopt] Joint linear initial guess: rank={info['rank']}/"
+                    f"{info['nparam']}, cond≈{info['cond']:.3e}, "
+                    f"npts={info['npts']}"
+                )
+                if info["rank"] >= info["nparam"]:
+                    self.set_params(x)
+                    return x
+                print(
+                    "[ffpopt] Joint design rank-deficient; "
+                    "falling back to isolated LS"
+                )
+            except Exception as exc:
+                print(f"[ffpopt] Joint LS failed ({exc}); falling back to isolated LS")
 
         for pname in self.ptypedict:
-            #print(pname)
             bests = None
             bestpinst = None
             bestprof = None
             bestidxs = None
             beststd = -1
-            
+
+            for s in self.systems:
+                for pinst in s.pinstances:
+                    if pinst.ptype.name != pname:
+                        continue
+                    for idxs in pinst.dihedidxs:
+                        for prof in s.profiles:
+                            angs = []
+                            for struct in prof.losll:
+                                atoms = struct.GetASEAtoms()
+                                ang = atoms.get_dihedral(*idxs)
+                                if abs(ang - 360) < 0.01:
+                                    ang = 0.0
+                                angs.append(ang)
+                            if len(angs) > 2:
+                                astd = AngularStdDev(angs)
+                                if astd > beststd:
+                                    beststd = astd
+                                    bestprof = prof
+                                    bestpinst = pinst
+                                    bestidxs = idxs
+                                    bests = s
+            if bestprof is None or bestpinst is None:
+                raise ValueError(
+                    f"make_initial_guesses: no usable profile for parameter {pname}"
+                )
+            llgeoms = bestprof.losll
+            hlenes = [
+                hlgeom.data["energy"] for hlgeom in bestprof.loshl
+            ]
+            nprim = bestpinst.ptype.nprim
+            dfcns = IsolatedLinearSolve(
+                bests.mol, bestidxs, llgeoms, hlenes, nprim, pname
+            )
+            # Share one MultiDihedFcn object on the ParamType.
             for s in self.systems:
                 for pinst in s.pinstances:
                     if pinst.ptype.name == pname:
-                        for idxs in pinst.dihedidxs:
-                            for prof in s.profiles:
-                                angs = []
-                                for struct in prof.losll:
-                                    atoms = struct.GetASEAtoms()
-                                    ang = atoms.get_dihedral(*idxs)
-                                    if abs(ang-360) < 0.01:
-                                        ang = 0.
-                                    angs.append(ang)
-                                    #print("ang=%.2f"%(ang))
-                                if len(angs) > 2:
-                                    astd = AngularStdDev(angs)
-                                    #print("astd=%.2f %.2f"%(astd,beststd))
-                                    if astd > beststd:
-                                        beststd = astd
-                                        bestprof = prof
-                                        bestpinst = pinst
-                                        bestidxs = idxs
-                                        bests = s
-            llgeoms = bestprof.losll
-            hlenes = [ hlgeom.data["energy"]
-                       for hlgeom in bestprof.loshl ]
-            nprim = bestpinst.ptype.nprim
-
-            
-            dfcns = IsolatedLinearSolve\
-                (bests.mol,bestidxs,llgeoms,hlenes,nprim,pname)
-            
-            bestpinst.ptype.dfcns = dfcns
+                        pinst.ptype.dfcns = dfcns
+            self.ptypedict[pname].dfcns = dfcns
         return self.get_params()
 
             
@@ -1477,6 +1589,100 @@ def _analytical_fitted_torsion_kcal(system, ang_tables_for_geom):
         for iang, _idxs in enumerate(pinst.dihedidxs):
             e += float(dfcns.CptEne(ang_tables_for_geom[ipinst][iang]))
     return e
+
+
+def joint_design_matrix_from_caches(finp, caches, kcal_per_ev):
+    """Build mean-centered design matrix / target for the fixed-geometry NL model.
+
+    Columns follow :meth:`FitInputType.get_params` order. Each profile is
+    mean-centered independently so χ² matches :func:`shape_match_delta`.
+    """
+    import numpy as np
+
+    pname_to_offset = {}
+    ipar = 0
+    for pname in finp.ptypedict:
+        pname_to_offset[pname] = ipar
+        ipar += finp.ptypedict[pname].nprim
+    nparam = ipar
+    if nparam == 0:
+        raise ValueError("joint design: no parameters")
+
+    blocks_A = []
+    blocks_y = []
+    for isys, s in enumerate(finp.systems):
+        sys_cache = caches[isys]
+        for iprof, prof in enumerate(s.profiles):
+            base = np.asarray(
+                sys_cache["profiles"][iprof]["base_kcal"], dtype=float
+            )
+            angs = sys_cache["profiles"][iprof]["angles"]
+            hl = np.array(
+                [
+                    float(struct.data["energy"]) * kcal_per_ev
+                    for struct in prof.loshl
+                ],
+                dtype=float,
+            )
+            ngeom = len(base)
+            if ngeom == 0:
+                continue
+            if len(hl) != ngeom:
+                raise ValueError(
+                    f"HL/LL length mismatch in profile {prof.name}: "
+                    f"{len(hl)} vs {ngeom}"
+                )
+            A_prof = np.zeros((ngeom, nparam), dtype=float)
+            for igeom in range(ngeom):
+                for ipinst, pinst in enumerate(s.pinstances):
+                    dfcns = pinst.ptype.dfcns
+                    if dfcns is None:
+                        continue
+                    off = pname_to_offset[pinst.ptype.name]
+                    for idihed, _idxs in enumerate(pinst.dihedidxs):
+                        ang = angs[igeom][ipinst][idihed]
+                        for iprim, prim in enumerate(dfcns.prims):
+                            A_prof[igeom, off + iprim] += float(
+                                prim.CptEterm(ang)
+                            )
+            y_prof = hl - base
+            y_c = y_prof - np.mean(y_prof)
+            A_c = A_prof - np.mean(A_prof, axis=0, keepdims=True)
+            blocks_A.append(A_c)
+            blocks_y.append(y_c)
+
+    if not blocks_A:
+        raise ValueError("joint design: no usable profile geometries")
+    return np.vstack(blocks_A), np.concatenate(blocks_y), nparam
+
+
+def joint_linear_solve_from_caches(finp, caches):
+    """Joint ``lstsq`` over all fitted FCs using fixed-geometry caches."""
+    import numpy as np
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+
+    kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
+    A, y, nparam = joint_design_matrix_from_caches(finp, caches, kcal_per_ev)
+    npts = A.shape[0]
+    if npts < nparam + 1:
+        raise ValueError(
+            f"joint LS: need >= {nparam + 1} points, have {npts}"
+        )
+    x, residuals, rank, singular = np.linalg.lstsq(A, y, rcond=None)
+    cond = (
+        float(singular[0] / singular[-1])
+        if len(singular) and singular[-1] > 0
+        else float("inf")
+    )
+    info = {
+        "npts": npts,
+        "nparam": nparam,
+        "rank": int(rank),
+        "singular": singular,
+        "cond": cond,
+        "residuals": residuals,
+    }
+    return np.asarray(x, dtype=float), info
 
 
 def build_fixed_geometry_ll_cache(system, args):
@@ -1624,17 +1830,13 @@ def DihedFitObjFcn(x,self):
                 dtype=float,
             )
 
-            llene = llene - np.amin(llene)
-            hlene = hlene - np.amin(hlene)
-
-            d = hlene - llene
-            llene = llene + np.mean(d)
-            d = hlene - llene
+            d = shape_match_delta(hlene, llene)
             mychisq = float(np.dot(d, d))
             chisq += mychisq
 
-            hlene = hlene - np.amin(hlene)
-            llene = llene - np.amin(llene)
+            # Display-only min shifts for mfit.*.dat plots.
+            hl_plot = hlene - np.amin(hlene)
+            ll_plot = llene - np.amin(llene)
 
             if prof.name is None or prof.plots is None:
                 continue
@@ -1662,7 +1864,7 @@ def DihedFitObjFcn(x,self):
                             for igeom in range(len(ang_tables))]
                     data = []
                     for i in range(len(angs)):
-                        data.append([angs[i], hlene[i], llene[i]])
+                        data.append([angs[i], hl_plot[i], ll_plot[i]])
                     data = sorted(data, key=lambda row: row[0])
 
                     idxsname = "-".join([f"{i}" for i in idxs])
@@ -1713,20 +1915,15 @@ def _DihedFitObjFcn_reopt(x, self, KCAL_PER_EV):
                 )
 
             llene = np.array(llene)
-            llene -= np.amin(llene)
-
             hlene = np.array(hlene)
-            hlene -= np.amin(hlene)
 
-            d = hlene - llene
-            llene += np.mean(d)
-            d = hlene - llene
-            mychisq = np.dot(d, d)
+            d = shape_match_delta(hlene, llene)
+            mychisq = float(np.dot(d, d))
 
             chisq += mychisq
 
-            hlene -= np.amin(hlene)
-            llene -= np.amin(llene)
+            hl_plot = hlene - np.amin(hlene)
+            ll_plot = llene - np.amin(llene)
 
             if prof.name is None or prof.plots is None:
                 continue
@@ -1746,7 +1943,7 @@ def _DihedFitObjFcn_reopt(x, self, KCAL_PER_EV):
                         angs.append(ang)
                     data = []
                     for i in range(len(angs)):
-                        data.append([angs[i], hlene[i], llene[i]])
+                        data.append([angs[i], hl_plot[i], ll_plot[i]])
                     data = sorted(data, key=lambda row: row[0])
 
                     idxsname = "-".join([f"{i}" for i in idxs])
@@ -1778,41 +1975,64 @@ def NonlinearSolve(args,finp):
         The function modifies the FitInputType instance in place, setting the optimized dihedral parameters.
     
     """
-    from scipy.optimize import minimize
+    from scipy.optimize import minimize, lsq_linear
     import numpy as np
-    import copy
-
-    #objfcn = NonlinearObjective(stdargs,udscans)
-    
-    n = finp.get_num_params()
-    x = finp.make_initial_guesses()
-
-    #x[:] = 0.
-    xlo = x[:] - 2.
-    xhi = x[:] + 5.
-    bounds = [ (lo,hi) for lo,hi in zip(xlo,xhi) ]
 
     for s in finp.systems:
         for p in s.profiles:
             p.losll.SetArgs(args)
 
-    # Build fixed-geometry LL cache once before COBYLA (skipped if reopt mode).
     finp._ll_cache = None
-    if not use_dihed_fit_reopt():
+    reopt = use_dihed_fit_reopt()
+    if not reopt:
         finp._ll_cache = [
             build_fixed_geometry_ll_cache(s, args) for s in finp.systems
         ]
-    
-    res = minimize( DihedFitObjFcn, x, args=(finp,),
-                    method='COBYLA',
-                    bounds=bounds,
-                    options={ "rhobeg": args.nlrhobeg,
-                              "tol": args.nltol,
-                              "maxiter": args.nlmaxiter,
-                              "disp": True })
+
+    x = finp.make_initial_guesses(args=args, caches=finp._ll_cache)
+    n = finp.get_num_params()
+    if n == 0:
+        print("[ffpopt] NonlinearSolve: no parameters to fit")
+        return
+
+    xlo = x[:] - 2.0
+    xhi = x[:] + 5.0
+
+    if not reopt:
+        # Fixed-geometry FCs enter linearly — bounded linear least squares.
+        from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+
+        kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
+        A, y, nparam = joint_design_matrix_from_caches(
+            finp, finp._ll_cache, kcal_per_ev
+        )
+        print(
+            f"[ffpopt] Fixed-geom FC solve via lsq_linear "
+            f"(npts={A.shape[0]}, nparam={nparam})"
+        )
+        res = lsq_linear(A, y, bounds=(xlo, xhi), method="bvls")
+        print(res)
+        finp.set_params(res.x)
+        # One objective evaluation for mfit.*.dat plots / χ² report.
+        chisq = DihedFitObjFcn(res.x, finp)
+        print(f"[ffpopt] Final shape-match χ² = {chisq:.6e}")
+        return
+
+    bounds = [(lo, hi) for lo, hi in zip(xlo, xhi)]
+    res = minimize(
+        DihedFitObjFcn,
+        x,
+        args=(finp,),
+        method="L-BFGS-B",
+        bounds=bounds,
+        options={
+            "ftol": args.nltol,
+            "maxiter": args.nlmaxiter,
+            "disp": True,
+        },
+    )
 
     print(res)
-
     finp.set_params(res.x)
 
 def WriteParmedScript(fname,p,dfcns): #,bytype):

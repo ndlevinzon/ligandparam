@@ -57,7 +57,8 @@ class TestSoftOptHelpers(unittest.TestCase):
     def test_labels(self):
         self.assertTrue(is_soft_opt_recovery("soft-maxiter"))
         self.assertTrue(is_soft_opt_recovery("BFGS-soft"))
-        self.assertFalse(is_soft_opt_recovery("loose"))
+        self.assertTrue(is_soft_opt_recovery("loose"))
+        self.assertTrue(is_soft_opt_recovery("dlc-loose"))
         self.assertFalse(is_soft_opt_recovery("primary"))
         self.assertFalse(is_soft_opt_recovery("BFGS"))
 

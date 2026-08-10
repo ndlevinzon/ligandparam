@@ -36,10 +36,11 @@ def opt_recovery_label(struct) -> str | None:
 
 
 def is_soft_opt_recovery(struct_or_label) -> bool:
-    """True for soft-accept recoveries (near-converged / maxiter), not loose-tol.
+    """True for soft-accept / loose recoveries that should not drive hard spawn.
 
     Soft tags: ``soft-maxiter`` (geomeTRIC) and ASE labels ending in ``-soft``.
-    Looser-but-converged attempts (``loose``, ``dlc-loose``, …) return False.
+    Loose-but-converged attempts (``loose``, ``dlc-loose``, ``hdlc-loose``, …)
+    are also treated as soft for wavefront spawn policy.
     """
     if struct_or_label is None:
         return False
@@ -50,7 +51,11 @@ def is_soft_opt_recovery(struct_or_label) -> bool:
     if not label:
         return False
     low = label.lower()
-    return low == "soft-maxiter" or low.endswith("-soft")
+    if low == "soft-maxiter" or low.endswith("-soft"):
+        return True
+    if low == "loose" or low.endswith("-loose"):
+        return True
+    return False
 
 
 def _ase_optimizer_classes():
@@ -488,7 +493,7 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     from ffpopt.Options import argparse2geometric, configure_geometric_logging, GetStandardOptions
     from ffpopt.Constraints import ConstraintList
     from ffpopt.Restraints import RestraintList
-    from ffpopt.Constraints import ApplyConstraints
+    from ffpopt.Constraints import ApplyConstraints, to_geometric
     from ffpopt.Struct import ListOfStruct
     from ffpopt.geometric_inprocess import (
         get_persistent_calc,
@@ -552,15 +557,20 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
         conslist = ConstraintList( copy.deepcopy(constraints) )
 
     cons = None
+    target_cons = None
     if conslist is not None:
-        cons = conslist.FillConstraints(myatoms,force=False)
-        origcons = conslist.FillConstraints(myatoms,force=True)
-        myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph())
+        # Target values for the scan step (do not mutate these for the constraint file).
+        cons = conslist.FillConstraints(myatoms, force=False)
+        target_cons = copy.deepcopy(cons)
+        # Current (pre-twist) values — used for reporting / ApplyConstraints bookkeeping.
+        origcons = conslist.FillConstraints(myatoms, force=True)
+        myatoms = ApplyConstraints(myatoms, cons, graph=struct.GetGraph())
 
     if conslist is not None:
         with open(tmpcons, "w") as fh:
             fh.write("$set\n")
-            for line in conslist.to_geometric():
+            # Write *target* constraints, not the force=True snapshot above.
+            for line in to_geometric(target_cons):
                 fh.write("%s\n" % (line))
 
     result = None

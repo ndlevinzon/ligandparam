@@ -599,6 +599,11 @@ class Wavefront(object):
         for level in self.levels:
             for node in level.nodes:
                 node.los = los
+                if hasattr(node, "_ensure_soft_opt_attrs"):
+                    node._ensure_soft_opt_attrs()
+        for node in getattr(self, "_resume_queue", None) or []:
+            if hasattr(node, "_ensure_soft_opt_attrs"):
+                node._ensure_soft_opt_attrs()
         print("Number of times restarted:", len(self.restarted))
         self.restarted.append(prev_options)
         
@@ -1146,8 +1151,9 @@ class Wavefront(object):
         if self.los is not None:
             self.los.clear_runtime_caches()
         self._slim_nodes_for_checkpoint()
-        with open(self.checkpoint, 'wb') as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        from .wavefront_mixins import atomic_pickle_dump
+
+        atomic_pickle_dump(self, self.checkpoint)
         print(f"Checkpoint saved to {self.checkpoint}.")
 
     def _slim_nodes_for_checkpoint(self) -> None:
@@ -1180,37 +1186,22 @@ class Wavefront(object):
         return level
     
     def _evaluate_node(self, node: WavefrontNode) -> None:
-        """ Update the per-angle minima for one node and set its active flag.
+        """Update per-bin minima and set ``node.active`` (spawn) via shared policy.
 
-        Applies the historical per-level energy filter to a single node so it
-        can run as each result arrives. A node stays active (and will spawn
-        neighbors) when it is the first seen at its angle or strictly lowers that
-        angle's minimum by at least ``convergence_threshold``; otherwise it is
-        marked inactive. ``convergence_threshold`` is in kcal/mol but node
-        energies are stored in eV, so the threshold is converted to eV before
-        the comparison.
-
-        Soft-accepted optimizations (``soft-maxiter`` / ASE ``*-soft``) may fill
-        or improve soft minima for the energy profile, but never displace a
-        hard-converged minimum and never spawn neighbors.
-
-        Parameters
-        ----------
-        node : WavefrontNode
-            The completed node to evaluate.
-
+        See :func:`ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum`.
         """
-        from ffpopt.constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
-        # Node energies are eV; the threshold is kcal/mol. KCAL_PER_EV is
-        # kcal/mol per eV, so dividing converts the threshold into eV.
-        kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
-        threshold_ev = self.convergence_threshold / kcal_per_ev
+        from ffpopt.scan.wavefront_mixins import (
+            evaluate_wavefront_minimum,
+            kcal_threshold_to_ev,
+        )
+
+        threshold_ev = kcal_threshold_to_ev(self.convergence_threshold)
         if not node.active:
             return
 
         bidx = self.grid.GetBinIdx(node.rcs)
         gidx = self.grid.CptGlbIdxFromBinIdx(bidx)
-        
+
         if node.energy is None or not np.isfinite(node.energy):
             print(f"Node {node.rcs} is inactive due to failed optimization.")
             node.active = False
@@ -1222,71 +1213,84 @@ class Wavefront(object):
             node.soft_opt = soft
 
         existing_soft = False
+        has_incumbent = gidx in self.min_bins
+        incumbent_energy = (
+            self.min_bins[gidx].energy if has_incumbent else None
+        )
         if gidx in self.min_nodes:
             prev = self.min_nodes[gidx]
             existing_soft = bool(getattr(prev, "soft_opt", False))
             if not existing_soft and gidx in self.min_bins:
                 existing_soft = is_soft_opt_recovery(self.min_bins[gidx].struct)
 
-        if soft:
+        decision = evaluate_wavefront_minimum(
+            energy=node.energy,
+            soft=soft,
+            has_incumbent=has_incumbent,
+            incumbent_energy=incumbent_energy,
+            incumbent_soft=existing_soft,
+            threshold_ev=threshold_ev,
+        )
+        reason = decision["reason"]
+        if decision["update_min"]:
+            old = incumbent_energy
             if gidx not in self.min_bins:
-                print(
-                    f"New reaction coordinate (soft-opt): {node.rcs}, "
-                    f"Energy: {node.energy} "
-                    f"(recovery={getattr(node, 'opt_recovery', None)}; no spawn)"
-                )
                 self.min_bins[gidx] = self.bins[gidx]
-                self.min_bins[gidx].energy = node.energy
-                self.min_bins[gidx].struct = node.opt_geom
-                self.min_nodes[gidx] = node
-            elif existing_soft and node.energy < self.min_bins[gidx].energy:
+            self.min_bins[gidx].energy = node.energy
+            self.min_bins[gidx].struct = node.opt_geom
+            self.min_nodes[gidx] = node
+            if reason == "soft_first_seed":
+                print(
+                    f"New reaction coordinate (soft-opt seed): {node.rcs}, "
+                    f"Energy: {node.energy} "
+                    f"(recovery={getattr(node, 'opt_recovery', None)}; spawn once)"
+                )
+            elif reason == "soft_improve":
                 print(
                     f"Updating soft-opt node: {node.rcs}, "
-                    f"Old Energy: {self.min_bins[gidx].energy}, "
-                    f"New Energy: {node.energy} (no spawn)"
+                    f"Old Energy: {old}, New Energy: {node.energy} (no spawn)"
                 )
-                self.min_bins[gidx].energy = node.energy
-                self.min_bins[gidx].struct = node.opt_geom
-                self.min_nodes[gidx] = node
-            else:
+            elif reason == "hard_first":
+                print(
+                    f"New reaction coordinate detected: {node.rcs}, "
+                    f"Energy: {node.energy}"
+                )
+            elif reason == "hard_replace_soft":
+                print(
+                    f"Replacing soft-opt node {node.rcs} with hard-converged "
+                    f"Energy: {node.energy} (was {old})"
+                )
+            elif reason == "hard_significant_improve":
+                print(
+                    f"Updating node: {node.rcs}, Old Energy: {old}, "
+                    f"New Energy: {node.energy}"
+                )
+            elif reason == "hard_quiet_improve":
+                print(
+                    f"Quiet update node {node.rcs}: {old} -> {node.energy} "
+                    f"(within threshold; no spawn)"
+                )
+        else:
+            if reason == "soft_demoted":
                 print(
                     f"Node {node.rcs} soft-opt demoted "
                     f"(recovery={getattr(node, 'opt_recovery', None)}); "
                     f"not replacing hard-converged / lower soft minimum."
                 )
-            node.active = False
-            return
+            elif reason == "hard_worse_than_soft":
+                print(
+                    f"Node {node.rcs} hard-opt higher than soft min "
+                    f"({node.energy} > {incumbent_energy}); keeping soft profile."
+                )
+            elif reason == "hard_not_lower":
+                print(
+                    f"Node {node.rcs} is not active, energy {node.energy} "
+                    f"is not lower than minimum {incumbent_energy}."
+                )
+            else:
+                print(f"Node {node.rcs} inactive ({reason}): energy {node.energy}.")
 
-        if gidx not in self.min_bins:
-            print(f"New reaction coordinate detected: {node.rcs}, Energy: {node.energy}")
-            self.min_bins[gidx] = self.bins[gidx]
-            self.min_bins[gidx].energy = node.energy
-            self.min_bins[gidx].struct = node.opt_geom
-            self.min_nodes[gidx] = node
-        elif existing_soft:
-            print(
-                f"Replacing soft-opt node {node.rcs} with hard-converged "
-                f"Energy: {node.energy} (was {self.min_bins[gidx].energy})"
-            )
-            self.min_bins[gidx].energy = node.energy
-            self.min_bins[gidx].struct = node.opt_geom
-            self.min_nodes[gidx] = node
-        elif (abs(node.energy - self.min_bins[gidx].energy) < threshold_ev):
-            print(f"Node {node.rcs} is not active, energy {node.energy} is not sufficiently different from minimum {self.min_bins[gidx].energy}.")
-            node.active = False
-        elif node.energy < self.min_bins[gidx].energy:
-            print(f"Updating node: {node.rcs}, Old Energy: {self.min_bins[gidx].energy}, New Energy: {node.energy}")
-            self.min_bins[gidx].energy = node.energy
-            self.min_bins[gidx].struct = node.opt_geom
-            self.min_nodes[gidx] = node
-        else:
-            #print(gidx)
-            #print(self.min_bins[gidx].bidx)
-            #print(self.min_bins[gidx].center)
-            #print(self.min_bins[gidx].energy)
-            #print(self.min_bins[gidx].entropy)
-            print(f"Node {node.rcs} is not active, energy {node.energy} is not lower than minimum {self.min_bins[gidx].energy}.")
-            node.active = False
+        node.active = bool(decision["active"])
 
     def determine_active_nodes(self, current_level: WavefrontLevel) -> None:
         """ Evaluate every node in a level via :meth:`_evaluate_node`.

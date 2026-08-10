@@ -80,6 +80,33 @@ class TestAlignScanProfiles(unittest.TestCase):
             align_scan_profiles(hl, ll, min_points=3)
         self.assertIn("shared points", str(ctx.exception))
 
+    def test_equal_length_different_angles_still_aligns(self):
+        """Same n frames but shifted angle labels must still angle-align."""
+        hl = ListOfStruct.from_structs_shared(
+            [
+                _frame("d000", 1.0),
+                _frame("d010", 2.0),
+                _frame("d020", 3.0),
+                _frame("d040", 3.5),
+            ]
+        )
+        ll = ListOfStruct.from_structs_shared(
+            [
+                _frame("d010", 4.0),
+                _frame("d020", 5.0),
+                _frame("d030", 6.0),
+                _frame("d040", 6.5),
+            ]
+        )
+        ahl, all_, info = align_scan_profiles(hl, ll)
+        self.assertEqual(info["n_common"], 3)
+        self.assertEqual(
+            [s.data["name"] for s in ahl.structs], ["d010", "d020", "d040"]
+        )
+        self.assertEqual(
+            [s.data["name"] for s in all_.structs], ["d010", "d020", "d040"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

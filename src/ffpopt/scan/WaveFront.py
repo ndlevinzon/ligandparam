@@ -953,8 +953,9 @@ class Wavefront:
         if self.los is not None:
             self.los.clear_runtime_caches()
         self._slim_nodes_for_checkpoint()
-        with open(self.checkpoint, 'wb') as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        from .wavefront_mixins import atomic_pickle_dump
+
+        atomic_pickle_dump(self, self.checkpoint)
         print(f"Checkpoint saved to {self.checkpoint}.")
 
     def _slim_nodes_for_checkpoint(self) -> None:
@@ -1003,31 +1004,17 @@ class Wavefront:
         return level
     
     def _evaluate_node(self, node: WavefrontNode) -> None:
-        """ Update the per-angle minima for one node and set its active flag.
+        """Update per-angle minima and set ``node.active`` (spawn) via shared policy.
 
-        Applies the historical per-level energy filter to a single node so it
-        can run as each result arrives. A node stays active (and will spawn
-        neighbors) when it is the first seen at its angle or strictly lowers that
-        angle's minimum by at least ``convergence_threshold``; otherwise it is
-        marked inactive. ``convergence_threshold`` is in kcal/mol but node
-        energies are stored in eV, so the threshold is converted to eV before
-        the comparison.
-
-        Soft-accepted optimizations (``soft-maxiter`` / ASE ``*-soft``) may fill
-        or improve soft minima for the energy profile, but never displace a
-        hard-converged minimum and never spawn neighbors.
-
-        Parameters
-        ----------
-        node : WavefrontNode
-            The completed node to evaluate.
-
+        See :func:`ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum`.
+        ``convergence_threshold`` is kcal/mol; node energies are eV.
         """
-        from ffpopt.constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
-        # Node energies are eV; the threshold is kcal/mol. KCAL_PER_EV is
-        # kcal/mol per eV, so dividing converts the threshold into eV.
-        kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
-        threshold_ev = self.convergence_threshold / kcal_per_ev
+        from ffpopt.scan.wavefront_mixins import (
+            evaluate_wavefront_minimum,
+            kcal_threshold_to_ev,
+        )
+
+        threshold_ev = kcal_threshold_to_ev(self.convergence_threshold)
         if not node.active:
             return
         if node.energy is None or not np.isfinite(node.energy):
@@ -1041,6 +1028,8 @@ class Wavefront:
             node.soft_opt = soft
 
         existing_soft = False
+        has_incumbent = node.angle in self.min_energies
+        incumbent_energy = self.min_energies.get(node.angle)
         if node.angle in self.min_nodes:
             prev = self.min_nodes[node.angle]
             existing_soft = bool(getattr(prev, "soft_opt", False))
@@ -1049,57 +1038,70 @@ class Wavefront:
                     self.min_structures.get(node.angle)
                 )
 
-        if soft:
-            if node.angle not in self.min_energies:
+        decision = evaluate_wavefront_minimum(
+            energy=node.energy,
+            soft=soft,
+            has_incumbent=has_incumbent,
+            incumbent_energy=incumbent_energy,
+            incumbent_soft=existing_soft,
+            threshold_ev=threshold_ev,
+        )
+        reason = decision["reason"]
+        if decision["update_min"]:
+            old = incumbent_energy
+            self.min_energies[node.angle] = node.energy
+            self.min_structures[node.angle] = node.opt_geom
+            self.min_nodes[node.angle] = node
+            if reason == "soft_first_seed":
                 print(
-                    f"New angle (soft-opt): {node.angle}, Energy: {node.energy} "
-                    f"(recovery={getattr(node, 'opt_recovery', None)}; no spawn)"
+                    f"New angle (soft-opt seed): {node.angle}, Energy: {node.energy} "
+                    f"(recovery={getattr(node, 'opt_recovery', None)}; spawn once)"
                 )
-                self.min_energies[node.angle] = node.energy
-                self.min_structures[node.angle] = node.opt_geom
-                self.min_nodes[node.angle] = node
-            elif existing_soft and node.energy < self.min_energies[node.angle]:
+            elif reason == "soft_improve":
                 print(
                     f"Updating soft-opt angle: {node.angle}, "
-                    f"Old Energy: {self.min_energies[node.angle]}, "
-                    f"New Energy: {node.energy} (no spawn)"
+                    f"Old Energy: {old}, New Energy: {node.energy} (no spawn)"
                 )
-                self.min_energies[node.angle] = node.energy
-                self.min_structures[node.angle] = node.opt_geom
-                self.min_nodes[node.angle] = node
-            else:
+            elif reason == "hard_first":
+                print(f"New angle detected: {node.angle}, Energy: {node.energy}")
+            elif reason == "hard_replace_soft":
+                print(
+                    f"Replacing soft-opt angle {node.angle} with hard-converged "
+                    f"Energy: {node.energy} (was {old})"
+                )
+            elif reason == "hard_significant_improve":
+                print(
+                    f"Updating angle: {node.angle}, Old Energy: {old}, "
+                    f"New Energy: {node.energy}"
+                )
+            elif reason == "hard_quiet_improve":
+                print(
+                    f"Quiet update angle {node.angle}: {old} -> {node.energy} "
+                    f"(within threshold; no spawn)"
+                )
+        else:
+            if reason == "soft_demoted":
                 print(
                     f"Angle {node.angle} soft-opt demoted "
                     f"(recovery={getattr(node, 'opt_recovery', None)}); "
                     f"not replacing hard-converged / lower soft minimum."
                 )
-            node.active = False
-            return
+            elif reason == "hard_worse_than_soft":
+                print(
+                    f"Angle {node.angle} hard-opt higher than soft min "
+                    f"({node.energy} > {incumbent_energy}); keeping soft profile."
+                )
+            elif reason == "hard_not_lower":
+                print(
+                    f"Angle {node.angle} is not active, energy {node.energy} "
+                    f"is not lower than minimum {incumbent_energy}."
+                )
+            else:
+                print(
+                    f"Angle {node.angle} inactive ({reason}): energy {node.energy}."
+                )
 
-        if node.angle not in self.min_energies:
-            print(f"New angle detected: {node.angle}, Energy: {node.energy}")
-            self.min_energies[node.angle] = node.energy
-            self.min_structures[node.angle] = node.opt_geom
-            self.min_nodes[node.angle] = node
-        elif existing_soft:
-            print(
-                f"Replacing soft-opt angle {node.angle} with hard-converged "
-                f"Energy: {node.energy} (was {self.min_energies[node.angle]})"
-            )
-            self.min_energies[node.angle] = node.energy
-            self.min_structures[node.angle] = node.opt_geom
-            self.min_nodes[node.angle] = node
-        elif (abs(node.energy - self.min_energies[node.angle]) < threshold_ev):
-            print(f"Angle {node.angle} is not active, energy {node.energy} is not sufficiently different from minimum {self.min_energies[node.angle]}.")
-            node.active = False
-        elif node.energy < self.min_energies[node.angle]:
-            print(f"Updating angle: {node.angle}, Old Energy: {self.min_energies[node.angle]}, New Energy: {node.energy}")
-            self.min_energies[node.angle] = node.energy
-            self.min_structures[node.angle] = node.opt_geom
-            self.min_nodes[node.angle] = node
-        else:
-            print(f"Angle {node.angle} is not active, energy {node.energy} is not lower than minimum {self.min_energies[node.angle]}.")
-            node.active = False
+        node.active = bool(decision["active"])
 
     def determine_active_nodes(self, current_level: WavefrontLevel) -> None:
         """ Evaluate every node in a level via :meth:`_evaluate_node`.

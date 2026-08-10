@@ -51,15 +51,23 @@ def find_latest_iteration_frcmod(fragment_dir: Path) -> Path:
         FileNotFoundError: If the directory contains no ``itX.frcmod`` files.
     """
 
-    candidates = [
-        path for path in fragment_dir.iterdir()
-        if path.is_file() and _ITERATION_FRCMOD_RE.fullmatch(path.name)
-    ]
+    candidates = list_iteration_frcmods(fragment_dir)
     if not candidates:
         raise FileNotFoundError(
             f"No itX.frcmod files found in fragment directory: {fragment_dir}"
         )
-    return max(candidates, key=_fragment_sort_key)
+    return candidates[-1]
+
+
+def list_iteration_frcmods(fragment_dir: Path) -> list[Path]:
+    """Return all ``itX.frcmod`` files in ascending iteration order."""
+
+    candidates = [
+        path
+        for path in fragment_dir.iterdir()
+        if path.is_file() and _ITERATION_FRCMOD_RE.fullmatch(path.name)
+    ]
+    return sorted(candidates, key=_fragment_sort_key)
 
 
 def _has_iteration_frcmod(directory: Path) -> bool:
@@ -258,6 +266,11 @@ def _load_fit_param_keys(
 def _load_fragment_update(fragment_dir: Path) -> dict[str, Any]:
     """Collect merge-ready torsion parameters from one fragment directory.
 
+    Accumulates DIHE groups from **all** ``itX.frcmod`` files in order so
+    drop-mode survivors fitted in earlier iterations are not lost when a later
+    iteration omits them. Later iterations overwrite the same DIHE key when they
+    explicitly refit it.
+
     Args:
         fragment_dir: Fragment run directory containing ``ffpopt`` outputs.
 
@@ -266,23 +279,45 @@ def _load_fragment_update(fragment_dir: Path) -> dict[str, Any]:
         DIHE groups, and fit-torsion metadata.
     """
 
-    iteration_frcmod = find_latest_iteration_frcmod(fragment_dir)
-    parsed = FrcmodFile.read(iteration_frcmod)
-    dihe_groups = parsed.dihe_groups()
-    fitted_param_keys, scanned_param_keys = _load_fit_param_keys(
-        fragment_dir / f"{iteration_frcmod.stem}.fit.json"
-    )
-    if fitted_param_keys is not None:
-        dihe_groups = {
-            key: lines for key, lines in dihe_groups.items() if key in fitted_param_keys
-        }
+    iterations = list_iteration_frcmods(fragment_dir)
+    if not iterations:
+        raise FileNotFoundError(
+            f"No itX.frcmod files found in fragment directory: {fragment_dir}"
+        )
+
+    dihe_groups: dict[tuple[str, str, str, str], list[str]] = {}
+    fitted_param_keys: set[tuple[str, str, str, str]] = set()
+    scanned_param_keys: set[tuple[str, str, str, str]] = set()
+    saw_fit_filter = False
+
+    for iteration_frcmod in iterations:
+        parsed = FrcmodFile.read(iteration_frcmod)
+        groups = parsed.dihe_groups()
+        fitted_keys, scanned_keys = _load_fit_param_keys(
+            fragment_dir / f"{iteration_frcmod.stem}.fit.json"
+        )
+        if fitted_keys is not None:
+            saw_fit_filter = True
+            groups = {
+                key: lines
+                for key, lines in groups.items()
+                if key in fitted_keys
+            }
+            fitted_param_keys |= fitted_keys
+        else:
+            fitted_param_keys |= set(groups.keys())
+        scanned_param_keys |= scanned_keys
+        # Later iterations win on key collision (explicit refit).
+        dihe_groups.update(groups)
+
     fit_torsions = _load_fit_torsions(fragment_dir / "fit_torsions.json")
     return {
         "fragment_dir": fragment_dir,
-        "iteration_frcmod": iteration_frcmod,
+        "iteration_frcmod": iterations[-1],
+        "iteration_frcmods": iterations,
         "fit_torsions": fit_torsions,
         "dihe_groups": dihe_groups,
-        "fitted_param_keys": fitted_param_keys,
+        "fitted_param_keys": fitted_param_keys if saw_fit_filter else None,
         "scanned_param_keys": scanned_param_keys,
     }
 
@@ -299,8 +334,10 @@ def merge_fragment_frcmods(
         parent_frcmod_path: Parent ligand frcmod to update.
         output_frcmod_path: Path for the merged parent frcmod.
         fragment_dirs: Fragment directories to merge. Each directory contributes
-            the highest-numbered ``itX.frcmod`` it contains. A directory with no
-            iteration frcmod, or one whose iteration frcmod defines no ``DIHE``
+            DIHE terms accumulated from **all** ``itX.frcmod`` files in order
+            (drop-mode survivors from earlier iterations are retained unless a
+            later iteration explicitly refits the same key). A directory with no
+            iteration frcmod, or one whose iteration frcmods define no ``DIHE``
             terms, is skipped with a :class:`MergeWarning` and recorded under
             ``skipped_fragments`` in the report; the remaining fragments still
             merge.

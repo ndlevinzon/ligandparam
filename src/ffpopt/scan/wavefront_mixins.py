@@ -111,10 +111,18 @@ def write_node_pickle(node: Any, *, verbose: bool = False) -> None:
     los = node.los
     node.los = None
     try:
-        with open(node.node_pkl, "wb") as f:
-            pickle.dump(node, f, protocol=pickle.HIGHEST_PROTOCOL)
+        atomic_pickle_dump(node, node.node_pkl)
     finally:
         node.los = los
+
+
+def atomic_pickle_dump(obj: Any, path) -> None:
+    """Write a pickle via ``tmp`` + ``os.replace`` (crash-safe)."""
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "wb") as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp, path)
 
 
 def mark_node_failed(
@@ -142,6 +150,104 @@ def maybe_write_success_checkpoint(node: Any) -> None:
 
     if write_success_node_pickle():
         write_node_pickle(node)
+
+
+def kcal_threshold_to_ev(threshold_kcal: float) -> float:
+    """Convert a kcal/mol convergence threshold to eV."""
+    from ffpopt.constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
+
+    kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
+    return float(threshold_kcal) / kcal_per_ev
+
+
+def evaluate_wavefront_minimum(
+    *,
+    energy: float,
+    soft: bool,
+    has_incumbent: bool,
+    incumbent_energy: Optional[float],
+    incumbent_soft: bool,
+    threshold_ev: float,
+) -> dict[str, Any]:
+    """Decide profile-min update and spawn (``active``) for one completed node.
+
+    Policy (1-D and N-D):
+
+    * Soft, first at bin — store and **spawn once** (coverage seed).
+    * Soft, improves soft min — update; no spawn.
+    * Soft otherwise — demote; no spawn.
+    * Hard vs soft incumbent — replace soft only if ``E_hard <= E_soft``; spawn
+      when accepted.
+    * Hard, ``E < min - threshold`` — update and spawn.
+    * Hard, ``E < min`` within threshold — update quietly; no spawn.
+    * Hard, ``E >= min`` — no update; no spawn.
+    """
+    if energy is None or not np.isfinite(energy):
+        return {
+            "update_min": False,
+            "active": False,
+            "reason": "nonfinite",
+        }
+
+    if soft:
+        if not has_incumbent:
+            return {
+                "update_min": True,
+                "active": True,
+                "reason": "soft_first_seed",
+            }
+        if incumbent_soft and energy < float(incumbent_energy):
+            return {
+                "update_min": True,
+                "active": False,
+                "reason": "soft_improve",
+            }
+        return {
+            "update_min": False,
+            "active": False,
+            "reason": "soft_demoted",
+        }
+
+    # Hard-converged node.
+    if not has_incumbent:
+        return {
+            "update_min": True,
+            "active": True,
+            "reason": "hard_first",
+        }
+
+    if incumbent_soft:
+        if energy <= float(incumbent_energy):
+            return {
+                "update_min": True,
+                "active": True,
+                "reason": "hard_replace_soft",
+            }
+        return {
+            "update_min": False,
+            "active": False,
+            "reason": "hard_worse_than_soft",
+        }
+
+    inc = float(incumbent_energy)
+    thr = max(0.0, float(threshold_ev))
+    if energy < inc - thr:
+        return {
+            "update_min": True,
+            "active": True,
+            "reason": "hard_significant_improve",
+        }
+    if energy < inc:
+        return {
+            "update_min": True,
+            "active": False,
+            "reason": "hard_quiet_improve",
+        }
+    return {
+        "update_min": False,
+        "active": False,
+        "reason": "hard_not_lower",
+    }
 
 
 def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):

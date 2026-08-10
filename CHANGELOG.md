@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **geomeTRIC constraint targets** — constraint files / enforce paths use the scan **target** dihedral (``force=False`` fill), not the post-twist ``force=True`` snapshot.
+- **Wavefront evaluate policy** — soft first-at-bin seeds spawn once; quiet min updates within threshold; hard replaces soft only if ``E_hard <= E_soft``; ``loose`` / ``*-loose`` recoveries treated as soft for spawn. Shared helper in ``ffpopt.scan.wavefront_mixins`` (1-D and N-D).
+- **HL/LL angle align** — GenDihedFit always angle-aligns profiles (not only when lengths differ); empty common-angle sets raise.
+- **Drop-mode frcmod merge** — fragment DIHE merge accumulates **all** ``itXX.frcmod`` in order so earlier survivors are kept unless a later file refits the same key.
+- **Dihedral fit χ² / solver** — objective is mean-centered shape match only (invariant to a constant LL offset); joint linear initial guess over all fitted torsions; ``lstsq`` / ``lsq_linear`` for fixed-geometry FC fits (replaces COBYLA); reopt mode uses L-BFGS-B.
+- **Wavefront checkpoints** — atomic pickle writes (``tmp`` + ``os.replace``); N-D ``restart_options`` restores soft-opt attrs like 1-D.
+
 ### Changed
 
 - **Package layout** — ``ffpopt.runtime/`` (console, progress boards, CPU budget, fast presets) and ``ffpopt.scan/`` (WaveFront engines + mixins); no root compatibility shims — import the canonical packages. ligandparam: ``gaussian_io`` / ``leap_io`` / ``smiles_to_pdb``; recipe charge→parmchk→leap tail in ``recipes.common``.

@@ -74,6 +74,45 @@ class TestMergeHelpers(unittest.TestCase):
             self.assertTrue(out.is_file())
             self.assertGreaterEqual(len(report.get("skipped_fragments", [])), 1)
 
+    def test_load_fragment_update_accumulates_dihe_across_iterations(self):
+        """Drop-mode: earlier itXX DIHE survivors remain when later omits them."""
+        from scission.merge import _load_fragment_update
+
+        def _frcmod(dihe_lines: list[str]) -> str:
+            return (
+                "Remark line goes here\n"
+                "MASS\n"
+                "\n"
+                "BOND\n"
+                "\n"
+                "ANGLE\n"
+                "\n"
+                "DIHE\n"
+                + "".join(f"{line}\n" for line in dihe_lines)
+                + "\n"
+                "IMPROPER\n"
+                "\n"
+                "NONB\n"
+                "\n"
+            )
+
+        with tempfile.TemporaryDirectory() as td:
+            frag = Path(td)
+            (frag / "it01.frcmod").write_text(
+                _frcmod(["c3-c3-c3-c3 1 1.00 0.0 1.", "c3-c3-c3-n  1 2.00 0.0 1."])
+            )
+            (frag / "it02.frcmod").write_text(
+                _frcmod(["c3-c3-c3-n  1 3.50 0.0 1."])  # refit n; drop c3-c3-c3-c3
+            )
+            update = _load_fragment_update(frag)
+            keys = set(update["dihe_groups"].keys())
+            self.assertIn(("c3", "c3", "c3", "c3"), keys)
+            self.assertIn(("c3", "c3", "c3", "n"), keys)
+            n_lines = update["dihe_groups"][("c3", "c3", "c3", "n")]
+            self.assertTrue(any("3.50" in ln for ln in n_lines))
+            c_lines = update["dihe_groups"][("c3", "c3", "c3", "c3")]
+            self.assertTrue(any("1.00" in ln for ln in c_lines))
+
 
 if __name__ == "__main__":
     unittest.main()

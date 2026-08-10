@@ -54,3 +54,28 @@ cpefit, confsearch, DeltaPuckerFit, WaveFrontND, Json* utilities.
 See ``GLOSSARY.md`` for models and terminology. Runtime code lives in this
 ``src/ffpopt`` tree. The optional ``ffpopt-main/`` checkout (gitignored) is an
 upstream reference only — not required after ``pip install``.
+
+## Wavefront evaluate policy
+
+After each node finishes, profile minima and neighbor spawn follow a shared
+policy (``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum``):
+
+| Case | Profile min | Spawn? |
+|------|-------------|--------|
+| Soft, first at bin | Store soft energy/geom | Yes once (seed coverage) |
+| Soft, improves soft min | Update if lower | No |
+| Hard vs soft incumbent | Replace soft only if ``E_hard <= E_soft`` | Only if hard accepted |
+| Hard, ``E < min`` within threshold | Update quietly | No |
+| Hard, ``E < min - threshold`` | Update | Yes |
+| Hard, ``E >= min`` | No change | No |
+
+``loose`` / ``*-loose`` recoveries are treated like soft for spawn. Soft-maxiter
+stays soft. ``--fast`` remains a wall-time trade (coarser Δ, looser converge).
+
+## Dihedral fit χ²
+
+GenDihedFit’s objective is a **shape match**: mean-centered HL−LL residual
+(``d = (hl - ll) - mean(hl - ll)``). Independent min-shifts of HL and LL are
+not used in χ² (plot files may still min-shift for display). Under fixed
+geometry, force constants enter linearly and are solved with bounded linear
+least squares (phase fixed at 0).
