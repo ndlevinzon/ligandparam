@@ -78,6 +78,8 @@ def run_dihed_correct(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-dihed-correct``."""
+    from ffpopt.runtime.console import print_startup_banner
+
     parser = argparse.ArgumentParser(
         description=(
             "Fit dihedral corrections with ffpopt after ligandparam "
@@ -168,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    print_startup_banner()
 
     try:
         bundle = resolve_getparam_bundle(

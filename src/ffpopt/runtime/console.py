@@ -82,16 +82,24 @@ def print_startup_banner(
     stream: TextIO | None = None,
     force: bool = False,
 ) -> bool:
-    """Print the project banner once per process to stdout.
+    """Print the project banner once for this job (stdout top).
+
+    Uses a process-local flag **and** ``LIGANDPARAM_BANNER_PRINTED`` so spawned
+    fragment / wavefront workers that re-import this module do not reprint.
+    Do not call from ``attach_console_handlers`` — only from top-level CLI
+    entry points.
 
     Returns
     -------
     bool
         ``True`` if the banner was printed on this call.
     """
+    import os
+
     global _BANNER_PRINTED
-    if _BANNER_PRINTED and not force:
-        return False
+    if not force:
+        if _BANNER_PRINTED or os.environ.get("LIGANDPARAM_BANNER_PRINTED"):
+            return False
     out = stream if stream is not None else sys.__stdout__
     text = format_startup_banner()
     try:
@@ -100,6 +108,7 @@ def print_startup_banner(
     except OSError:
         return False
     _BANNER_PRINTED = True
+    os.environ["LIGANDPARAM_BANNER_PRINTED"] = "1"
     return True
 
 
@@ -297,8 +306,6 @@ def attach_console_handlers(
     for handler in logger.handlers:
         if getattr(handler, "_lp_console_marker", None):
             return
-
-    print_startup_banner()
 
     tags = _normalize_tags(tag)
     marker = "ffpopt.console:" + "/".join(tags)

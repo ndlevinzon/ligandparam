@@ -157,6 +157,8 @@ def main():
     """Parse command line arguments and execute the ligand parameterization worker."""
     import argparse
 
+    from ffpopt.runtime.console import print_startup_banner
+
     parser = argparse.ArgumentParser(description="Ligand parameterization CLI")
     parser.add_argument("-i", "--input", type=str, required=True, help="Input PDB file with ligand")
     parser.add_argument("-r", "--resname", type=str, required=True, help="Residue name for the ligand")
@@ -189,6 +191,8 @@ def main():
     )
 
     args = parser.parse_args()
+
+    print_startup_banner()
 
     worker(
         recipe_name=args.recipe_name,
