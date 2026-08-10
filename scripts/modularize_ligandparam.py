@@ -140,7 +140,7 @@ def lazy_stages_init() -> None:
         "def __getattr__(name: str) -> Any:",
         "    if name == \"StageSmilestoPDB\":",
         "        # Canonical class is StageSmilesToPDB; keep legacy name.",
-        "        from .smilestopdb import StageSmilesToPDB as StageSmilestoPDB",
+        "        from .smiles_to_pdb import StageSmilesToPDB as StageSmilestoPDB",
         "        return StageSmilestoPDB",
         "    mod = _EXPORTS.get(name)",
         "    if mod is None:",
@@ -168,7 +168,7 @@ def lazy_stages_init() -> None:
         # Safer: after imports, add:
         alias = (
             "\n# Canonical SMILES→PDB stage lives in smilestopdb; keep legacy name.\n"
-            "from .smilestopdb import StageSmilesToPDB as StageSmilestoPDB  # noqa: E402\n"
+            "from .smiles_to_pdb import StageSmilesToPDB as StageSmilestoPDB  # noqa: E402\n"
         )
         # Only add if not already aliased; leave old class but rename to _Legacy
         init_text2 = init_text.replace(
@@ -186,7 +186,7 @@ def lazy_stages_init() -> None:
         if pattern.search(init_text):
             init_text = pattern.sub(
                 "\n# Legacy name → canonical StageSmilesToPDB\n"
-                "from .smilestopdb import StageSmilesToPDB as StageSmilestoPDB\n\n",
+                "from .smiles_to_pdb import StageSmilesToPDB as StageSmilestoPDB\n\n",
                 init_text,
                 count=1,
             )

@@ -138,7 +138,7 @@ def mark_node_failed(
 
 def maybe_write_success_checkpoint(node: Any) -> None:
     """Write a success node pickle when fast-wavefront policy allows."""
-    from ffpopt.fast_wavefront import write_success_node_pickle
+    from ffpopt.runtime.fast_wavefront import write_success_node_pickle
 
     if write_success_node_pickle():
         write_node_pickle(node)

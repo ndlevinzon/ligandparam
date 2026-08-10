@@ -44,7 +44,7 @@ from . Lebedev import GetLebedevRule
 from . Lebedev import GetLebedevDegreeMatchingDensity
 from . Lebedev import GetLebedevValidDegrees
 from . Lebedev import LebedevGaussianZetaScaleFactor
-from . UFFRadii import GetUffRadius
+from ffpopt.constants.PeriodicTable import GetUffRadius
 from . SwitchFcn import SwitchOff
 from . SwitchFcn import SwitchOffGrd
 from . SwitchFcn import SwitchOffAllGrd

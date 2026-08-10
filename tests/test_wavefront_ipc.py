@@ -23,7 +23,7 @@ for _name in (
 ):
     sys.modules.setdefault(_name, MagicMock())
 
-from ffpopt.WaveFront import (  # noqa: E402
+from ffpopt.scan.WaveFront import (  # noqa: E402
     WavefrontNode,
     _init_worker,
     _run_node_job,

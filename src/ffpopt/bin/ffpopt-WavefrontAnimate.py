@@ -169,7 +169,7 @@ def main():
     else:
         outfile = Path(args.output)
 
-    from ffpopt.WaveFront import wavefront_loader
+    from ffpopt.scan.WaveFront import wavefront_loader
     wf = wavefront_loader(str(infile))
     animate_wavefront(wf, output_file=str(outfile), fps=args.fps, dpi=args.dpi)
     print(f"Wrote animation to {outfile}")

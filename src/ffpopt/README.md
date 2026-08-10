@@ -7,8 +7,9 @@ Python package for force-field torsion optimization, vendored alongside
 
 Shared monorepo convention: public ``__init__.py``, ``README.md``, CLI/bin
 entrypoints, domain modules. Runtime UX helpers and scan engines live in
-subpackages; PascalCase mega-modules stay intact at the package root (or are
-re-exported from ``scan/``).
+subpackages; PascalCase mega-modules stay intact where they are meaningful
+(``Workflows``, ``Dihedrals``, ``GeomOpt`` at package root; wavefront engines
+under ``scan/``).
 
 | Path | Concern |
 |------|---------|
@@ -19,9 +20,8 @@ re-exported from ``scan/``).
 | ``Dihedrals`` | Fit types, solvers, Parmed script, puckers |
 | ``ase/``, ``cpefit/``, ``confsearch/``, ``constants/``, ``scosmo/``, ``bin/`` | Specialty stacks + CLIs |
 
-Root modules such as ``ffpopt.console`` / ``ffpopt.WaveFront`` remain as **thin
-compatibility re-exports**. Prefer ``ffpopt.runtime.*`` and ``ffpopt.scan.*``
-in new code.
+Root entrypoints use the canonical packages ``ffpopt.runtime.*`` and
+``ffpopt.scan.*`` (no compatibility shims).
 
 Primary API for ligandparam integration:
 

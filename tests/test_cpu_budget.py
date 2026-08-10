@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ffpopt.cpu_budget import CpuBudget, fair_share_leases
+from ffpopt.runtime.cpu_budget import CpuBudget, fair_share_leases
 
 
 class TestFairShareLeases(unittest.TestCase):

@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Package layout** — ``ffpopt.runtime/`` (console, progress boards, CPU budget, fast presets) and ``ffpopt.scan/`` (WaveFront engines + mixins); thin root re-exports keep old import paths. ligandparam: ``gaussian_io`` / ``leap_io`` / ``smiles_to_pdb`` snake_case modules (compat shims at old names); recipe charge→parmchk→leap tail in ``recipes.common``.
+- **Package layout** — ``ffpopt.runtime/`` (console, progress boards, CPU budget, fast presets) and ``ffpopt.scan/`` (WaveFront engines + mixins); no root compatibility shims — import the canonical packages. ligandparam: ``gaussian_io`` / ``leap_io`` / ``smiles_to_pdb``; recipe charge→parmchk→leap tail in ``recipes.common``.
 - **Further DRY** — MCS/PDB atom-name helpers in ``ligandparam.io.smiles``; StageSmilesToPDB uses ``PDBFromSMILES``; ``MakeUniqueParams`` / ``Disang``; shared ``load_wavefront_pickle``; cpefit/Gaussian budgets via ``split_core_budget``; Reader owns ``FixParmedAtomicNumbers`` / ``ReadMol2``; UFF radius from ``constants``.
 - ligandparam: lazy ``stages`` / ``recipes`` exports (incl. Sage/Build); ``recipes.registry.get_recipe``; ``deprecated/`` removed; deleted redundant ``gaussian_budget.py``.
 

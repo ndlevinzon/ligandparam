@@ -38,7 +38,7 @@ def flatten(pkg: str, dest: str, *, extra_keep: list[str] | None = None) -> None
     if pkg.startswith("wavefront") and "wavefront.mixins" in text:
         text = text.replace(
             "from ffpopt.wavefront.mixins import",
-            "from ffpopt.wavefront_mixins import",
+            "from ffpopt.scan.wavefront_mixins import",
         )
     (FF / dest).write_text(text, encoding="utf-8", newline="\n")
     shutil.rmtree(d)

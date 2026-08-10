@@ -28,7 +28,7 @@ for _name in (
     sys.modules.setdefault(_name, MagicMock())
 
 from ffpopt.GeomOpt import is_soft_opt_recovery, opt_recovery_label  # noqa: E402
-from ffpopt.WaveFront import Wavefront, WavefrontNode  # noqa: E402
+from ffpopt.scan.WaveFront import Wavefront, WavefrontNode  # noqa: E402
 
 
 class TestConstraintsPy310FString(unittest.TestCase):

@@ -8,7 +8,7 @@ Primary APIs for torsion correction after ligand parameterization:
 * :mod:`ffpopt.Workflows` — ``run_dihed_twist_workflow``,
   ``run_fragmented_dihed_twist_workflow``
 * :mod:`ffpopt.Dihedrals` — GenDihedFit input types and solvers
-* :mod:`ffpopt.WaveFront` — parallel dihedral scan engine
+* :mod:`ffpopt.scan.WaveFront` — parallel dihedral scan engine
 
 Submodules are imported lazily so lightweight callers (and packaging checks)
 do not require every optional calculator stack at import time.
@@ -42,7 +42,7 @@ _LAZY = {
     "scan": ".scan",
     "Workflows": ".Workflows",
     "Dihedrals": ".Dihedrals",
-    "WaveFront": ".WaveFront",
+    "WaveFront": ".scan.WaveFront",
 }
 
 

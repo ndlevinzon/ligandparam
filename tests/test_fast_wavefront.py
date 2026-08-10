@@ -6,7 +6,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ffpopt.fast_wavefront import (
+from ffpopt.runtime.fast_wavefront import (
     FAST_WAVEFRONT_PRESETS,
     apply_fast_wavefront_presets,
     fast_recovery_ladder,

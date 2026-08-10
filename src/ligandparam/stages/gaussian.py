@@ -118,7 +118,7 @@ def _orientation_id_from_paths(in_com: str | Path, out_log: str | Path) -> str:
 
 def _run_gaussian_rotation_job(payload: dict) -> dict:
     """Run one rotation ESP job (spawn-pool worker; must be picklable)."""
-    from ffpopt.progress_board import JobProgressStore
+    from ffpopt.runtime.progress_board import JobProgressStore
 
     cwd = Path(payload["cwd"])
     in_com = payload["in_com"]
@@ -786,7 +786,7 @@ class StageGaussianRotation(AbstractStage):
         """
         import multiprocessing as mp
 
-        from ffpopt.progress_board import JobBoardWatcher, JobProgressStore
+        from ffpopt.runtime.progress_board import JobBoardWatcher, JobProgressStore
 
         # Prefer self. so subclasses / tests can override or patch setup.
         self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)

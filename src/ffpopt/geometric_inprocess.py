@@ -226,7 +226,7 @@ def _recovery_attempts(
     enforce: Optional[float],
 ) -> list[dict[str, Any]]:
     """Ordered recovery attempts for hard constrained optimizations."""
-    from .fast_wavefront import fast_recovery_ladder
+    from ffpopt.runtime.fast_wavefront import fast_recovery_ladder
 
     primary_conv = _normalize_converge(converge) or ["set", "GAU"]
     loose = ["set", "GAU_LOOSE"]

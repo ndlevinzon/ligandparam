@@ -47,7 +47,7 @@ until neighboring energies agree within a threshold.
 **Detail.** Replaces the older sequential forward/reverse `DihedScan` path in
 modern twist workflows. Driven by `ffpopt.WaveFront.run_dihed_wavefront`.
 
-**Authoritative source.** `src/ffpopt/scan/WaveFront.py` (compat: `src/ffpopt/WaveFront.py`)
+**Authoritative source.** `src/ffpopt/scan/WaveFront.py`
 
 ### Twist workflow
 

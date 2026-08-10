@@ -66,7 +66,7 @@ def GetGridNeighbors(bidx, grid, validbins=None):
 
 
 def _clear_los_calc(los: ListOfStruct) -> None:
-    from ffpopt.wavefront_mixins import clear_los_calc
+    from .wavefront_mixins import clear_los_calc
 
     clear_los_calc(los)
 
@@ -82,7 +82,7 @@ def _init_worker(los, conlist, reslist, template_struct) -> None:
 
 def _clone_struct_geometry(struct, coords, ene=0.0, frcs=None):
     """Prefer ``Struct.clone_geometry``; fall back to deepcopy for test doubles."""
-    from ffpopt.wavefront_mixins import clone_struct_geometry
+    from .wavefront_mixins import clone_struct_geometry
 
     return clone_struct_geometry(struct, coords, ene=ene, frcs=frcs)
 
@@ -243,19 +243,19 @@ class WavefrontNode(object):
 
     def to_result(self) -> dict:
         """Slim result: energy + optimized coords (not ``los`` / full node)."""
-        from ffpopt.wavefront_mixins import slim_node_result
+        from .wavefront_mixins import slim_node_result
 
         return slim_node_result(self)
 
     def apply_result(self, result: dict) -> None:
         """Merge a slim worker result into this parent-side node."""
-        from ffpopt.wavefront_mixins import apply_slim_node_result
+        from .wavefront_mixins import apply_slim_node_result
 
         apply_slim_node_result(self, result, clone_fn=_clone_struct_geometry)
 
     def _ensure_soft_opt_attrs(self) -> None:
         """Fill soft-opt fields missing from older node pickles / checkpoints."""
-        from ffpopt.wavefront_mixins import ensure_soft_opt_attrs
+        from .wavefront_mixins import ensure_soft_opt_attrs
 
         ensure_soft_opt_attrs(self)
 
@@ -310,7 +310,7 @@ class WavefrontNode(object):
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                from ffpopt.wavefront_mixins import maybe_write_success_checkpoint
+                from .wavefront_mixins import maybe_write_success_checkpoint
 
                 maybe_write_success_checkpoint(self)
                 self.complete = True
@@ -322,7 +322,7 @@ class WavefrontNode(object):
 
     def _write_checkpoint(self) -> None:
         """Write the node's data to a pickle file (without ``los``)."""
-        from ffpopt.wavefront_mixins import write_node_pickle
+        from .wavefront_mixins import write_node_pickle
 
         write_node_pickle(self, verbose=True)
 
@@ -337,7 +337,7 @@ class WavefrontNode(object):
                 print(f"Failed to remove {self.node_pkl} because it disappeared")
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
-        from ffpopt.wavefront_mixins import mark_node_failed
+        from .wavefront_mixins import mark_node_failed
 
         mark_node_failed(self, reason, error, where=self.rcs)
 
@@ -798,7 +798,7 @@ class Wavefront(object):
                 initargs=(self.los, self.conlist, self.reslist, template),
             )
 
-        from ffpopt.fast_wavefront import wf_checkpoint_every
+        from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = wf_checkpoint_every(self.nproc)
         try:
@@ -931,7 +931,7 @@ class Wavefront(object):
         self._resume_queue = list(pending)
         self.save_checkpoint()
 
-        from ffpopt.fast_wavefront import wf_checkpoint_every
+        from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = max(wf_checkpoint_every(max(size - 1, 1)), 1)
         since_checkpoint = 0
@@ -1580,7 +1580,7 @@ class Wavefront(object):
 
 def wavefront_loader(filename: str) -> Wavefront:
     """Load a Wavefront object from a pickle file (see ``wavefront_mixins``)."""
-    from ffpopt.wavefront_mixins import load_wavefront_pickle
+    from .wavefront_mixins import load_wavefront_pickle
 
     return load_wavefront_pickle(filename, restore_soft_opt=True)
 

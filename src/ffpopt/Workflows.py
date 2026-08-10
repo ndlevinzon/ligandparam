@@ -82,7 +82,7 @@ def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
     log = logger if logger is not None else _LOG
     name = getattr(log, "name", "") or ""
     if name == "ffpopt" or name.startswith("ffpopt."):
-        from ffpopt.console import attach_console_handlers
+        from ffpopt.runtime.console import attach_console_handlers
 
         attach_console_handlers(log, tag="ffpopt")
     return log
@@ -418,7 +418,7 @@ def _run_one_scan(
         The dict returned by ``run_dihed_wavefront``, or ``None`` if the
         scan was skipped because ``out`` already exists.
     """
-    from ffpopt.WaveFront import run_dihed_wavefront
+    from ffpopt.scan.WaveFront import run_dihed_wavefront
 
     log = _resolve_logger(logger)
     inp_path = str(_in_workdir(workdir, inp))
@@ -708,7 +708,7 @@ def _compare_per_bond(
         Map of ``scan.GetIdxStr()`` to
         :class:`ffpopt.ScanAnalysis.ScanComparison`.
     """
-    from ffpopt.ScanAnalysis import compare_scan_files
+    from ffpopt.scan.ScanAnalysis import compare_scan_files
 
     out = {}
     for scan in scans:
@@ -952,7 +952,7 @@ def run_dihed_twist_workflow(
     )
     budget_tot = max(1, int(budget_total if budget_total is not None else nproc))
 
-    from ffpopt.fast_wavefront import (
+    from ffpopt.runtime.fast_wavefront import (
         apply_fast_wavefront_presets,
         fast_wavefront_enabled,
         prefer_wavefront_depth,
@@ -975,7 +975,7 @@ def run_dihed_twist_workflow(
         """Return cores for this scan phase (re-lease when a shared budget exists)."""
         if budget_path is None or not budget_owner:
             return nproc
-        from ffpopt.cpu_budget import CpuBudget
+        from ffpopt.runtime.cpu_budget import CpuBudget
 
         budget = CpuBudget(budget_path, budget_tot)
         leased = max(1, int(budget.lease(str(budget_owner))))
@@ -1450,7 +1450,7 @@ def _split_fragment_nproc(
         possible; with ``prefer_depth=True`` keeps a minimum inner width
         (see :func:`ffpopt.fast_wavefront.split_nproc_for_items`).
     """
-    from ffpopt.fast_wavefront import split_nproc_for_items
+    from ffpopt.runtime.fast_wavefront import split_nproc_for_items
 
     return split_nproc_for_items(
         nproc, n_fragments, prefer_depth=prefer_depth
@@ -1523,8 +1523,8 @@ def _run_fragment_twist_job(job: dict) -> dict:
     """Worker entry: prepare + twist one fragment (picklable job dict)."""
     from types import SimpleNamespace
 
-    from ffpopt.cpu_budget import CpuBudget
-    from ffpopt.fragment_progress import (
+    from ffpopt.runtime.cpu_budget import CpuBudget
+    from ffpopt.runtime.progress_board import (
         FragmentProgressStore,
         fragment_stdio_to_file,
         make_fragment_file_logger,
@@ -1833,7 +1833,7 @@ def run_fragmented_dihed_twist_workflow(
     # the parent frcmod via scission.merge.merge_fragment_frcmods, which can
     # only map fragment-fit DIHE terms onto parent atoms by atom type - the
     # fragment's atom names don't exist in the parent topology.
-    from ffpopt.fast_wavefront import (
+    from ffpopt.runtime.fast_wavefront import (
         apply_fast_wavefront_presets,
         fast_wavefront_enabled,
         prefer_wavefront_depth,
@@ -1914,7 +1914,7 @@ def run_fragmented_dihed_twist_workflow(
         nproc, len(runnable), prefer_depth=prefer_depth
     )
     budget_path = out_dir_path / ".cpu_budget.json"
-    from ffpopt.cpu_budget import CpuBudget
+    from ffpopt.runtime.cpu_budget import CpuBudget
 
     CpuBudget(budget_path, nproc)  # initialize shared lease table
     for job in runnable:
@@ -1923,7 +1923,7 @@ def run_fragmented_dihed_twist_workflow(
         # Hint only; workers lease dynamically from the shared budget.
         job["wf_nproc"] = max(1, int(nproc // max(1, n_frag_workers)))
 
-    from ffpopt.fragment_progress import FragmentBoardWatcher, FragmentProgressStore
+    from ffpopt.runtime.progress_board import FragmentBoardWatcher, FragmentProgressStore
 
     status_path = out_dir_path / ".frag_progress.json"
     board_path = out_dir_path / "FRAG_STATUS.txt"

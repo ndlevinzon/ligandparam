@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from ffpopt.fragment_progress import (
+from ffpopt.runtime.progress_board import (
     FragmentBoardWatcher,
     FragmentProgressStore,
     format_fragment_board,
@@ -65,7 +65,7 @@ class TestFragmentStdioRedirect(unittest.TestCase):
 
 class TestConsoleFormat(unittest.TestCase):
     def test_format_console_line_tags_message(self):
-        from ffpopt.console import format_console_line
+        from ffpopt.runtime.console import format_console_line
 
         line = format_console_line("wavefront step\n", tag="ffpopt:fragment_2")
         self.assertIn("[ffpopt:fragment_2]", line)

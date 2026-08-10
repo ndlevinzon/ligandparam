@@ -212,7 +212,7 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     if accepted_how is not None:
         out.data["ase_opt_recovery"] = accepted_how
 
-    from ffpopt.fast_wavefront import geomopt_verbose
+    from ffpopt.runtime.fast_wavefront import geomopt_verbose
 
     if geomopt_verbose():
         from ffpopt.Constraints import FillConstraints
@@ -640,7 +640,7 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     if isinstance(result, dict) and result.get("recovery"):
         out.data["geometric_recovery"] = result["recovery"]
 
-    from ffpopt.fast_wavefront import geomopt_verbose
+    from ffpopt.runtime.fast_wavefront import geomopt_verbose
 
     if geomopt_verbose():
         from ffpopt.Constraints import FillConstraints

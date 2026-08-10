@@ -3,7 +3,7 @@
 if __name__ == "__main__":
     import argparse
     from ffpopt.Options import AddStandardOptions
-    from ffpopt.WaveFront import run_dihed_wavefront
+    from ffpopt.scan.WaveFront import run_dihed_wavefront
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,

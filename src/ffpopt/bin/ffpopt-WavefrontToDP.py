@@ -11,7 +11,7 @@ else:
 
 from pathlib import Path
 
-from ffpopt.WaveFront import wavefront_loader
+from ffpopt.scan.WaveFront import wavefront_loader
 
 def convert_wavefront_to_data(input_file, default_cell=[[30,0,0],[0,30,0],[0,0,30]]):
     wf_data = wavefront_loader(input_file)

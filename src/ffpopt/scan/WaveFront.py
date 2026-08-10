@@ -21,7 +21,7 @@ _WORKER: dict = {}
 
 def _clear_los_calc(los: ListOfStruct) -> None:
     """Drop live calculators so workers rebuild (and cache) in-process."""
-    from ffpopt.wavefront_mixins import clear_los_calc
+    from .wavefront_mixins import clear_los_calc
 
     clear_los_calc(los)
 
@@ -36,7 +36,7 @@ def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) ->
 
 def _clone_struct_geometry(struct, coords, ene=0.0, frcs=None):
     """Prefer ``Struct.clone_geometry``; fall back to deepcopy for test doubles."""
-    from ffpopt.wavefront_mixins import clone_struct_geometry
+    from .wavefront_mixins import clone_struct_geometry
 
     return clone_struct_geometry(struct, coords, ene=ene, frcs=frcs)
 
@@ -165,19 +165,19 @@ class WavefrontNode:
 
     def to_result(self) -> dict:
         """Slim result payload: energy + optimized coords (not ``los`` / full node)."""
-        from ffpopt.wavefront_mixins import slim_node_result
+        from .wavefront_mixins import slim_node_result
 
         return slim_node_result(self)
 
     def apply_result(self, result: dict) -> None:
         """Merge a slim worker result into this parent-side node."""
-        from ffpopt.wavefront_mixins import apply_slim_node_result
+        from .wavefront_mixins import apply_slim_node_result
 
         apply_slim_node_result(self, result, clone_fn=_clone_struct_geometry)
 
     def _ensure_soft_opt_attrs(self) -> None:
         """Fill soft-opt fields missing from older node pickles / checkpoints."""
-        from ffpopt.wavefront_mixins import ensure_soft_opt_attrs
+        from .wavefront_mixins import ensure_soft_opt_attrs
 
         ensure_soft_opt_attrs(self)
     def replace_with_pickle(self) -> None:
@@ -213,7 +213,7 @@ class WavefrontNode:
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                from ffpopt.wavefront_mixins import maybe_write_success_checkpoint
+                from .wavefront_mixins import maybe_write_success_checkpoint
 
                 maybe_write_success_checkpoint(self)
                 self.complete = True
@@ -223,7 +223,7 @@ class WavefrontNode:
 
     def _write_checkpoint(self) -> None:
         """Write the node's data to a pickle file (without ``los``)."""
-        from ffpopt.wavefront_mixins import write_node_pickle
+        from .wavefront_mixins import write_node_pickle
 
         write_node_pickle(self)
 
@@ -235,7 +235,7 @@ class WavefrontNode:
             os.remove(filename)
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
-        from ffpopt.wavefront_mixins import mark_node_failed
+        from .wavefront_mixins import mark_node_failed
 
         mark_node_failed(self, reason, error, where=self.angle)
     def _precheck_geometry(self, min_dist: float = 0.8) -> Optional[str]:
@@ -677,7 +677,7 @@ class Wavefront:
 
         Examples
         --------
-        >>> from ffpopt.WaveFront import Wavefront
+        >>> from ffpopt.scan.WaveFront import Wavefront
         >>> Wavefront.nearest_angle(16, 30)
         30
         >>> Wavefront.nearest_angle(44, 30)
@@ -754,7 +754,7 @@ class Wavefront:
                 initargs=(self.los, self.con, self.struct),
             )
 
-        from ffpopt.fast_wavefront import wf_checkpoint_every
+        from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = wf_checkpoint_every(self.nproc)
         try:
@@ -1355,7 +1355,7 @@ def find_adjacent_dihedrals(con: Constraint, los: ListOfStruct) -> tuple[list[in
 
 def wavefront_loader(filename: str) -> Wavefront:
     """Load a Wavefront object from a pickle file (see ``wavefront_mixins``)."""
-    from ffpopt.wavefront_mixins import load_wavefront_pickle
+    from .wavefront_mixins import load_wavefront_pickle
 
     return load_wavefront_pickle(filename, restore_soft_opt=True)
 
