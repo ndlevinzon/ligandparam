@@ -70,6 +70,21 @@ Optional extras (`tblite`, `geometric`, AmberTools on `PATH`) are checked when
 present and skipped with an explicit reason when absent. A clean core install
 should report `OK` (with possible `skipped` optional tests).
 
+### Developer regression tests
+
+After changing code under `src/`, run the developer regression suite to catch
+breaks in recipe wiring, logging, I/O contracts, and core helpers:
+
+```bash
+python -m unittest tests.test_developer_regression -v
+```
+
+For the full unit battery (wavefront policy, scission screen, geomopt, …):
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ### Optional extras
 
 ```bash
