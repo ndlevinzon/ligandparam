@@ -89,28 +89,8 @@ class LigHFix(AbstractStage):
         self.add_conect = kwargs.get("add_conect", True)
         self.random_seed = kwargs.get("random_seed", None)
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """
-        Execute the hydrogen fixing and metadata assignment for the ligand.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
-        nproc : int, optional
-            Number of processors to use.
-        mem : int, optional
-            Amount of memory to use (in GB).
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If ligand information or InChI cannot be retrieved or processed.
-        """
+    def _run(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
+        """Fix ligand hydrogenation / bonding (template-method body)."""
         ligand_info = self.get_rcsb_small_molecule_info(ligand_id=self.lig_id)
         try:
             descriptors = ligand_info["rcsb_chem_comp_descriptor"]

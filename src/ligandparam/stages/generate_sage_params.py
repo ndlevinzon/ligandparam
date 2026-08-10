@@ -152,7 +152,7 @@ class StageSageCreate(AbstractStage):
         if hasattr(parm, "parm_data") and "RESIDUE_LABEL" in parm.parm_data:
             parm.parm_data["RESIDUE_LABEL"] = [cleaned for _ in parm.parm_data["RESIDUE_LABEL"]]
     
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> None:
+    def _run(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> None:
         from rdkit import Chem
 
         atom_names, atom_charges, atom_resnames = self._read_mol2_atom_records(self.in_mol2)
@@ -510,7 +510,7 @@ class StageSageToAmber(AbstractStage):
         if hasattr(parm, "parm_data") and "RESIDUE_LABEL" in parm.parm_data:
             parm.parm_data["RESIDUE_LABEL"] = [cleaned for _ in parm.parm_data["RESIDUE_LABEL"]]
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> None:
+    def _run(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> None:
         import parmed
         from parmed.tools import actions
 

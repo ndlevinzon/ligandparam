@@ -107,16 +107,9 @@ lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
 "ffpopt-DeltaRespFit.py" = "ffpopt.scripts:ffpopt_DeltaRespFit"
 "ffpopt-CpeFit.py" = "ffpopt.scripts:ffpopt_CpeFit"
 "ffpopt-xyz2mol2.py" = "ffpopt.scripts:ffpopt_xyz2mol2"
-"ffpopt-DihedTwistAnimate.py" = "ffpopt.scripts:ffpopt_DihedTwistAnimate"
-"ffpopt-WavefrontAnimate.py" = "ffpopt.scripts:ffpopt_WavefrontAnimate"
-"ffpopt-FindSugarPuckers.py" = "ffpopt.scripts:ffpopt_FindSugarPuckers"
-"ffpopt-DeltaPuckerFit.py" = "ffpopt.scripts:ffpopt_DeltaPuckerFit"
 "ffpopt-NDimWavefront.py" = "ffpopt.scripts:ffpopt_NDimWavefront"
-"ffpopt-Json2Crds.py" = "ffpopt.scripts:ffpopt_Json2Crds"
-"ffpopt-JsonJoin.py" = "ffpopt.scripts:ffpopt_JsonJoin"
-"ffpopt-JsonSplit.py" = "ffpopt.scripts:ffpopt_JsonSplit"
-"ffpopt-Json2Img.py" = "ffpopt.scripts:ffpopt_Json2Img"
-"ffpopt-WavefrontToDP.py" = "ffpopt.scripts:ffpopt_WavefrontToDP"
+# Specialty tools (sugar/pucker, JSON, animate): use ``ffpopt-specialty``.
+ffpopt-specialty = "ffpopt.scripts:ffpopt_specialty"
 
 [tool.setuptools.packages.find]
 where = ["src"]

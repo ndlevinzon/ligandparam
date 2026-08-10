@@ -1,7 +1,8 @@
 Command-line tools
 ==================
 
-Entry points installed with the package (see ``pyproject.toml``):
+Product path (installed by default)
+-----------------------------------
 
 * ``lig-getparam`` — run a parameterization recipe
 * ``lig-dihed-correct`` — fit / merge dihedral corrections (ffpopt + scission)
@@ -9,10 +10,36 @@ Entry points installed with the package (see ``pyproject.toml``):
 * ``scission`` — upstream scission CLI (``fragment`` / ``merge`` / ``pick-bond``)
 * ``smiles-to-pdb`` — SMILES → 3D PDB
 * ``lighfix`` — fix ligand hydrogenation / bonding
-* ``lig-to-sage`` — mol2 → OpenFF Sage helpers
+* ``lig-to-sage`` — mol2 → OpenFF Sage helpers (optional ``[sage]`` extra)
 
-Additional ``ffpopt-*.py`` scripts (PrepareInput, GenDihedFit, DihedWavefront,
-…) are registered for the torsion-fitting engine.
+Supported ffpopt torsion / prep tools (console scripts):
+
+* ``ffpopt-PrepareInput.py``, ``ffpopt-DihedWavefront.py``,
+  ``ffpopt-DihedTwistWorkflow.py``, ``ffpopt-GenDihedFit.py``,
+  ``ffpopt-DihedScan.py``, ``ffpopt-Optimize.py``, ``ffpopt-ConfSearch.py``,
+  ``ffpopt-NDimWavefront.py``, ``ffpopt-xyz2mol2.py``
+
+Secondary (supported, not on the ``lig-*`` happy path)
+------------------------------------------------------
+
+Charge / CPE fitting CLIs remain installed for standalone use:
+
+* ``ffpopt-RespFit.py``, ``ffpopt-DeltaRespFit.py``, ``ffpopt-CpeFit.py``
+
+Recipe ``sqmligand`` and Sage stages are **secondary supported**: documented and
+registry-tested, but not the default freeligand / twist workflow.
+
+Specialty (quarantined)
+-----------------------
+
+Sugar/pucker, JSON utilities, and animate tools are **not** individual
+console scripts. Invoke them through one dispatcher::
+
+   ffpopt-specialty <ToolName> [args...]
+
+Tools: ``DihedTwistAnimate``, ``WavefrontAnimate``, ``FindSugarPuckers``,
+``DeltaPuckerFit``, ``WavefrontToDP``, ``Json2Crds``, ``JsonJoin``,
+``JsonSplit``, ``Json2Img``.
 
 CLIs print a one-time startup banner (logo, authors, version) at the top of
 stdout; fragment workers do not reprint it.

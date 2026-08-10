@@ -17,7 +17,7 @@ under ``scan/``).
 | ``scan/`` | ``WaveFront``, ``WaveFrontND``, ``wavefront_mixins``, ``ScanAnalysis`` |
 | ``GeomOpt`` | ASE / geomeTRIC optimization |
 | ``Workflows`` | Twist + fragmented twist orchestration |
-| ``Dihedrals`` | Fit types, solvers, Parmed script, puckers |
+| ``Dihedrals`` | Fit types, solvers, Parmed script (pure math in ``dihed_math``) |
 | ``ase/``, ``cpefit/``, ``confsearch/``, ``constants/``, ``scosmo/``, ``bin/`` | Specialty stacks + CLIs |
 
 Root entrypoints use the canonical packages ``ffpopt.runtime.*`` and
@@ -37,8 +37,17 @@ CLI (installed with ligandparam):
 lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb --fast
 ```
 
-Fragmentation is provided by the integrated ``src/scission`` package (also
-exposed as ``lig-scission`` / ``scission``).
+Supported torsion / prep scripts stay as console entry points
+(``PrepareInput``, ``DihedWavefront``, twist workflow, …). Specialty
+tools (sugar/pucker, JSON, animate) are quarantined behind one dispatcher:
+
+```bash
+ffpopt-specialty Json2Img --help
+```
+
+Secondary-supported (not on the ``lig-*`` path): RespFit, DeltaRespFit,
+CpeFit. Fragmentation is provided by the integrated ``src/scission``
+package (also exposed as ``lig-scission`` / ``scission``).
 
 ## What is (and is not) overlapping with ligandparam
 
@@ -49,9 +58,6 @@ complementary, not duplicates.
 Shared helper (deduplicated): ``CopyParm`` lives in ``ffpopt.AmberParm`` and is
 re-exported from ``ligandparam.multiresp.parmhelper``. Core-budget splitting
 lives in ``ffpopt.runtime.fast_wavefront.split_core_budget``.
-
-Not used by ``lig-dihed-correct`` (kept for standalone ffpopt CLIs): RespFit,
-cpefit, confsearch, DeltaPuckerFit, WaveFrontND, Json* utilities.
 
 See ``GLOSSARY.md`` for models and terminology. Runtime code lives in this
 ``src/ffpopt`` tree. The optional ``ffpopt-main/`` checkout (gitignored) is an

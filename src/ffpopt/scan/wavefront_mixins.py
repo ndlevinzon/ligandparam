@@ -403,3 +403,69 @@ def run_mp_spawn_drain_loop(
         if pool is not None:
             pool.terminate()
             pool.join()
+
+
+def run_mpi_spawn_drain_loop(
+    *,
+    pending,
+    comm,
+    size: int,
+    tag_task: int,
+    tag_result: int,
+    tag_stop: int,
+    on_complete,
+    set_resume_queue,
+    save_checkpoint,
+    cleanup_completed,
+    print_progress,
+    checkpoint_every: int,
+) -> None:
+    """Shared MPI master drain loop (rank 0) for N-D wavefront scans.
+
+    Mirrors :func:`run_mp_spawn_drain_loop`: dispatch slim jobs to idle ranks,
+    harvest results, checkpoint periodically, and stop workers in ``finally``.
+    Callers own worker broadcast / init and post-loop finish bookkeeping.
+    """
+    idle_workers = set(range(1, size))
+    in_flight = {}
+    since_checkpoint = 0
+
+    try:
+        while pending or in_flight:
+            while pending and idle_workers:
+                worker = idle_workers.pop()
+                node = pending.popleft()
+                node.replace_with_pickle()
+
+                if node.complete:
+                    pending.extend(on_complete(node))
+                    idle_workers.add(worker)
+                    continue
+                if not node.active:
+                    idle_workers.add(worker)
+                    continue
+
+                comm.send(node.to_job(), dest=worker, tag=tag_task)
+                in_flight[worker] = node
+
+            if in_flight:
+                from mpi4py import MPI
+
+                status = MPI.Status()
+                result = comm.recv(source=MPI.ANY_SOURCE, tag=tag_result, status=status)
+                worker = status.Get_source()
+                node = in_flight.pop(worker)
+                idle_workers.add(worker)
+                node.apply_result(result)
+                pending.extend(on_complete(node))
+                since_checkpoint += 1
+
+            if since_checkpoint >= checkpoint_every:
+                set_resume_queue(list(pending) + list(in_flight.values()))
+                save_checkpoint()
+                cleanup_completed()
+                print_progress(len(pending), len(in_flight))
+                since_checkpoint = 0
+    finally:
+        for worker in range(1, size):
+            comm.send(None, dest=worker, tag=tag_stop)

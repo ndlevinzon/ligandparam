@@ -9,8 +9,8 @@ unmaintainable pile of one-off scripts.
 Maintainability score
 ---------------------
 
-**Overall: 7 / 10** (research monorepo after the 1.5 layout + SOLID/DRY
-passes).
+**Overall: 8 / 10** (research monorepo after specialty CLI quarantine,
+thin ``_run`` migrations, and shared wavefront / fit-math helpers).
 
 This is a judgment call, not a CI metric. It reflects how hard it is for a
 new developer (or future-you) to change behavior safely.
@@ -44,14 +44,18 @@ What pulls the score **up**
 * **Template method on stages:** :class:`~ligandparam.stages.abstractstage.AbstractStage`
   owns logging / setup / ``new_files`` tracking; thin stages implement
   ``_run``.
-* **Write-once helpers:** Gaussian recipe configure, wavefront mixins,
+* **Write-once helpers:** Gaussian recipe configure, wavefront mixins
+  (MP + MPI drain, evaluate policy), ``dihed_math`` / ``ipc_slim``,
   ``runtime/`` (console, CPU budget, non-daemon pools), scission
   ``safe_name`` / DIHE key helpers.
 * **Two deliberate test entry points:** install validation for users;
   developer regression for wiring and pure helpers (no AmberTools /
   Gaussian required for most of that suite).
-* **Recent debloat:** stub recipes/stages and large commented-out blocks
-  removed so the tree matches what is actually shipped.
+* **Quarantined specialty CLIs:** sugar/pucker, JSON, and animate tools
+  go through ``ffpopt-specialty`` so the default install map matches the
+  product path.
+* **Documented periphery:** ``sqmligand``, Sage (``lig-to-sage``), and
+  CPE/RespFit stay secondary-supported rather than ambiguous.
 
 What pulls the score **down**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,13 +65,8 @@ What pulls the score **down**
   ``ligandparam.multiresp.parmhelper``, and ``ffpopt.GeomOpt``. They are
   coherent domains, but they violate SRP in the strict sense and raise
   change risk.
-* **Inconsistent stage adoption:** some stages still override ``execute``
-  end-to-end (Gaussian rotation, DeepMD, dihed twist) while others use
-  ``_run``. That is intentional for control-flow-heavy stages, but it
-  means the template is not universal yet.
-* **Specialty CLI surface:** sugar/pucker, JSON utilities, and animate
-  tools live under ``ffpopt`` and are outside the core ``lig-*`` product
-  path. They increase the map without helping most users.
+* **Control-flow-heavy stages** still override ``execute`` end-to-end
+  (Gaussian rotation, DeepMD, dihed twist). Thin stages use ``_run``.
 * **Scientific coupling:** many stages need RDKit / ParmEd / Gaussian /
   AmberTools at import or runtime, so “unit test everything” is
   unrealistic without heavy mocking. Tests therefore target contracts
@@ -76,18 +75,15 @@ What pulls the score **down**
   (``ffpopt.WaveFront``) exist for resume. Necessary, but they are a
   permanent compatibility tax.
 
-Target for the next notch (≈ 8/10)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Toward 9/10
+~~~~~~~~~~~
 
-* Keep extracting **shared loops and policies** into mixins/runtime
-  (already the preferred pattern) instead of splitting mega-files into
-  dozens of tiny modules.
-* Finish migrating remaining thin stages to ``_run`` where behavior
-  stays identical.
-* Optionally retire or quarantine specialty CLIs that are not on the
-  ``lig-*`` path.
-* Grow developer tests around recipe builders, wavefront policy, and
-  merge helpers whenever those areas change.
+* Continue extracting **shared loops and policies** into mixins/runtime
+  instead of splitting mega-files into dozens of tiny modules.
+* Keep growing developer tests around recipe builders, wavefront policy,
+  and merge helpers whenever those areas change.
+* Further shrink god-module hot paths only when a helper has a clear
+  name and tests.
 
 Principles we follow
 --------------------

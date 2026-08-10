@@ -26,6 +26,11 @@ Additional recipes such as :class:`~ligandparam.recipes.DPLigand` and
 :class:`~ligandparam.recipes.SQMLigand` are exported from
 :mod:`ligandparam.recipes` even when they are not listed below.
 
+**Support tiers:** ``freeligand`` / ``lazyligand`` / ``lazierligand`` (and their
+DeepMD variants) are the primary product path. ``sqmligand`` is
+**secondary-supported** (registry + tests, not the default CLI story).
+Sage conversion is via ``lig-to-sage`` with the optional ``[sage]`` extra.
+
 .. toctree::
    :maxdepth: 2
    :caption: Available Recipes:

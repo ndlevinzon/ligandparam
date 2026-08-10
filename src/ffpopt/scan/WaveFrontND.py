@@ -45,6 +45,7 @@ from .wavefront_mixins import (
     precheck_geometry_clash,
     replace_node_with_pickle,
     run_mp_spawn_drain_loop,
+    run_mpi_spawn_drain_loop,
     slim_node_result,
     write_node_pickle,
 )
@@ -809,7 +810,6 @@ class Wavefront(object):
     def calculate_mpi(self) -> None:
         """Apply the wavefront algorithm to optimize a dihedral scan using MPI."""
         from mpi4py import MPI
-        import time
         from collections import deque
 
         comm = MPI.COMM_WORLD
@@ -882,61 +882,20 @@ class Wavefront(object):
         from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = max(wf_checkpoint_every(max(size - 1, 1)), 1)
-        since_checkpoint = 0
-
-        # Track available workers and tasks in flight
-        idle_workers = set(range(1, size))
-        in_flight = {}  # Mapping of worker_rank -> node
-
-        try:
-            while pending or in_flight:
-
-                # 2. Dispatch work to idle ranks
-                while pending and idle_workers:
-                    worker = idle_workers.pop()
-                    node = pending.popleft()
-
-                    node.replace_with_pickle()
-
-                    if node.complete:
-                        pending.extend(self._on_complete(node))
-                        idle_workers.add(worker) # Worker never actually got the task
-                        continue
-                    if not node.active:
-                        idle_workers.add(worker)
-                        continue
-
-                    # Slim job: rcs + coords (not full node / los)
-                    comm.send(node.to_job(), dest=worker, tag=TAG_TASK)
-                    in_flight[worker] = node
-
-                # 3. Harvest finished workers
-                if in_flight:
-                    status = MPI.Status()
-
-                    result = comm.recv(source=MPI.ANY_SOURCE, tag=TAG_RESULT, status=status)
-                    worker = status.Get_source()
-
-                    node = in_flight.pop(worker)
-                    idle_workers.add(worker)
-
-                    node.apply_result(result)
-                    new_nodes = self._on_complete(node)
-                    pending.extend(new_nodes)
-                    since_checkpoint += 1
-
-                # 4. Handle checkpoints and progress updates
-                if since_checkpoint >= checkpoint_every:
-                    self._resume_queue = list(pending) + list(in_flight.values())
-                    self.save_checkpoint()
-                    self._cleanup_completed()
-                    self._print_progress(len(pending), len(in_flight))
-                    since_checkpoint = 0
-
-        finally:
-            # 5. Shut down the worker pool gracefully
-            for worker in range(1, size):
-                comm.send(None, dest=worker, tag=TAG_STOP)
+        run_mpi_spawn_drain_loop(
+            pending=pending,
+            comm=comm,
+            size=size,
+            tag_task=TAG_TASK,
+            tag_result=TAG_RESULT,
+            tag_stop=TAG_STOP,
+            on_complete=self._on_complete,
+            set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
+            save_checkpoint=self.save_checkpoint,
+            cleanup_completed=self._cleanup_completed,
+            print_progress=self._print_progress,
+            checkpoint_every=checkpoint_every,
+        )
 
         self._resume_queue = []
         self.save_checkpoint()

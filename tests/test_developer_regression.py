@@ -251,6 +251,32 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self.assertEqual(len(calls), len(recipe.stages))
             self.assertEqual(calls, [s.stage_name for s in recipe.stages])
 
+    def test_every_registry_recipe_uses_common_builders(self):
+        """Each registry entry builds stages via recipes.common (smoke)."""
+        from ligandparam.recipes.registry import _REGISTRY, get_recipe
+
+        for name, path_cls in _REGISTRY.items():
+            mod_path = path_cls.split(":")[0]
+            mod = importlib.import_module(mod_path)
+            src = Path(mod.__file__).read_text(encoding="utf-8")
+            self.assertIn(
+                "ligandparam.recipes.common",
+                src,
+                f"{name} should import recipes.common builders",
+            )
+            with tempfile.TemporaryDirectory() as td:
+                inp, cwd = self._tmp_recipe_args(td)
+                recipe = get_recipe(
+                    name,
+                    in_filename=str(inp),
+                    cwd=str(cwd),
+                    net_charge=0,
+                    logger="stream",
+                )
+                recipe.setup()
+                self.assertGreater(len(recipe.stages), 0, f"{name} setup() empty")
+                self._assert_tail_parmchk_leap(recipe.stages)
+
 
 # ---------------------------------------------------------------------------
 # Stages — charge normalize + abstract contracts
@@ -691,6 +717,33 @@ class TestScissionFunctions(unittest.TestCase):
             update = _load_fragment_update(frag_dir)
             self.assertIn(("c3", "c3", "c3", "c3"), update["dihe_groups"])
             self.assertIn(("c3", "c3", "c3", "n"), update["dihe_groups"])
+            # Later iteration overwrites shared key; earlier-only key survives.
+            n_lines = update["dihe_groups"][("c3", "c3", "c3", "n")]
+            self.assertTrue(any("3.50" in ln for ln in n_lines))
+            self.assertFalse(any("2.00" in ln for ln in n_lines))
+            c3_lines = update["dihe_groups"][("c3", "c3", "c3", "c3")]
+            self.assertTrue(any("1.00" in ln for ln in c3_lines))
+
+    def test_merge_dihe_empty_later_iteration_keeps_earlier(self):
+        """An empty later itXX.frcmod must not wipe earlier DIHE accumulation."""
+        from scission.merge import _load_fragment_update
+
+        def _frcmod(lines):
+            return (
+                "Remark line goes here\nMASS\n\nBOND\n\nANGLE\n\nDIHE\n"
+                + "".join(f"{ln}\n" for ln in lines)
+                + "\nIMPROPER\n\nNONB\n\n"
+            )
+
+        with tempfile.TemporaryDirectory() as td:
+            frag_dir = Path(td) / "frag_0001"
+            frag_dir.mkdir()
+            (frag_dir / "it01.frcmod").write_text(
+                _frcmod(["c3-c3-c3-c3 1 1.00 0.0 1."])
+            )
+            (frag_dir / "it02.frcmod").write_text(_frcmod([]))
+            update = _load_fragment_update(frag_dir)
+            self.assertIn(("c3", "c3", "c3", "c3"), update["dihe_groups"])
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +773,50 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             threshold_ev=0.1,
         )
         self.assertEqual(d["reason"], "soft_first_seed")
+
+    def test_wavefront_policy_matrix(self):
+        """Lock spawn / update decisions for soft and hard incumbents."""
+        from ffpopt.scan.wavefront_mixins import evaluate_wavefront_minimum
+
+        cases = [
+            # energy, soft, has, inc_e, inc_soft, thr, reason, update, active
+            (1.0, True, False, None, False, 0.1, "soft_first_seed", True, True),
+            (0.9, True, True, 1.0, True, 0.1, "soft_improve", True, False),
+            (1.1, True, True, 1.0, True, 0.1, "soft_demoted", False, False),
+            (1.0, False, False, None, False, 0.1, "hard_first", True, True),
+            (0.9, False, True, 1.0, True, 0.1, "hard_replace_soft", True, True),
+            (1.1, False, True, 1.0, True, 0.1, "hard_worse_than_soft", False, False),
+            (0.8, False, True, 1.0, False, 0.1, "hard_significant_improve", True, True),
+            (0.95, False, True, 1.0, False, 0.1, "hard_quiet_improve", True, False),
+            (1.0, False, True, 1.0, False, 0.1, "hard_not_lower", False, False),
+            (float("nan"), False, False, None, False, 0.1, "nonfinite", False, False),
+        ]
+        for energy, soft, has, inc_e, inc_soft, thr, reason, upd, act in cases:
+            with self.subTest(reason=reason):
+                d = evaluate_wavefront_minimum(
+                    energy=energy,
+                    soft=soft,
+                    has_incumbent=has,
+                    incumbent_energy=inc_e,
+                    incumbent_soft=inc_soft,
+                    threshold_ev=thr,
+                )
+                self.assertEqual(d["reason"], reason)
+                self.assertEqual(d["update_min"], upd)
+                self.assertEqual(d["active"], act)
+
+    def test_dihed_math_reexported_and_ipc_slim(self):
+        from ffpopt import dihed_math
+        from ffpopt.Dihedrals import shape_match_delta
+        from ffpopt.runtime.ipc_slim import slim_scan_result, slim_twist_result
+
+        self.assertIs(shape_match_delta, dihed_math.shape_match_delta)
+        self.assertIsNone(slim_scan_result(None))
+        self.assertEqual(slim_scan_result({"a": 1, "wf_run": object()})["a"], 1)
+        slim = slim_twist_result(
+            {"ok": True, "scans": [("p", (0, 1, 2, 3), {"e": 1.0, "wf_run": object()})]}
+        )
+        self.assertNotIn("wf_run", slim["scans"][0][2])
 
     def test_shape_match_and_joint_ls_symbols(self):
         import numpy as np

@@ -77,24 +77,8 @@ class SDFToPDB(AbstractStage):
         self.add_conect = kwargs.get("add_conect", True)
         self.mol_idx = kwargs.get("mol_idx", 0)
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        """
-        Execute the conversion from SDF to PDB or mol2 format.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, do not perform actual execution (default is False).
-        nproc : int, optional
-            Number of processors to use (default is None).
-        mem : int, optional
-            Memory to use in MB (default is None).
-
-        Returns
-        -------
-        Any
-            None
-        """
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Convert SDF to PDB or mol2 (template-method body)."""
         # First, create the molecule
         try:
             mols = Chem.SDMolSupplier(str(self.in_sdf), removeHs=False)
@@ -194,24 +178,8 @@ class SDFToPDBBatch(AbstractStage):
         self.resname = kwargs.get("resname", None)
         self.resname_read_field = kwargs.get("resname_read_field", "_Name")
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        """
-        Execute the batch conversion from SDF to PDB format.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, do not perform actual execution (default is False).
-        nproc : int, optional
-            Number of processors to use (default is None).
-        mem : int, optional
-            Memory to use in MB (default is None).
-
-        Returns
-        -------
-        Any
-            None
-        """
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Batch-convert SDF molecules to PDB (template-method body)."""
         # First, create the molecule
         try:
             mols = Chem.SDMolSupplier(str(self.in_sdf), removeHs=False)

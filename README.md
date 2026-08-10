@@ -231,7 +231,12 @@ Installed entry points (see `pyproject.toml`):
 | `lig-scission` / `scission` | Fragment a ligand (or merge fragment frcmods) |
 | `smiles-to-pdb` | Convert a SMILES string to a 3D PDB |
 | `lighfix` | Fix ligand hydrogenation / bonding from PDB input |
-| `lig-to-sage` | Convert mol2 parameters toward OpenFF Sage |
+| `lig-to-sage` | Convert mol2 parameters toward OpenFF Sage (optional `[sage]`) |
+| `ffpopt-specialty` | Quarantined tools: sugar/pucker, JSON, animate |
+
+Supported torsion prep scripts (`ffpopt-PrepareInput.py`,
+`ffpopt-DihedWavefront.py`, …) and secondary RespFit/CPE CLIs remain as
+console scripts; see `docs/.../cli.rst`.
 
 ```bash
 lig-getparam --help

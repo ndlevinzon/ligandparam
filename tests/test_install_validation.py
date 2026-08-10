@@ -273,8 +273,26 @@ class TestCLIEntrypoints(unittest.TestCase):
         except importlib.metadata.PackageNotFoundError:
             self.skipTest("ligandparam distribution metadata unavailable")
         ep_names = {ep.name for ep in dist.entry_points if ep.group == "console_scripts"}
-        for required in ("lig-getparam", "lig-dihed-correct", "lig-scission", "scission"):
+        for required in (
+            "lig-getparam",
+            "lig-dihed-correct",
+            "lig-scission",
+            "scission",
+            "ffpopt-specialty",
+        ):
             self.assertIn(required, ep_names, f"missing console script {required}")
+        for banned in (
+            "ffpopt-DihedTwistAnimate.py",
+            "ffpopt-WavefrontAnimate.py",
+            "ffpopt-FindSugarPuckers.py",
+            "ffpopt-Json2Img.py",
+            "ffpopt-JsonJoin.py",
+            "ffpopt-JsonSplit.py",
+            "ffpopt-Json2Crds.py",
+            "ffpopt-DeltaPuckerFit.py",
+            "ffpopt-WavefrontToDP.py",
+        ):
+            self.assertNotIn(banned, ep_names, f"specialty tool should not be a console script: {banned}")
 
 
 class TestBehavioralSmoke(unittest.TestCase):
