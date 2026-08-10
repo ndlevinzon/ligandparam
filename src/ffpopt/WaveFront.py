@@ -165,53 +165,21 @@ class WavefrontNode:
 
     def to_result(self) -> dict:
         """Slim result payload: energy + optimized coords (not ``los`` / full node)."""
-        coords = None
-        if self.opt_geom is not None:
-            coords = np.asarray(self.opt_geom.data["positions"], dtype=float)
-        return {
-            "energy": self.energy,
-            "forces": self.forces,
-            "coords": coords,
-            "complete": self.complete,
-            "error": self.error,
-            "active": self.active,
-            "soft_opt": self.soft_opt,
-            "opt_recovery": self.opt_recovery,
-        }
+        from ffpopt.wavefront_mixins import slim_node_result
+
+        return slim_node_result(self)
 
     def apply_result(self, result: dict) -> None:
         """Merge a slim worker result into this parent-side node."""
-        self.energy = result.get("energy")
-        if result.get("forces") is not None:
-            self.forces = result["forces"]
-        self.complete = bool(result.get("complete", self.complete))
-        self.error = result.get("error", self.error)
-        if "active" in result:
-            self.active = bool(result["active"])
-        self.soft_opt = bool(result.get("soft_opt", False))
-        if "opt_recovery" in result:
-            self.opt_recovery = result["opt_recovery"]
-        else:
-            self.opt_recovery = getattr(self, "opt_recovery", None)
-        coords = result.get("coords")
-        if coords is not None:
-            self.opt_geom = _clone_struct_geometry(
-                self.struct, coords, ene=self.energy, frcs=result.get("forces")
-            )
-            if self.opt_recovery:
-                tag = str(self.opt_recovery)
-                if tag in ("BFGS", "LBFGS", "FIRE") or tag.endswith("-soft"):
-                    self.opt_geom.data["ase_opt_recovery"] = tag
-                else:
-                    self.opt_geom.data["geometric_recovery"] = tag
+        from ffpopt.wavefront_mixins import apply_slim_node_result
+
+        apply_slim_node_result(self, result, clone_fn=_clone_struct_geometry)
 
     def _ensure_soft_opt_attrs(self) -> None:
         """Fill soft-opt fields missing from older node pickles / checkpoints."""
-        if not hasattr(self, "soft_opt"):
-            self.soft_opt = False
-        if not hasattr(self, "opt_recovery"):
-            self.opt_recovery = None
+        from ffpopt.wavefront_mixins import ensure_soft_opt_attrs
 
+        ensure_soft_opt_attrs(self)
     def replace_with_pickle(self) -> None:
         """Replace node fields from a sidecar pickle if present (restores ``los``)."""
         filename = Path(f"{self.node_pkl}")
@@ -245,10 +213,9 @@ class WavefrontNode:
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                from ffpopt.fast_wavefront import write_success_node_pickle
+                from ffpopt.wavefront_mixins import maybe_write_success_checkpoint
 
-                if write_success_node_pickle():
-                    self._write_checkpoint()
+                maybe_write_success_checkpoint(self)
                 self.complete = True
             except Exception as e:
                 print(f"Node {self.node_id} optimization error: {type(e).__name__}: {e}")
@@ -256,13 +223,9 @@ class WavefrontNode:
 
     def _write_checkpoint(self) -> None:
         """Write the node's data to a pickle file (without ``los``)."""
-        los = self.los
-        self.los = None
-        try:
-            with open(self.node_pkl, 'wb') as f:
-                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-        finally:
-            self.los = los
+        from ffpopt.wavefront_mixins import write_node_pickle
+
+        write_node_pickle(self)
 
     def cleanup(self) -> None:
         """Clean up the node's pickle file."""
@@ -272,17 +235,9 @@ class WavefrontNode:
             os.remove(filename)
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
-        msg = reason
-        if error is not None:
-            msg = f"{reason}: {error}"
-        self.error = msg
-        self.active = False
-        self.complete = True
-        self.energy = np.inf
-        self.forces = np.zeros((len(self.struct.data["elements"]), 3))
-        print(f"Node {self.node_id} failed at angle {self.angle}: {msg}")
-        self._write_checkpoint()
+        from ffpopt.wavefront_mixins import mark_node_failed
 
+        mark_node_failed(self, reason, error, where=self.angle)
     def _precheck_geometry(self, min_dist: float = 0.8) -> Optional[str]:
         """Return a failure reason, or ``None`` if the geometry looks usable.
 

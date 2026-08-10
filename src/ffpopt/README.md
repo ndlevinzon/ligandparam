@@ -9,16 +9,16 @@ Primary API for ligandparam integration:
 from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
 ```
 
-Core modules (one concern per file):
+Layout (write once):
 
 | Module | Concern |
 |--------|---------|
 | ``GeomOpt`` | ASE / geomeTRIC optimization |
 | ``WaveFront`` / ``WaveFrontND`` | Constrained dihedral wavefront scans |
-| ``wavefront_mixins`` | Shared node helpers for 1-D / N-D |
+| ``wavefront_mixins`` | Shared node IPC / soft-opt / checkpoints |
 | ``Workflows`` | Twist + fragmented twist orchestration |
 | ``Dihedrals`` | Fit types, solvers, Parmed script, puckers |
-| ``runtime/`` | CPU leases, progress boards, fast presets, console |
+| ``cpu_budget``, ``progress_board``, ``console``, ``fast_wavefront``, ``fragment_progress`` | Parallelism / UX helpers (single home each) |
 
 CLI (installed with ligandparam):
 

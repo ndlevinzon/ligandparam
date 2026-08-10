@@ -1,42 +1,35 @@
 """CLI to convert a SMILES string to a 3D PDB."""
 
+from __future__ import annotations
+
 import argparse
-from rdkit import Chem
-from rdkit.Chem import AllChem
 
-def smiles_to_pdb(smiles, pdb_filename, resname="LIG"):
-    # Generate molecule from SMILES
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        raise ValueError("Invalid SMILES string.")
+from ligandparam.io.smiles import PDBFromSMILES
 
-    # Add hydrogens
-    mol = Chem.AddHs(mol)
 
-    # Generate 3D coordinates
-    if AllChem.EmbedMolecule(mol, AllChem.ETKDG()) != 0:
-        raise RuntimeError("3D coordinate generation failed.")
+def smiles_to_pdb(smiles: str, pdb_filename: str, resname: str = "LIG") -> None:
+    """Embed a SMILES string and write a cleaned PDB (shared ``io.smiles`` path)."""
+    builder = PDBFromSMILES(resname, smiles)
+    builder.mol_from_smiles(addHs=True)
+    builder.write_pdb(pdb_filename, minimize=True)
 
-    # Minimize with MMFF or UFF
-    if AllChem.MMFFHasAllMoleculeParams(mol):
-        AllChem.MMFFOptimizeMolecule(mol)
-    else:
-        AllChem.UFFOptimizeMolecule(mol)
-    # Set residue name for all atoms
-    for atom in mol.GetAtoms():
-        atom.SetProp("resName", resname)
-    # Write to PDB
-    with open(pdb_filename, 'w') as f:
-        f.write(Chem.MolToPDBBlock(mol))
 
-def main():
-    parser = argparse.ArgumentParser(description="Convert SMILES to PDB with 3D coordinates and minimization.")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Convert SMILES to PDB with 3D coordinates."
+    )
     parser.add_argument("-s", "--smiles", required=True, help="Input SMILES string")
     parser.add_argument("-o", "--output", required=True, help="Output PDB filename")
-    parser.add_argument("-rn", "--resname", default="LIG", help="Residue name for the ligand (default: LIG)")
-    args = parser.parse_args()
-
+    parser.add_argument(
+        "-rn",
+        "--resname",
+        default="LIG",
+        help="Residue name for the ligand (default: LIG)",
+    )
+    args = parser.parse_args(argv)
     smiles_to_pdb(args.smiles, args.output, args.resname)
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

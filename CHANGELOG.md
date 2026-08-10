@@ -10,8 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Leaner tree** — dropped dozens of empty re-export shims from the earlier split; core logic lives in meaningful modules again (`GeomOpt`, `WaveFront`, `Workflows`, `Dihedrals`, …) with `runtime/` for shared helpers and `wavefront_mixins` for 1-D/N-D overlap. ligandparam keeps lazy stage/recipe loading and `recipes.registry`; `deprecated/` removed.
-- GLOSSARY authoritative paths updated to `src/ffpopt/...`
+- **Leaner tree / write-once helpers** — dropped facade/`runtime/` sandwich; shared DirLock + console handlers + Gaussian core-budget split + wavefront node IPC live in one place each. SMILES CLI uses ``io.smiles.PDBFromSMILES``. GLOSSARY paths use ``src/ffpopt/...``.
+- ligandparam: lazy ``stages`` / ``recipes`` exports; ``recipes.registry.get_recipe``; ``deprecated/`` removed.
 
 ---
 

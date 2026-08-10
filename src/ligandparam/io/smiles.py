@@ -34,7 +34,7 @@ class PDBFromSMILES:
         return
 
     
-    def write_pdb(self, filename, randomSeed=0xf00d):
+    def write_pdb(self, filename, randomSeed=0xf00d, *, minimize: bool = False):
         """Embed the molecule and write a cleaned PDB file.
 
         Parameters
@@ -43,10 +43,17 @@ class PDBFromSMILES:
             Output PDB path.
         randomSeed : int, optional
             Random seed for the embedding algorithm.
+        minimize : bool, optional
+            If True, run MMFF (or UFF) optimization after embedding.
         """
         params = rdkit.Chem.AllChem.ETKDGv3()
         params.randomSeed = randomSeed
         rdkit.Chem.AllChem.EmbedMolecule(self.mol, params)
+        if minimize:
+            if rdkit.Chem.AllChem.MMFFHasAllMoleculeParams(self.mol):
+                rdkit.Chem.AllChem.MMFFOptimizeMolecule(self.mol)
+            else:
+                rdkit.Chem.AllChem.UFFOptimizeMolecule(self.mol)
         rdkit.Chem.rdmolfiles.MolToPDBFile(self.mol, filename)
         self.pdb_filename = filename
         clean_pdb(self.pdb_filename, self.resname)
