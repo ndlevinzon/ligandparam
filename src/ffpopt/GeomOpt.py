@@ -92,9 +92,9 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
  
     import copy
     import sys
-    from . Constraints import ConstraintList
-    from . Restraints import RestraintList
-    from . Constraints import ApplyConstraints, to_ase
+    from ffpopt.Constraints import ConstraintList
+    from ffpopt.Restraints import RestraintList
+    from ffpopt.Constraints import ApplyConstraints, to_ase
 
     reslist = None
     if struct.restraints is not None:
@@ -212,10 +212,10 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     if accepted_how is not None:
         out.data["ase_opt_recovery"] = accepted_how
 
-    from .fast_wavefront import geomopt_verbose
+    from ffpopt.fast_wavefront import geomopt_verbose
 
     if geomopt_verbose():
-        from . Constraints import FillConstraints
+        from ffpopt.Constraints import FillConstraints
         if cons is not None:
             cvals = FillConstraints(out,cons,force=True)
             ovals = FillConstraints(origatoms,cons,force=True)
@@ -484,13 +484,13 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
 
     import copy
     import ase.io
-    from . constants import AU_PER_ELECTRON_VOLT
-    from . Options import argparse2geometric, configure_geometric_logging, GetStandardOptions
-    from . Constraints import ConstraintList
-    from . Restraints import RestraintList
-    from . Constraints import ApplyConstraints
-    from . Struct import ListOfStruct
-    from . geometric_inprocess import (
+    from ffpopt.constants import AU_PER_ELECTRON_VOLT
+    from ffpopt.Options import argparse2geometric, configure_geometric_logging, GetStandardOptions
+    from ffpopt.Constraints import ConstraintList
+    from ffpopt.Restraints import RestraintList
+    from ffpopt.Constraints import ApplyConstraints
+    from ffpopt.Struct import ListOfStruct
+    from ffpopt.geometric_inprocess import (
         get_persistent_calc,
         run_geometric_robust,
         use_geometric_subprocess,
@@ -640,10 +640,10 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     if isinstance(result, dict) and result.get("recovery"):
         out.data["geometric_recovery"] = result["recovery"]
 
-    from .fast_wavefront import geomopt_verbose
+    from ffpopt.fast_wavefront import geomopt_verbose
 
     if geomopt_verbose():
-        from . Constraints import FillConstraints
+        from ffpopt.Constraints import FillConstraints
         if cons is not None:
             cvals = FillConstraints(out,cons,force=True)
             ovals = FillConstraints(origatoms,cons,force=True)
@@ -737,12 +737,12 @@ def GeomOpt_SinglePoint(los,struct,constraints=None,restraints=None):
     import copy
     #import subprocess as subp
     #import ase.io
-    #from . constants import AU_PER_ELECTRON_VOLT
-    #from . Options import argparse2geometric
-    from . Constraints import ConstraintList
-    from . Constraints import to_ase,ApplyConstraints
-    from . Restraints import RestraintList
-    #from . Constraints import constraints2info,constraints2ase
+    #from ffpopt.constants import AU_PER_ELECTRON_VOLT
+    #from ffpopt.Options import argparse2geometric
+    from ffpopt.Constraints import ConstraintList
+    from ffpopt.Constraints import to_ase,ApplyConstraints
+    from ffpopt.Restraints import RestraintList
+    #from ffpopt.Constraints import constraints2info,constraints2ase
 
     if True:
         # if stdargs.calc is None:
@@ -928,7 +928,7 @@ def CheckForces(los,struct,delta=1.e-2):
     """
     import copy
     import numpy as np
-    from . constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
     DEL = delta
     ana = GeomOpt_SinglePoint(los,struct)
@@ -1016,7 +1016,7 @@ def DihedScan(los,struct,con,sched):
     """
     import numpy as np
     import copy
-    from . Struct import ListOfStruct
+    from ffpopt.Struct import ListOfStruct
     
     idxs = copy.deepcopy( con.idxs )
 
@@ -1098,7 +1098,7 @@ def FwdRevDihedScan(los,struct,con,sched,parallel=False):
     """
     
     import ase.io
-    from . Struct import ListOfStruct
+    from ffpopt.Struct import ListOfStruct
     
     revsched = sched[::-1]
 
@@ -1201,7 +1201,7 @@ def is_mpi():
 def ParallelGeomOpt_threads(los,norestene,nproc):
     import concurrent.futures
     import multiprocessing
-    from . Struct import ListOfStruct
+    from ffpopt.Struct import ListOfStruct
 
     nodes = [ CalcNode(los,s,norestene) for s in los ]
     with concurrent.futures.ProcessPoolExecutor(max_workers=nproc) as executor:
@@ -1248,7 +1248,7 @@ def ParallelGeomOpt_mpi(los, norestene):
     """
     from mpi4py import MPI
     from mpi4py.futures import MPICommExecutor
-    from . Struct import ListOfStruct
+    from ffpopt.Struct import ListOfStruct
     
     # MPICommExecutor partitions COMM_WORLD.
     # Workers enter a passive processing loop inside the 'with' block context.

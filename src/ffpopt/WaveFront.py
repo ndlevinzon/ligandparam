@@ -10,9 +10,9 @@ import numpy as np
 from typing import Generator, Optional
 from pathlib import Path
 
-from . GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
-from . Constraints import Constraint
-from . Struct import ListOfStruct, Struct
+from ffpopt.GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
+from ffpopt.Constraints import Constraint
+from ffpopt.Struct import ListOfStruct, Struct
 
 
 # Per-process worker state (set once via Pool initializer / MPI bcast).
@@ -21,19 +21,9 @@ _WORKER: dict = {}
 
 def _clear_los_calc(los: ListOfStruct) -> None:
     """Drop live calculators so workers rebuild (and cache) in-process."""
-    clearer = getattr(los, "clear_runtime_caches", None)
-    if callable(clearer):
-        clearer()
-        return
-    calc = getattr(los, "calc", None)
-    if calc is not None:
-        try:
-            calc.reset()
-        except Exception:
-            pass
-        los.calc = None
-    if hasattr(los, "_ffpopt_calc_cache"):
-        los._ffpopt_calc_cache = None
+    from ffpopt.wavefront_mixins import clear_los_calc
+
+    clear_los_calc(los)
 
 
 def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) -> None:
@@ -46,12 +36,9 @@ def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) ->
 
 def _clone_struct_geometry(struct, coords, ene=0.0, frcs=None):
     """Prefer ``Struct.clone_geometry``; fall back to deepcopy for test doubles."""
-    clone = getattr(struct, "clone_geometry", None)
-    if callable(clone):
-        return clone(coords=coords, ene=ene, frcs=frcs)
-    out = copy.deepcopy(struct)
-    out.Update(ene, np.asarray(coords, dtype=float), frcs)
-    return out
+    from ffpopt.wavefront_mixins import clone_struct_geometry
+
+    return clone_struct_geometry(struct, coords, ene=ene, frcs=frcs)
 
 
 def _struct_from_coords(coords) -> Struct:
@@ -258,7 +245,7 @@ class WavefrontNode:
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                from .fast_wavefront import write_success_node_pickle
+                from ffpopt.fast_wavefront import write_success_node_pickle
 
                 if write_success_node_pickle():
                     self._write_checkpoint()
@@ -812,7 +799,7 @@ class Wavefront:
                 initargs=(self.los, self.con, self.struct),
             )
 
-        from .fast_wavefront import wf_checkpoint_every
+        from ffpopt.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = wf_checkpoint_every(self.nproc)
         try:
@@ -1081,7 +1068,7 @@ class Wavefront:
             The completed node to evaluate.
 
         """
-        from . constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
+        from ffpopt.constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
         # Node energies are eV; the threshold is kcal/mol. KCAL_PER_EV is
         # kcal/mol per eV, so dividing converts the threshold into eV.
         kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
@@ -1220,7 +1207,7 @@ class Wavefront:
 
     def sort_results(self) -> tuple[list[float], list[float], ListOfStruct]:
         """Sort the results by angle."""
-        from . Struct import ListOfStruct
+        from ffpopt.Struct import ListOfStruct
         angles = sorted(self.min_energies.keys())
         sorted_energies = [self.min_energies[angle] for angle in angles]
         sorted_structures = [self.min_structures[angle] for angle in angles]
@@ -1484,8 +1471,8 @@ def run_dihed_wavefront(
     import argparse
     import sys as _sys
     from types import SimpleNamespace
-    from . Options import AddStandardOptions
-    from . constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+    from ffpopt.Options import AddStandardOptions
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
     # Spawn workers re-import the caller's entry script with __name__ == '__mp_main__'.
     # If we see that name on our caller's frame, the caller didn't wrap the call in

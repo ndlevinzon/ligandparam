@@ -21,10 +21,10 @@ from pathlib import Path
 
 from typing import Generator, Optional
 
-from . Struct import ListOfStruct, Struct
-from . GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
-from . Constraints import ConstraintList
-from . Restraints import RestraintList
+from ffpopt.Struct import ListOfStruct, Struct
+from ffpopt.GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
+from ffpopt.Constraints import ConstraintList
+from ffpopt.Restraints import RestraintList
 
 
 # Per-process worker state (Pool initializer / MPI bcast).
@@ -66,19 +66,9 @@ def GetGridNeighbors(bidx, grid, validbins=None):
 
 
 def _clear_los_calc(los: ListOfStruct) -> None:
-    clearer = getattr(los, "clear_runtime_caches", None)
-    if callable(clearer):
-        clearer()
-        return
-    calc = getattr(los, "calc", None)
-    if calc is not None:
-        try:
-            calc.reset()
-        except Exception:
-            pass
-        los.calc = None
-    if hasattr(los, "_ffpopt_calc_cache"):
-        los._ffpopt_calc_cache = None
+    from ffpopt.wavefront_mixins import clear_los_calc
+
+    clear_los_calc(los)
 
 
 def _init_worker(los, conlist, reslist, template_struct) -> None:
@@ -92,12 +82,9 @@ def _init_worker(los, conlist, reslist, template_struct) -> None:
 
 def _clone_struct_geometry(struct, coords, ene=0.0, frcs=None):
     """Prefer ``Struct.clone_geometry``; fall back to deepcopy for test doubles."""
-    clone = getattr(struct, "clone_geometry", None)
-    if callable(clone):
-        return clone(coords=coords, ene=ene, frcs=frcs)
-    out = copy.deepcopy(struct)
-    out.Update(ene, np.asarray(coords, dtype=float), frcs)
-    return out
+    from ffpopt.wavefront_mixins import clone_struct_geometry
+
+    return clone_struct_geometry(struct, coords, ene=ene, frcs=frcs)
 
 
 def _struct_from_coords(coords) -> Struct:
@@ -354,7 +341,7 @@ class WavefrontNode(object):
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                from .fast_wavefront import write_success_node_pickle
+                from ffpopt.fast_wavefront import write_success_node_pickle
 
                 if write_success_node_pickle():
                     self._write_checkpoint()
@@ -466,7 +453,7 @@ class WavefrontLevel(object):
         None
         
         """
-        from . Constraints import FillConstraints
+        from ffpopt.Constraints import FillConstraints
         #node_id = len(self.nodes)
         if node_id is None:
             #crds = struct.get_positions()
@@ -857,7 +844,7 @@ class Wavefront(object):
                 initargs=(self.los, self.conlist, self.reslist, template),
             )
 
-        from .fast_wavefront import wf_checkpoint_every
+        from ffpopt.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = wf_checkpoint_every(self.nproc)
         try:
@@ -990,7 +977,7 @@ class Wavefront(object):
         self._resume_queue = list(pending)
         self.save_checkpoint()
 
-        from .fast_wavefront import wf_checkpoint_every
+        from ffpopt.fast_wavefront import wf_checkpoint_every
 
         checkpoint_every = max(wf_checkpoint_every(max(size - 1, 1)), 1)
         since_checkpoint = 0
@@ -1259,7 +1246,7 @@ class Wavefront(object):
             The completed node to evaluate.
 
         """
-        from . constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
+        from ffpopt.constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
         # Node energies are eV; the threshold is kcal/mol. KCAL_PER_EV is
         # kcal/mol per eV, so dividing converts the threshold into eV.
         kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
@@ -1422,7 +1409,7 @@ class Wavefront(object):
 
     def sort_results(self) -> tuple[list[float], list[float], list[ase.Atoms]]:
         """Sort the results by angle."""
-        from . Struct import ListOfStruct
+        from ffpopt.Struct import ListOfStruct
         
         #angles = sorted(self.min_energies.keys())
         #sorted_energies = [self.min_energies[angle] for angle in angles]
@@ -1521,7 +1508,7 @@ class Wavefront(object):
         """
         import ndfes
         import copy
-        from . constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+        from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
         KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
 
         # Determine all possible angles
@@ -1702,12 +1689,12 @@ def run_dihed_wavefront(
     import argparse
     import sys as _sys
     from types import SimpleNamespace
-    from . Options import AddStandardOptions
-    from . Options import AddConstraintAndRestraintOptions
-    from . Options import ParseConstraintAndRestraintOptions
-    from . Options import DeleteConstraintAndRestraintFromStruct
+    from ffpopt.Options import AddStandardOptions
+    from ffpopt.Options import AddConstraintAndRestraintOptions
+    from ffpopt.Options import ParseConstraintAndRestraintOptions
+    from ffpopt.Options import DeleteConstraintAndRestraintFromStruct
         
-    from . constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
     from ndfes import VirtualGrid, SpatialDim
 

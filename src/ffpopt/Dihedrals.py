@@ -501,10 +501,10 @@ def EnergyScansWithoutDihedrals(mol,list_of_los,cons):
         A list of lists, where each inner list contains the energies for the corresponding scan.
     
     """
-    from . AmberParm import CopyParm
-    from . Dihedrals import DeleteDihedrals
-    from . Dihedrals import GetMultiDihedFcnFromIdxs
-    from . Struct import ListOfStruct
+    from ffpopt.AmberParm import CopyParm
+    from ffpopt.Dihedrals import DeleteDihedrals
+    from ffpopt.Dihedrals import GetMultiDihedFcnFromIdxs
+    from ffpopt.Struct import ListOfStruct
     from tempfile import mkstemp
     import os
     
@@ -585,13 +585,13 @@ def IsolatedLinearSolve(mol,idxs,losll,hlenes,nprim,pname):
         A MultiDihedFcn object representing the best-fit dihedral function for the given parameters.
         
     """
-    #from . AmberParm import GetDihedClasses
-    from . Constraints import FillConstraints
-    from . Constraints import Constraint
+    #from ffpopt.AmberParm import GetDihedClasses
+    from ffpopt.Constraints import FillConstraints
+    from ffpopt.Constraints import Constraint
     import numpy as np
     import copy
-    from . constants import AU_PER_KCAL_PER_MOL
-    from . constants import AU_PER_ELECTRON_VOLT
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL
+    from ffpopt.constants import AU_PER_ELECTRON_VOLT
 
     KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
 
@@ -887,7 +887,7 @@ def align_scan_profiles(loshl, losll, *, hl_path="", ll_path="", min_points=3):
         Aligned ``ListOfStruct`` objects (shared topology clones where possible)
         and a small diagnostic dict.
     """
-    from . Struct import ListOfStruct
+    from ffpopt.Struct import ListOfStruct
 
     hl_map = _angle_map_from_los(loshl)
     ll_map = _angle_map_from_los(losll)
@@ -961,8 +961,8 @@ class ProfileType(object):
          The list of low-level calculations
     """
     def __init__(self,hl,ll,name,plots,stride):
-        #from . Reader import ReadGeomsFromXYZ
-        from . Struct import ListOfStruct
+        #from ffpopt.Reader import ReadGeomsFromXYZ
+        from ffpopt.Struct import ListOfStruct
         self.hl = hl
         self.ll = ll
         self.name = name
@@ -1093,8 +1093,8 @@ class SystemType(object):
         
         """
         from parmed import DihedralType
-        from . Dihedrals import ChangeDihedrals
-        from . AmberParm import CopyParm
+        from ffpopt.Dihedrals import ChangeDihedrals
+        from ffpopt.AmberParm import CopyParm
 
         p = CopyParm(self.mol)
         
@@ -1222,7 +1222,7 @@ class FitInputType(object):
     
         
     def __init__(self,args,datadict):
-        #from . Options import StandardArgs
+        #from ffpopt.Options import StandardArgs
         self.iteration = 0
 
         for key in ["params","output","systems"]:
@@ -1490,8 +1490,8 @@ def build_fixed_geometry_ll_cache(system, args):
     import os
     import numpy as np
     from tempfile import mkstemp
-    from . AmberParm import CopyParm
-    from . constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+    from ffpopt.AmberParm import CopyParm
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
     kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
 
@@ -1593,8 +1593,8 @@ def DihedFitObjFcn(x,self):
     
     """
     import numpy as np
-    from . constants import AU_PER_KCAL_PER_MOL
-    from . constants import AU_PER_ELECTRON_VOLT
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL
+    from ffpopt.constants import AU_PER_ELECTRON_VOLT
     import os
     
     KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
@@ -1679,7 +1679,7 @@ def DihedFitObjFcn(x,self):
 def _DihedFitObjFcn_reopt(x, self, KCAL_PER_EV):
     """Legacy NL objective: rewrite parm7 and GeomOpt every geometry."""
     import numpy as np
-    from . GeomOpt import GeomOpt
+    from ffpopt.GeomOpt import GeomOpt
     from tempfile import mkstemp
     import os
 
@@ -1833,7 +1833,7 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
     
     """
     from collections import defaultdict as ddict
-    from . Dihedrals import FindDihedrals
+    from ffpopt.Dihedrals import FindDihedrals
     
     aidxs = [ idx for dfcn in dfcns for idx in dfcn.idxs ]
     aidxs = list(set(aidxs))

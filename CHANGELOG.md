@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Leaner tree** — dropped dozens of empty re-export shims from the earlier split; core logic lives in meaningful modules again (`GeomOpt`, `WaveFront`, `Workflows`, `Dihedrals`, …) with `runtime/` for shared helpers and `wavefront_mixins` for 1-D/N-D overlap. ligandparam keeps lazy stage/recipe loading and `recipes.registry`; `deprecated/` removed.
+- GLOSSARY authoritative paths updated to `src/ffpopt/...`
+
+---
+
 ## [1.4.1] — 2026-08-07
 
 Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.

@@ -142,35 +142,15 @@ def worker(
 
 def recipe_selector(recipe_name: str, **kwargs):
     """Select and return the appropriate recipe class based on the recipe name."""
-    if recipe_name == "lazyligand":
-        from ligandparam.recipes.lazyligand import LazyLigand
+    from ligandparam.recipes.registry import available_recipes, get_recipe
 
-        return LazyLigand(**kwargs)
-    elif recipe_name == "lazierligand":
-        from ligandparam.recipes.lazierligand import LazierLigand
-
-        return LazierLigand(**kwargs)
-    elif recipe_name == "freeligand":
-        from ligandparam.recipes.freeligand import FreeLigand
-
-        return FreeLigand(**kwargs)
-    elif recipe_name == "dplazyligand":
-        from ligandparam.recipes.dplazyligand import DPLigand
-
-        return DPLigand(**kwargs)
-    elif recipe_name == "dpfreeligand":
-        from ligandparam.recipes.dpfreeligand import DPFreeLigand
-
-        return DPFreeLigand(**kwargs)
-    elif recipe_name == "sqmligand":
-        from ligandparam.recipes import SQMLigand
-
-        return SQMLigand(**kwargs)
-    else:
+    try:
+        return get_recipe(recipe_name, **kwargs)
+    except ValueError as exc:
         raise ValueError(
             f"Unknown recipe name: {recipe_name}. Available recipes: "
-            "lazyligand, lazierligand, freeligand, dplazyligand, dpfreeligand, sqmligand."
-        )
+            + ", ".join(available_recipes())
+        ) from exc
 
 
 def main():

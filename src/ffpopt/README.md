@@ -9,10 +9,21 @@ Primary API for ligandparam integration:
 from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
 ```
 
+Core modules (one concern per file):
+
+| Module | Concern |
+|--------|---------|
+| ``GeomOpt`` | ASE / geomeTRIC optimization |
+| ``WaveFront`` / ``WaveFrontND`` | Constrained dihedral wavefront scans |
+| ``wavefront_mixins`` | Shared node helpers for 1-D / N-D |
+| ``Workflows`` | Twist + fragmented twist orchestration |
+| ``Dihedrals`` | Fit types, solvers, Parmed script, puckers |
+| ``runtime/`` | CPU leases, progress boards, fast presets, console |
+
 CLI (installed with ligandparam):
 
 ```bash
-lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb --fast
 ```
 
 Fragmentation is provided by the integrated ``src/scission`` package (also

@@ -263,7 +263,7 @@ src/
 │   ├── stages/     # Includes StageDihedTwistCorrection
 │   ├── cli/        # lig-getparam, lig-dihed-correct, lig-scission, …
 │   └── …
-├── ffpopt/         # Integrated torsion-optimization package
+├── ffpopt/         # Torsion optimization (geomopt, wavefront, workflows, …)
 └── scission/       # Integrated ligand fragmentation package
 ```
 

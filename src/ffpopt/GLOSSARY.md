@@ -47,7 +47,7 @@ until neighboring energies agree within a threshold.
 **Detail.** Replaces the older sequential forward/reverse `DihedScan` path in
 modern twist workflows. Driven by `ffpopt.WaveFront.run_dihed_wavefront`.
 
-**Authoritative source.** `src/python/lib/ffpopt/WaveFront.py`
+**Authoritative source.** `src/ffpopt/WaveFront.py`
 
 ### Twist workflow
 
@@ -58,7 +58,7 @@ them, and rescans until HL≈LL or `maxiter` is reached.
 **Detail.** Exposed as `run_dihed_twist_workflow` (single molecule) and
 `run_fragmented_dihed_twist_workflow` (scission fragments + merge).
 
-**Authoritative source.** `src/python/lib/ffpopt/Workflows.py`
+**Authoritative source.** `src/ffpopt/Workflows.py`
 
 ## Domain concepts
 
@@ -70,7 +70,7 @@ profiles match a chosen high-level model along rotatable bonds.
 **Detail.** Does not rewrite atomic charges or the Amber `.lib`; only DIHE
 (and related) terms are updated, typically into a new `.frcmod`.
 
-**Authoritative source.** `src/python/lib/ffpopt/Workflows.py` (module docstring)
+**Authoritative source.** `src/ffpopt/Workflows.py` (module docstring)
 
 ### HL scan / LL scan
 
@@ -81,7 +81,7 @@ profiles match a chosen high-level model along rotatable bonds.
 **Detail.** Fit residuals are HL−LL energy profiles along the scanned
 dihedral. Convergence heuristics can drop bonds that already match.
 
-**Authoritative source.** `src/python/lib/ffpopt/Workflows.py:run_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/Workflows.py:run_dihed_twist_workflow`
 
 ### bytype (global) vs bespoke parameters
 
@@ -92,7 +92,7 @@ quartets via a Parmed Python patch script.
 **Detail.** Fragmented / scission merges **require** `bytype=True` because
 fragment atom names do not exist in the parent topology.
 
-**Authoritative source.** `src/python/lib/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
 
 ### nprim
 
@@ -114,7 +114,7 @@ terms back into a parent frcmod.
 **Detail.** Inputs are parent `mol2` + `lib` + `frcmod`. Output is
 `merged.frcmod` (+ `.merge_report.json`); the parent `lib` is unchanged.
 
-**Authoritative source.** `src/python/lib/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
 
 ### skip_existing
 
@@ -124,7 +124,7 @@ of recomputing them.
 **Detail.** Enables restart-friendly runs; set False for a fully fresh
 calculation.
 
-**Authoritative source.** `src/python/lib/ffpopt/Workflows.py`
+**Authoritative source.** `src/ffpopt/Workflows.py`
 
 ## External integrations
 

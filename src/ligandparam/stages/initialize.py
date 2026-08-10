@@ -179,21 +179,3 @@ class StageInitialize(AbstractStage):
         """
         raise NotImplementedError("clean method not implemented")
 
-
-"""
-class StageSmilestoPDB(AbstractStage):
-     This class is used to initialize from smiles to pdb.
-    
-    def __init__(self, name,=None) -> None:
-        pass
-    
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        pass
-    
-    def _execute(self, dry_run=False, nproc=1, mem=1):
-        pass
-    
-    def _clean(self):
-        pass
-    
-    """

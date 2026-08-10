@@ -121,6 +121,7 @@ lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["ligandparam*", "ffpopt*", "scission*"]
+exclude = ["ligandparam.deprecated", "ligandparam.deprecated.*"]
 
 [tool.setuptools.package-data]
 ffpopt = ["bin/*.py", "pkgdata/**/*", "GLOSSARY.md", "README.md"]

@@ -25,7 +25,12 @@ def _import_skip_helper():
         sys.modules["ligandparam.stages"] = stages_pkg
 
     if "ligandparam.stages.gaussian" in sys.modules:
-        return sys.modules["ligandparam.stages.gaussian"]._should_skip_gaussian_job
+        mod = sys.modules["ligandparam.stages.gaussian"]
+        fn = getattr(mod, "_should_skip_gaussian_job", None)
+        if fn is not None:
+            return fn
+        # Broken stub from a prior failed load — drop and reload.
+        del sys.modules["ligandparam.stages.gaussian"]
 
     path = (
         Path(__file__).resolve().parents[1]

@@ -27,11 +27,14 @@ def _import_gaussian_stage():
 
     if "ligandparam.stages.gaussian" in sys.modules:
         mod = sys.modules["ligandparam.stages.gaussian"]
-        return (
-            mod.StageGaussianRotation,
-            mod._run_gaussian_rotation_job,
-            mod._orientation_id_from_paths,
-        )
+        if not hasattr(mod, "StageGaussianRotation"):
+            del sys.modules["ligandparam.stages.gaussian"]
+        else:
+            return (
+                mod.StageGaussianRotation,
+                mod._run_gaussian_rotation_job,
+                mod._orientation_id_from_paths,
+            )
 
     path = (
         Path(__file__).resolve().parents[1]

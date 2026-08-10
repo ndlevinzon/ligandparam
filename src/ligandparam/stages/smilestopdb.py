@@ -1,13 +1,13 @@
 from pathlib import Path
 from typing import Optional, Union, Any
 
-from ligandparam.stages import AbstractStage
+from ligandparam.stages.abstractstage import AbstractStage
 from rdkit import Chem
 from rdkit.Chem import rdFMCS
 from rdkit.Chem.AllChem import ETKDGv3, EmbedMolecule, AlignMol
 from typing_extensions import override
 
-from ligandparam.stages import set_atom_pdb_info
+from ligandparam.stages.utilsstages import set_atom_pdb_info
 
 
 class StageSmilesToPDB(AbstractStage):
@@ -299,3 +299,7 @@ class StageSmilesToPDB(AbstractStage):
         mcs = rdFMCS.FindMCS([ref_mol, mol])
         common_mol = Chem.rdmolfiles.MolFromSmarts(mcs.smartsString)
         return common_mol
+
+
+# Legacy spelling used by older recipes / docs.
+StageSmilestoPDB = StageSmilesToPDB
