@@ -77,7 +77,8 @@ def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
     """Return ``logger`` or the module logger for workflow progress messages.
 
     Ensures ``ffpopt.*`` loggers mirror INFO to stdout and WARNING+ to stderr
-    with timestamps and an ``[ffpopt]`` tag (Slurm-friendly).
+    with a single timestamp and hierarchical ``[tag]`` brackets. Does not
+    replace handlers already attached (e.g. per-fragment loggers).
     """
     log = logger if logger is not None else _LOG
     name = getattr(log, "name", "") or ""

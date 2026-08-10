@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,6 +72,47 @@ class TestConsoleFormat(unittest.TestCase):
         self.assertIn("[ffpopt:fragment_2]", line)
         self.assertIn("wavefront step", line)
         self.assertRegex(line, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ")
+        self.assertEqual(len(re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)), 1)
+
+    def test_peels_leading_scopes_into_hierarchy(self):
+        from ffpopt.runtime.console import format_console_line
+
+        line = format_console_line(
+            "[frag-twist] start.json exists\n",
+            tag="ffpopt:fragment_10",
+        )
+        self.assertRegex(
+            line,
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[ffpopt:fragment_10\] \[frag-twist\] start\.json exists\n$",
+        )
+        self.assertEqual(len(re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)), 1)
+
+    def test_logger_formatter_hierarchy(self):
+        import logging
+        from ffpopt.runtime.console import console_formatter
+
+        record = logging.LogRecord(
+            name="ffpopt.workflows.frag.fragment_10",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="[frag-twist] %s exists - skipping PrepareInput",
+            args=("start.json",),
+            exc_info=None,
+        )
+        text = console_formatter("ffpopt:fragment_10").format(record)
+        self.assertRegex(
+            text,
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[ffpopt:fragment_10\] \[frag-twist\] INFO: start\.json exists - skipping PrepareInput$",
+        )
+        self.assertEqual(len(re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", text)), 1)
+
+    def test_does_not_double_prefix_already_formatted_lines(self):
+        from ffpopt.runtime.console import format_console_line
+
+        already = "2026-08-09 23:18:54 [ffpopt:fragment_10] [frag-twist] INFO: hi\n"
+        out = format_console_line(already, tag="ffpopt:fragment_10")
+        self.assertEqual(out, already)
 
 
 class TestFragmentBoardWatcher(unittest.TestCase):

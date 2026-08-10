@@ -407,7 +407,12 @@ def fragment_stdio_to_file(
 
 
 def make_fragment_file_logger(fragment_id: str, log_path: Path):
-    """Logger that writes to the fragment log and mirrors to the console."""
+    """Logger that writes to the fragment log and mirrors to the console.
+
+    Console lines look like::
+
+        TIMESTAMP [ffpopt:fragment_N] [frag-twist] INFO: message
+    """
     import logging
 
     name = f"ffpopt.workflows.frag.{fragment_id}"
