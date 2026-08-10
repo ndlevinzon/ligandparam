@@ -203,12 +203,18 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     ene = myatoms.get_potential_energy()
     crd = myatoms.get_positions()
     frc = myatoms.get_forces()
-    out = copy.deepcopy(struct)
-    out.Update(ene,crd,frc)
+    clone = getattr(struct, "clone_geometry", None)
+    if callable(clone):
+        out = clone(coords=crd, ene=ene, frcs=frc)
+    else:
+        out = copy.deepcopy(struct)
+        out.Update(ene, crd, frc)
     if accepted_how is not None:
         out.data["ase_opt_recovery"] = accepted_how
 
-    if True:
+    from .fast_wavefront import geomopt_verbose
+
+    if geomopt_verbose():
         from . Constraints import FillConstraints
         if cons is not None:
             cvals = FillConstraints(out,cons,force=True)
@@ -217,7 +223,6 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
                 print("Constraint %2i tgt=%9.2f opt=%9.2f orig=%9.2f"%\
                       ( i+1, cons[i].value, cvals[i].value, ovals[i].value ) )
 
-    if True:
         if reslist is not None:
             ocrd = origatoms.get_positions()
             for i in range(len(reslist)):
@@ -558,11 +563,10 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
             for line in conslist.to_geometric():
                 fh.write("%s\n" % (line))
 
-    ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
-
     result = None
     if use_geometric_subprocess():
         # Legacy path: spawn geometric_compat + watchdog.
+        ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
         mystruct = copy.deepcopy(struct)
         if conslist is not None:
             mystruct.constraints = None
@@ -627,12 +631,18 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
             ene = myatoms.get_potential_energy()
         frc = None
 
-    out = copy.deepcopy(struct)
-    out.Update(ene,crd,frc)
+    clone = getattr(struct, "clone_geometry", None)
+    if callable(clone):
+        out = clone(coords=crd, ene=ene, frcs=frc)
+    else:
+        out = copy.deepcopy(struct)
+        out.Update(ene, crd, frc)
     if isinstance(result, dict) and result.get("recovery"):
         out.data["geometric_recovery"] = result["recovery"]
 
-    if True:
+    from .fast_wavefront import geomopt_verbose
+
+    if geomopt_verbose():
         from . Constraints import FillConstraints
         if cons is not None:
             cvals = FillConstraints(out,cons,force=True)
@@ -641,7 +651,6 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
                 print("Constraint %2i tgt=%9.2f opt=%9.2f orig=%9.2f"%\
                       ( i+1, cons[i].value, cvals[i].value, ovals[i].value ) )
 
-    if True:
         if reslist is not None:
             ocrd = origatoms.get_positions()
             for i in range(len(reslist)):

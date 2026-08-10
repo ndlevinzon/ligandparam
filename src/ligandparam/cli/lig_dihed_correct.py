@@ -35,6 +35,7 @@ def run_dihed_correct(
     geometric_opt: bool = True,
     skip_existing: bool = True,
     dry_run: bool = False,
+    fast_wavefront: bool | None = None,
     logger=None,
 ):
     """Execute :class:`StageDihedTwistCorrection` on an Amber ligand bundle."""
@@ -69,6 +70,7 @@ def run_dihed_correct(
         nproc=nproc,
         geometric_opt=geometric_opt,
         skip_existing=skip_existing,
+        fast_wavefront=fast_wavefront,
         logger=logger,
     )
     return stage.execute(dry_run=dry_run, nproc=nproc)
@@ -146,6 +148,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Do not reuse existing fragment/scan artifacts",
     )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help=(
+            "Faster wavefront defaults: looser geomeTRIC converge, lower "
+            "maxiter, delta=15, shorter recovery ladder, less checkpoint I/O; "
+            "for xtb prefer wavefront depth over fragment breadth. "
+            "Same as FFPOPT_FAST_WAVEFRONT=1. Explicit --delta / "
+            "--geometric-* overrides still win when not at library defaults."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Log planned work only")
     parser.add_argument(
         "--logger",
@@ -192,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         geometric_opt=not args.no_geometric_opt,
         skip_existing=not args.force,
         dry_run=args.dry_run,
+        fast_wavefront=True if args.fast else None,
         logger=logger,
     )
     if result is not None:

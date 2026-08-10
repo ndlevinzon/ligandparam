@@ -354,7 +354,10 @@ class WavefrontNode(object):
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                self._write_checkpoint()
+                from .fast_wavefront import write_success_node_pickle
+
+                if write_success_node_pickle():
+                    self._write_checkpoint()
                 self.complete = True
                 
             except Exception as e:
@@ -854,7 +857,9 @@ class Wavefront(object):
                 initargs=(self.los, self.conlist, self.reslist, template),
             )
 
-        checkpoint_every = max(self.nproc, 1)
+        from .fast_wavefront import wf_checkpoint_every
+
+        checkpoint_every = wf_checkpoint_every(self.nproc)
         try:
             in_flight = {}
             since_checkpoint = 0
@@ -985,7 +990,9 @@ class Wavefront(object):
         self._resume_queue = list(pending)
         self.save_checkpoint()
 
-        checkpoint_every = max(size - 1, 1)
+        from .fast_wavefront import wf_checkpoint_every
+
+        checkpoint_every = max(wf_checkpoint_every(max(size - 1, 1)), 1)
         since_checkpoint = 0
 
         # Track available workers and tasks in flight

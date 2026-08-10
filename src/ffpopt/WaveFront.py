@@ -258,7 +258,10 @@ class WavefrontNode:
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                self._write_checkpoint()
+                from .fast_wavefront import write_success_node_pickle
+
+                if write_success_node_pickle():
+                    self._write_checkpoint()
                 self.complete = True
             except Exception as e:
                 print(f"Node {self.node_id} optimization error: {type(e).__name__}: {e}")
@@ -809,7 +812,9 @@ class Wavefront:
                 initargs=(self.los, self.con, self.struct),
             )
 
-        checkpoint_every = max(self.nproc, 1)
+        from .fast_wavefront import wf_checkpoint_every
+
+        checkpoint_every = wf_checkpoint_every(self.nproc)
         try:
             in_flight = {}        # AsyncResult -> node; transient, never pickled
             since_checkpoint = 0

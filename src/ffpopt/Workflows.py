@@ -38,6 +38,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -481,6 +482,7 @@ def _run_scans_for_bonds(
     workdir: Optional[Path],
     logger: logging.Logger | None,
     wf_kwargs: dict,
+    prefer_wf_depth: bool = False,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Run one wavefront scan per bond, pooling when the core budget allows.
 
@@ -504,18 +506,21 @@ def _run_scans_for_bonds(
     if not jobs:
         return []
 
-    n_bond_workers, n_wf = _split_fragment_nproc(nproc, len(jobs))
+    n_bond_workers, n_wf = _split_fragment_nproc(
+        nproc, len(jobs), prefer_depth=prefer_wf_depth
+    )
     for job in jobs:
         job["wf_kwargs"]["nproc"] = int(n_wf)
 
     log.info(
         "[twist] parallel bond scans: prefix=%s, %s bond(s), nproc=%s -> "
-        "%s bond worker(s) x wf_nproc=%s",
+        "%s bond worker(s) x wf_nproc=%s%s",
         prefix,
         len(jobs),
         nproc,
         n_bond_workers,
         n_wf,
+        " (prefer wf depth)" if prefer_wf_depth else "",
     )
 
     if n_bond_workers == 1:
@@ -814,6 +819,7 @@ def run_dihed_twist_workflow(
     cpu_budget_path: PathLike | None = None,
     budget_owner: str | None = None,
     budget_total: int | None = None,
+    fast_wavefront: bool | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -946,6 +952,18 @@ def run_dihed_twist_workflow(
     )
     budget_tot = max(1, int(budget_total if budget_total is not None else nproc))
 
+    from .fast_wavefront import (
+        apply_fast_wavefront_presets,
+        fast_wavefront_enabled,
+        prefer_wavefront_depth,
+    )
+
+    if fast_wavefront is True:
+        os.environ["FFPOPT_FAST_WAVEFRONT"] = "1"
+    elif fast_wavefront is False:
+        os.environ["FFPOPT_FAST_WAVEFRONT"] = "0"
+    fast_on = fast_wavefront_enabled(fast_wavefront)
+
     def _prog(stage: str, detail: str = "") -> None:
         if progress is not None:
             try:
@@ -986,6 +1004,25 @@ def run_dihed_twist_workflow(
         )
     std = {**std_defaults, **standard_kwargs}
     model = std["model"]
+
+    # Fast presets: only replace knobs still at library defaults.
+    fast_knobs = {
+        "delta": delta,
+        "wf_convergence_threshold": wf_convergence_threshold,
+        "geometric_maxiter": std.get("geometric_maxiter"),
+        "geometric_converge": std.get("geometric_converge"),
+        "ase_opt_tol": std.get("ase_opt_tol"),
+    }
+    applied = apply_fast_wavefront_presets(fast_knobs, enabled=fast_on)
+    if applied:
+        log.info("[twist] fast-wavefront presets applied: %s", applied)
+        delta = int(fast_knobs["delta"])
+        wf_convergence_threshold = float(fast_knobs["wf_convergence_threshold"])
+        for key in ("geometric_maxiter", "geometric_converge", "ase_opt_tol"):
+            if key in applied:
+                std[key] = fast_knobs[key]
+                standard_kwargs[key] = fast_knobs[key]
+    prefer_depth = prefer_wavefront_depth(model=model, fast=fast_on)
 
     # SimpleNamespace mirroring the CLI's args - needed by los.SetArgs.
     bonds0 = normalize_bond_pairs0(bond)
@@ -1054,6 +1091,7 @@ def run_dihed_twist_workflow(
             workdir=wd,
             logger=log,
             wf_kwargs=wf_kwargs,
+            prefer_wf_depth=prefer_depth,
         )
     )
 
@@ -1072,6 +1110,7 @@ def run_dihed_twist_workflow(
             workdir=wd,
             logger=log,
             wf_kwargs=wf_kwargs,
+            prefer_wf_depth=False,
         )
     )
 
@@ -1174,6 +1213,7 @@ def run_dihed_twist_workflow(
                 workdir=wd,
                 logger=log,
                 wf_kwargs=wf_kwargs,
+                prefer_wf_depth=False,
             )
         )
 
@@ -1390,7 +1430,12 @@ def _prepare_fragment_input(
     return str(start_json)
 
 
-def _split_fragment_nproc(nproc: int, n_fragments: int) -> tuple[int, int]:
+def _split_fragment_nproc(
+    nproc: int,
+    n_fragments: int,
+    *,
+    prefer_depth: bool = False,
+) -> tuple[int, int]:
     """Split ``nproc`` across outer workers and nested wavefront size.
 
     Used for both fragment-level pooling and per-bond scan pooling inside
@@ -1401,16 +1446,15 @@ def _split_fragment_nproc(nproc: int, n_fragments: int) -> tuple[int, int]:
     tuple of int
         ``(n_workers, n_wavefront_per_worker)`` such that
         ``n_workers * n_wavefront_per_worker <= nproc`` (when
-        ``n_items > 1``), preferring as many outer workers as possible up
-        to ``min(nproc, n_items)``.
+        ``n_items > 1``). By default prefers as many outer workers as
+        possible; with ``prefer_depth=True`` keeps a minimum inner width
+        (see :func:`ffpopt.fast_wavefront.split_nproc_for_items`).
     """
-    nproc = max(1, int(nproc))
-    n_fragments = max(1, int(n_fragments))
-    if n_fragments == 1:
-        return 1, nproc
-    n_frag_workers = min(nproc, n_fragments)
-    n_wf = max(1, nproc // n_frag_workers)
-    return n_frag_workers, n_wf
+    from .fast_wavefront import split_nproc_for_items
+
+    return split_nproc_for_items(
+        nproc, n_fragments, prefer_depth=prefer_depth
+    )
 
 
 # Spawn Process subclass must live at module scope so pool workers pickle.
@@ -1622,6 +1666,7 @@ def run_fragmented_dihed_twist_workflow(
     convergence_mode: str = "drop",
     plot_comparisons: bool = True,
     logger: logging.Logger | None = None,
+    fast_wavefront: bool | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Fragment a ligand with scission, run the twist workflow on each fragment, then recombine.
@@ -1788,6 +1833,37 @@ def run_fragmented_dihed_twist_workflow(
     # the parent frcmod via scission.merge.merge_fragment_frcmods, which can
     # only map fragment-fit DIHE terms onto parent atoms by atom type - the
     # fragment's atom names don't exist in the parent topology.
+    from .fast_wavefront import (
+        apply_fast_wavefront_presets,
+        fast_wavefront_enabled,
+        prefer_wavefront_depth,
+    )
+
+    if fast_wavefront is True:
+        os.environ["FFPOPT_FAST_WAVEFRONT"] = "1"
+    elif fast_wavefront is False:
+        os.environ["FFPOPT_FAST_WAVEFRONT"] = "0"
+    fast_on = fast_wavefront_enabled(fast_wavefront)
+    model = standard_kwargs.get("model", "qdpi2")
+    fast_knobs = {
+        "delta": delta,
+        "wf_convergence_threshold": wf_convergence_threshold,
+        "geometric_maxiter": standard_kwargs.get("geometric_maxiter", 500),
+        "geometric_converge": standard_kwargs.get(
+            "geometric_converge", "set GAU"
+        ),
+        "ase_opt_tol": standard_kwargs.get("ase_opt_tol", 0.01),
+    }
+    applied = apply_fast_wavefront_presets(fast_knobs, enabled=fast_on)
+    if applied:
+        log.info("[frag-twist] fast-wavefront presets applied: %s", applied)
+        delta = int(fast_knobs["delta"])
+        wf_convergence_threshold = float(fast_knobs["wf_convergence_threshold"])
+        for key in ("geometric_maxiter", "geometric_converge", "ase_opt_tol"):
+            if key in applied:
+                standard_kwargs[key] = fast_knobs[key]
+    prefer_depth = prefer_wavefront_depth(model=str(model), fast=fast_on)
+
     twist_kwargs = dict(
         delta=delta,
         nprim=nprim,
@@ -1805,6 +1881,7 @@ def run_fragmented_dihed_twist_workflow(
         skip_converged_initial=skip_converged_initial,
         convergence_mode=convergence_mode,
         plot_comparisons=plot_comparisons,
+        fast_wavefront=fast_on,
         **standard_kwargs,
     )
 
@@ -1833,7 +1910,9 @@ def run_fragmented_dihed_twist_workflow(
             "no fragments had fittable torsions - nothing to merge"
         )
 
-    n_frag_workers, _n_wf_hint = _split_fragment_nproc(nproc, len(runnable))
+    n_frag_workers, _n_wf_hint = _split_fragment_nproc(
+        nproc, len(runnable), prefer_depth=prefer_depth
+    )
     budget_path = out_dir_path / ".cpu_budget.json"
     from .cpu_budget import CpuBudget
 
@@ -1860,10 +1939,11 @@ def run_fragmented_dihed_twist_workflow(
 
     log.info(
         "[frag-twist] parallel plan: %s fragment(s), nproc=%s -> "
-        "%s concurrent fragment worker(s); dynamic CPU leases via %s",
+        "%s concurrent fragment worker(s)%s; dynamic CPU leases via %s",
         len(runnable),
         nproc,
         n_frag_workers,
+        " (prefer wf depth)" if prefer_depth else "",
         budget_path,
     )
     log.info(

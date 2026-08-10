@@ -12,6 +12,8 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 
 ### Performance
 
+- **Fast wavefront mode** (`lig-dihed-correct --fast` / `FFPOPT_FAST_WAVEFRONT=1`) — looser geomeTRIC converge (`GAU_LOOSE`), `geometric_maxiter=200`, `delta=15`, milder wavefront energy threshold; shorter recovery ladder (skip alt coordsys); less frequent checkpoints and skip success `*_node.pckl`; for XTB prefer wavefront depth over fragment breadth when splitting `-n`. Explicit non-default knobs still win. Related: `FFPOPT_GEOMOPT_FAST_RECOVERY`, `FFPOPT_WF_CHECKPOINT_EVERY`, `FFPOPT_WF_NODE_PICKLE`, `FFPOPT_PREF_WF_DEPTH`, `FFPOPT_MIN_WF_NPROC`, `FFPOPT_GEOMOPT_VERBOSE`.
+- **GeomOpt I/O cuts** — in-process path skips duplicate pre-write XYZ (geomeTRIC writes it); `clone_geometry` instead of full Struct deepcopy on success.
 - **ConfSearch RMS matrix** — for ensembles at/above `FFPOPT_CONFSEARCH_RMS_FAST_N` (default **50**), align once to the first conformer and use vectorized heavy-atom RMS for Butina clustering instead of per-pair `GetBestRMS`. Set the env var to `0` to force the legacy path.
 - **Parallel multi-ESP rotations** (`StageGaussianRotation`) — process pool over orientation `.com` jobs; `nproc` is a total core budget (`n_workers × %NProc ≤ nproc`). Per-job bash scripts and `GAUSS_SCRDIR`.
 - **Parallel per-bond scans** — `run_dihed_twist_workflow` pools HL / reference / iteration wavefront scans across bonds (`n_bond_workers × wf_nproc`).

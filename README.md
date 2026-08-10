@@ -171,7 +171,7 @@ reclaim cores from finished fragments at the next scan phase.
 
 ```bash
 lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32
-lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
 ```
 
 Use ``--model qdpi2`` (or ``mace``, …) if that stack is installed

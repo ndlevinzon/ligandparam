@@ -226,46 +226,50 @@ def _recovery_attempts(
     enforce: Optional[float],
 ) -> list[dict[str, Any]]:
     """Ordered recovery attempts for hard constrained optimizations."""
+    from .fast_wavefront import fast_recovery_ladder
+
     primary_conv = _normalize_converge(converge) or ["set", "GAU"]
     loose = ["set", "GAU_LOOSE"]
     soft = ["set", "GAU_LOOSE", "maxiter"]
-    boost = max(int(maxiter), int(1.5 * int(maxiter)), 750)
-
-    alts = []
-    for cs in ("dlc", "hdlc", "tric"):
-        if cs != coordsys and cs not in alts:
-            alts.append(cs)
+    maxiter_i = int(maxiter)
+    # Full ladder boosts hard; fast mode caps extra work (primary → loose → soft).
+    if fast_recovery_ladder():
+        boost = max(maxiter_i, min(int(1.5 * maxiter_i), 300))
+    else:
+        boost = max(maxiter_i, int(1.5 * maxiter_i), 750)
 
     attempts: list[dict[str, Any]] = [
         {
             "label": "primary",
             "coordsys": coordsys,
-            "maxiter": int(maxiter),
+            "maxiter": maxiter_i,
             "converge": primary_conv,
             "enforce": enforce,
         },
-    ]
-    # Looser Gaussian criteria + more steps, same IC system.
-    attempts.append(
         {
             "label": "loose",
             "coordsys": coordsys,
             "maxiter": boost,
             "converge": loose,
             "enforce": enforce,
-        }
-    )
-    # Alternate internal coordinate systems (common rescue under frozen torsions).
-    for cs in alts[:2]:
-        attempts.append(
-            {
-                "label": f"{cs}-loose",
-                "coordsys": cs,
-                "maxiter": boost,
-                "converge": loose,
-                "enforce": enforce,
-            }
-        )
+        },
+    ]
+    if not fast_recovery_ladder():
+        alts = []
+        for cs in ("dlc", "hdlc", "tric"):
+            if cs != coordsys and cs not in alts:
+                alts.append(cs)
+        # Alternate internal coordinate systems (common rescue under frozen torsions).
+        for cs in alts[:2]:
+            attempts.append(
+                {
+                    "label": f"{cs}-loose",
+                    "coordsys": cs,
+                    "maxiter": boost,
+                    "converge": loose,
+                    "enforce": enforce,
+                }
+            )
     # Last geometric resort: treat maxiter as success (keeps best frame).
     if _env_truthy("FFPOPT_GEOMOPT_SOFT_MAXITER", True):
         attempts.append(
@@ -308,7 +312,9 @@ def run_geometric_robust(
     relaxed geometry is accepted rather than aborting the whole scan node.
 
     Disable with ``FFPOPT_GEOMOPT_ROBUST=0``. Soft maxiter accept can be
-    disabled with ``FFPOPT_GEOMOPT_SOFT_MAXITER=0``.
+    disabled with ``FFPOPT_GEOMOPT_SOFT_MAXITER=0``. With
+    ``FFPOPT_FAST_WAVEFRONT=1`` or ``FFPOPT_GEOMOPT_FAST_RECOVERY=1``, the
+    ladder is shortened to primary → loose → soft-maxiter (no alt coordsys).
     """
     import copy
 

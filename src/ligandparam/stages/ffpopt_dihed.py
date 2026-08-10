@@ -101,6 +101,10 @@ class StageDihedTwistCorrection(AbstractStage):
         self.skip_existing = bool(kwargs.get("skip_existing", True))
         self.rotatable_bond_smarts = kwargs.get("rotatable_bond_smarts")
         self.fragment_config = coerce_fragment_config(kwargs.get("fragment_config"))
+        self.fast_wavefront = kwargs.get("fast_wavefront")
+        self.geometric_maxiter = kwargs.get("geometric_maxiter")
+        self.geometric_converge = kwargs.get("geometric_converge")
+        self.ase_opt_tol = kwargs.get("ase_opt_tol")
         self.add_required(self.in_mol2)
         self.add_required(self.in_lib)
         self.add_required(self.in_frcmod)
@@ -152,6 +156,14 @@ class StageDihedTwistCorrection(AbstractStage):
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.out_frcmod.parent.mkdir(parents=True, exist_ok=True)
 
+        extra = {}
+        if self.geometric_maxiter is not None:
+            extra["geometric_maxiter"] = int(self.geometric_maxiter)
+        if self.geometric_converge is not None:
+            extra["geometric_converge"] = self.geometric_converge
+        if self.ase_opt_tol is not None:
+            extra["ase_opt_tol"] = float(self.ase_opt_tol)
+
         result = run_fragmented_dihed_twist_workflow(
             mol2=self.in_mol2.resolve(),
             lib=self.in_lib.resolve(),
@@ -167,7 +179,9 @@ class StageDihedTwistCorrection(AbstractStage):
             skip_existing=self.skip_existing,
             rotatable_bond_smarts=self.rotatable_bond_smarts,
             fragment_config=self.fragment_config,
+            fast_wavefront=self.fast_wavefront,
             logger=self.logger,
+            **extra,
         )
         self.logger.info(
             "Dihed twist complete: merged_frcmod=%s fragments=%s",
@@ -194,6 +208,7 @@ def dihed_twist_stage_kwargs(
     skip_existing: bool = True,
     rotatable_bond_smarts=None,
     fragment_config=None,
+    fast_wavefront=None,
 ) -> dict:
     """Keyword arguments for constructing :class:`StageDihedTwistCorrection`."""
     return {
@@ -211,5 +226,6 @@ def dihed_twist_stage_kwargs(
         "skip_existing": skip_existing,
         "rotatable_bond_smarts": rotatable_bond_smarts,
         "fragment_config": fragment_config,
+        "fast_wavefront": fast_wavefront,
         "logger": logger,
     }
