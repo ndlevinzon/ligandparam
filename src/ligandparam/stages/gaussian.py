@@ -283,21 +283,6 @@ class GaussianMinimizeRESP(AbstractStage):
     def _validate_input_paths(self, **kwargs):
         apply_gaussian_env_paths(self, kwargs)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     def setup(self, name_template: str) -> bool:
         """
         Set up Gaussian input and output files for the calculation.
@@ -414,10 +399,6 @@ class GaussianMinimizeRESP(AbstractStage):
 
         return
 
-    def _clean(self):
-        """Clean the files generated during the stage."""
-        raise NotImplementedError("clean method not implemented")
-
 class GaussianRESP(AbstractStage):
     """
     Run a basic Gaussian calculation on the ligand (RESP calculation only).
@@ -474,21 +455,6 @@ class GaussianRESP(AbstractStage):
 
     def _validate_input_paths(self, **kwargs):
         apply_gaussian_env_paths(self, kwargs)
-
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
 
     def setup(self, name_template: str) -> bool:
         """
@@ -586,10 +552,6 @@ class GaussianRESP(AbstractStage):
 
         return
 
-    def _clean(self):
-        """Clean the files generated during the stage."""
-        raise NotImplementedError("clean method not implemented")
-
 class StageGaussianRotation(AbstractStage):
     """Rotate the ligand and run a Gaussian ESP job at each orientation.
 
@@ -665,21 +627,6 @@ class StageGaussianRotation(AbstractStage):
 
     def _validate_input_paths(self, **kwargs):
         apply_gaussian_env_paths(self, kwargs)
-
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
 
     def _orientation_coordinates(self):
         """Yield stable filename suffixes and coordinates for each orientation."""
@@ -916,9 +863,6 @@ class StageGaussianRotation(AbstractStage):
             for frame in coords:
                 SimpleXYZ(file_obj, frame)
 
-    def _clean(self):
-        return
-
 
 class StageGaussiantoMol2(AbstractStage):
     """
@@ -985,10 +929,6 @@ class StageGaussiantoMol2(AbstractStage):
     def _validate_input_paths(self, **kwargs) -> None:
         apply_gaussian_env_paths(self, kwargs)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """Append the stage to the current stage."""
-        return stage
-
     def setup(self, name_template: str) -> bool:
         """
         Set up required files and headers for Gaussian to mol2 conversion.
@@ -1044,9 +984,6 @@ class StageGaussiantoMol2(AbstractStage):
         ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
         ante.call(i=self.temp2_mol2, fi="mol2", o=self.out_mol2, fo="mol2", pf="y", at=self.atom_type, an="no", nc=self.net_charge, dry_run=dry_run)
 
-        return
-
-    def _clean(self):
         return
 
     def remove_blank_lines(self, file_path):

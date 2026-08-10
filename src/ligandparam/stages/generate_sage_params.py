@@ -68,22 +68,6 @@ class StageSageCreate(AbstractStage):
         self.resname = kwargs.get("resname", None)
         self.add_required(self.in_mol2)
 
-    def _append_stage(self, stage: AbstractStage) -> "AbstractStage":
-        """
-        Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     @staticmethod
     def _read_mol2_atom_records(mol2_file: Path):
         """Read atom names, optional charges, and residue names from MOL2 ATOM section."""
@@ -252,10 +236,6 @@ class StageSageCreate(AbstractStage):
 
         return 
     
-    def _clean(self):
-        """Clean up temporary files created during the stage."""
-        raise NotImplementedError("clean method not implemented.")
-
 
 class StageSageToAmber(AbstractStage):
     """Convert SAGE-generated AMBER files into OFF/lib and frcmod with unique atom types.
@@ -314,9 +294,6 @@ class StageSageToAmber(AbstractStage):
 
         self.add_required(self.in_parm)
         self.add_required(self.in_rst7)
-
-    def _append_stage(self, stage: AbstractStage) -> "AbstractStage":
-        return stage
 
     @staticmethod
     def _base36_encode(value: int, width: int) -> str:
@@ -563,5 +540,3 @@ class StageSageToAmber(AbstractStage):
         actions.writeFrcmod(parm, str(self.out_frcmod)).execute()
         return
 
-    def _clean(self):
-        raise NotImplementedError("clean method not implemented.")

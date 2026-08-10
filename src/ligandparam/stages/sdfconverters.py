@@ -127,28 +127,6 @@ class SDFToPDB(AbstractStage):
             self.logger.error(
                 f"Failed to write to  {self.out_pdb}. Got exception: {e}")
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Not implemented. Appends a stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        raise NotImplementedError
-
-    def _clean(self):
-        """
-        Not implemented. Cleans up after stage execution.
-        """
-        raise NotImplementedError
-
 
 
 # noinspection DuplicatedCode
@@ -279,28 +257,6 @@ class SDFToPDBBatch(AbstractStage):
             except Exception as e:
                 self.logger.error(
                     f"Failed to write to  {pdb}. Got exception: {e}")
-
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Not implemented. Appends a stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        raise NotImplementedError
-
-    def _clean(self):
-        """
-        Not implemented. Cleans up after stage execution.
-        """
-        raise NotImplementedError
 
 
 

@@ -1,30 +1,18 @@
 from pathlib import Path
-from typing import Optional, Union, Any
+from typing import Union
 
 from typing_extensions import override
 
-from ligandparam.parametrization import Recipe, apply_option_defaults
-from ligandparam.io.orientations import (
-    DEFAULT_ORIENTATION_PROTOCOL,
-    N_ORIENTATIONS_SO3_N28,
-    legacy_euler_kwargs,
+from ligandparam.parametrization import Recipe, configure_gaussian_recipe
+from ligandparam.recipes.common import (
+    charge_update_parmchk_leap_stages,
+    free_minimize_resp_rotation_stages,
+    init_normalize_center_stages,
+    multi_resp_update_stages,
+    rotation_label_for_recipe,
 )
-from ligandparam.recipes.common import charge_update_parmchk_leap_stages
-from ligandparam.recipes.dihed_options import apply_dihed_options, append_dihed_twist_stage
-from ligandparam.stages import (
-    StageInitialize,
-    StageNormalizeCharge,
-    StageDisplaceMol,
-    GaussianMinimizeRESP,
-    StageGaussiantoMol2,
-    StageGaussianRotation,
-    StageLazyResp,
-    StageMultiRespFit,
-    StageUpdateCharge,
-    StageUpdate,
-    StageParmChk,
-    StageLeap,
-)
+from ligandparam.recipes.dihed_options import append_dihed_twist_stage
+
 
 class FreeLigand(Recipe):
     """Parameterize a ligand with multi-orientation Gaussian RESP fitting.
@@ -90,43 +78,9 @@ class FreeLigand(Recipe):
     @override
     def __init__(self, in_filename: Union[Path, str], cwd: Union[Path, str], *args, **kwargs):
         super().__init__(in_filename, cwd, *args, **kwargs)
-        # logger will be passed manually to each stage
-        kwargs.pop("logger", None)
-
-        # required options
-        for opt in ("net_charge",):
-            try:
-                setattr(self, opt, kwargs[opt])
-                del kwargs[opt]
-            except KeyError:
-                raise KeyError(f"Missing {opt}")
-        # required options with defaults (mutable defaults are created fresh)
-        apply_option_defaults(
-            self,
-            kwargs,
-            ("theory", "leaprc", "force_gaussian_rerun", "nproc", "mem"),
+        configure_gaussian_recipe(
+            self, kwargs, with_orientation=True, with_dihed=True
         )
-
-        # optional options, without defaults
-        for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
-            setattr(self, opt, kwargs.pop(opt, None))
-
-        # Default is so3_n28; only legacy_euler opts into the old Euler grid.
-        self.orientation_protocol = kwargs.pop(
-            "orientation_protocol", DEFAULT_ORIENTATION_PROTOCOL
-        )
-        if self.orientation_protocol not in ("so3_n28", "legacy_euler"):
-            raise ValueError(
-                "orientation_protocol must be 'so3_n28' or 'legacy_euler', "
-                f"got {self.orientation_protocol!r}"
-            )
-        # Angle lists belong only to legacy_euler; drop them for so3_n28 so they
-        # cannot leak into StageGaussianRotation via **self.kwargs.
-        if self.orientation_protocol == "so3_n28":
-            for key in ("alpha", "beta", "gamma"):
-                kwargs.pop(key, None)
-        apply_dihed_options(self, kwargs)
-        self.kwargs = kwargs
 
     def setup(self):
         """Build the ordered FreeLigand stage list on ``self.stages``."""
@@ -136,12 +90,7 @@ class FreeLigand(Recipe):
         hightheory_minimization_gaussian_log = self.cwd / f"{self.label}.hightheory.minimization.log"
         resp_mol2_low = self.cwd / f"{self.label}.minimized.lowtheory.mol2"
         resp_mol2_high = self.cwd / f"{self.label}.minimized.mol2"
-        # Namespace orientation labels so leftover logs from another protocol
-        # cannot enter the same multi-RESP fit.
-        if self.orientation_protocol == "so3_n28":
-            rotation_label = f"{self.label}.rotation.so3_n28"
-        else:
-            rotation_label = f"{self.label}.rotation"
+        rotation_label = rotation_label_for_recipe(self)
         out_respfit = self.cwd / f"respfit.charges.{self.label}"
         resp_mol2 = self.cwd / f"{self.label}.resp.mol2"
         final_mol2 = self.cwd / f"final_{self.label}.mol2"
@@ -149,178 +98,32 @@ class FreeLigand(Recipe):
         frcmod = self.cwd / f"{self.label}.frcmod"
         lib = self.cwd / f"{self.label}.lib"
 
-        # Recipe protocol wins over any leftover stage kwargs.
-        rotation_kwargs = {
-            **self.kwargs,
-            "orientation_protocol": self.orientation_protocol,
-        }
-        if self.orientation_protocol == "legacy_euler":
-            rotation_kwargs.update(legacy_euler_kwargs())
-
         self.stages = [
-            StageInitialize(
-                "Initialize",
-                main_input=self.in_filename,
-                cwd=self.cwd,
-                out_mol2=initial_mol2,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
+            *init_normalize_center_stages(
+                recipe=self,
+                initial_mol2=initial_mol2,
+                centered_out=centered_mol2,
             ),
-            StageNormalizeCharge(
-                "Normalize1",
-                main_input=initial_mol2,
-                cwd=self.cwd,
-                net_charge=self.net_charge,
-                out_mol2=initial_mol2,
-                logger=self.logger,
-                **self.kwargs,
+            *free_minimize_resp_rotation_stages(
+                recipe=self,
+                centered_mol2=centered_mol2,
+                initial_mol2=initial_mol2,
+                low_log=lowtheory_minimization_gaussian_log,
+                high_log=hightheory_minimization_gaussian_log,
+                resp_mol2_low=resp_mol2_low,
+                resp_mol2_high=resp_mol2_high,
+                rotation_label=rotation_label,
             ),
-            StageDisplaceMol(
-                "Centering",
-                main_input=initial_mol2,
-                cwd=self.cwd,
-                out_mol=centered_mol2,
-                logger=self.logger,
-            ),
-            GaussianMinimizeRESP(
-                "MinimizeLowTheory",
-                main_input=centered_mol2,
-                cwd=self.cwd,
-                nproc=self.nproc,
-                mem=self.mem,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-                net_charge=self.net_charge,
-                opt_theory=self.theory["low"],
-                resp_theory=self.theory["low"],
-                force_gaussian_rerun=self.force_gaussian_rerun,
-                out_gaussian_log=lowtheory_minimization_gaussian_log,
-                logger=self.logger,
-                minimize=self.kwargs.get("minimize", True),
-                **self.kwargs,
-            ),
-            StageLazyResp(
-                "Resp",
-                main_input=lowtheory_minimization_gaussian_log,
-                cwd=self.cwd,
-                out_mol2=resp_mol2_low,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            GaussianMinimizeRESP(
-                "MinimizeHighTheory",
-                main_input=resp_mol2_low,
-                cwd=self.cwd,
-                nproc=self.nproc,
-                mem=self.mem,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-                net_charge=self.net_charge,
-                opt_theory=self.theory["high"],
-                resp_theory=self.theory["low"],
-                force_gaussian_rerun=self.force_gaussian_rerun,
-                out_gaussian_log=hightheory_minimization_gaussian_log,
-                logger=self.logger,
-                minimize=self.kwargs.get("minimize", True),
-                **self.kwargs,
-            ),
-            StageGaussiantoMol2(
-                "GrabGaussianCharge",
-                main_input=hightheory_minimization_gaussian_log,
-                cwd=self.cwd,
-                nproc=self.nproc,
-                mem=self.mem,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-                net_charge=self.net_charge,
-                theory=self.theory,
-                force_gaussian_rerun=self.force_gaussian_rerun,
-                template_mol2=initial_mol2,
-                out_mol2=resp_mol2_high,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageGaussianRotation(
-                "Rotate",
-                main_input=resp_mol2_high,
-                cwd=self.cwd,
-                nproc=self.nproc,
-                mem=self.mem,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-                net_charge=self.net_charge,
-                theory=self.theory,
-                force_gaussian_rerun=self.force_gaussian_rerun,
-                out_gaussian_label=rotation_label,
-                logger=self.logger,
-                **rotation_kwargs,
-            ),
-            # Gaussian stages write under cwd/gaussianCalcs
-            StageMultiRespFit(
-                "MultiRespFit",
-                main_input=resp_mol2_high,
-                cwd=self.cwd / "gaussianCalcs",
-                in_gaussian_label=rotation_label,
+            *multi_resp_update_stages(
+                recipe=self,
+                resp_mol2_high=resp_mol2_high,
+                rotation_label=rotation_label,
                 out_respfit=out_respfit,
-                net_charge=self.net_charge,
-                expected_gaussian_logs=N_ORIENTATIONS_SO3_N28,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageUpdateCharge(
-                "UpdateCharge",
-                main_input=resp_mol2_high,
-                cwd=self.cwd,
-                out_mol2=resp_mol2,
-                charge_column=3,
-                charge_source=out_respfit,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageNormalizeCharge(
-                "Normalize2",
-                main_input=resp_mol2,
-                cwd=self.cwd,
-                net_charge=self.net_charge,
-                out_mol2=resp_mol2,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageUpdate(
-                "UpdateNames",
-                main_input=resp_mol2,
-                cwd=self.cwd,
-                source_mol2=initial_mol2,
-                out_mol2=resp_mol2,
-                update_names=True,
-                update_types=False,
-                update_resname=True,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageUpdate(
-                "UpdateTypes",
-                main_input=resp_mol2,
-                cwd=self.cwd,
-                source_mol2=initial_mol2,
-                out_mol2=final_mol2,
-                update_names=False,
+                resp_mol2=resp_mol2,
+                initial_mol2=initial_mol2,
+                final_mol2=final_mol2,
                 update_types=True,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
+                normalize_input=resp_mol2,
             ),
             *charge_update_parmchk_leap_stages(
                 recipe=self,
@@ -338,20 +141,3 @@ class FreeLigand(Recipe):
             lib=lib,
             frcmod=frcmod,
         )
-
-    @override
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        """Run all stages defined by :meth:`setup`.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, log planned commands without running external programs.
-        nproc : int, optional
-            Override the recipe processor count for this run.
-        mem : int, optional
-            Override the recipe memory allocation in GB for this run.
-        """
-        self.logger.info(f"Starting the FreeLigand recipe at {self.cwd}")
-        super().execute(dry_run=dry_run, nproc=nproc, mem=mem)
-        self.logger.info("Done with the FreeLigand recipe")

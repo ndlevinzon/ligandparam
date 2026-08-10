@@ -13,6 +13,8 @@ fresh_recipe_defaults
     Build a new defaults mapping with fresh mutable values.
 apply_option_defaults
     Assign kwargs or defaults onto a recipe instance safely.
+configure_gaussian_recipe
+    Shared ``__init__`` configuration for Gaussian-based recipes.
 """
 
 import logging
@@ -67,6 +69,60 @@ def apply_option_defaults(
             setattr(obj, opt, _copy_if_mutable(kwargs.pop(opt)))
         else:
             setattr(obj, opt, _copy_if_mutable(defaults[opt]))
+
+
+def configure_gaussian_recipe(
+    obj: Any,
+    kwargs: MutableMapping[str, Any],
+    *,
+    with_orientation: bool = False,
+    with_dihed: bool = False,
+) -> None:
+    """Apply shared Gaussian-recipe option parsing onto ``obj``.
+
+    Pops ``logger`` (stages receive the recipe logger explicitly), requires
+    ``net_charge``, applies theory/leaprc/Gaussian-rerun/nproc/mem defaults,
+    and stores optional Gaussian path overrides. Optionally configures
+    multi-RESP orientation protocol and/or dihedral-correction options.
+    Remaining kwargs are assigned to ``obj.kwargs``.
+    """
+    kwargs.pop("logger", None)
+
+    try:
+        obj.net_charge = kwargs.pop("net_charge")
+    except KeyError as exc:
+        raise KeyError("Missing net_charge") from exc
+
+    apply_option_defaults(
+        obj,
+        kwargs,
+        ("theory", "leaprc", "force_gaussian_rerun", "nproc", "mem"),
+    )
+
+    for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
+        setattr(obj, opt, kwargs.pop(opt, None))
+
+    if with_orientation:
+        from ligandparam.io.orientations import DEFAULT_ORIENTATION_PROTOCOL
+
+        obj.orientation_protocol = kwargs.pop(
+            "orientation_protocol", DEFAULT_ORIENTATION_PROTOCOL
+        )
+        if obj.orientation_protocol not in ("so3_n28", "legacy_euler"):
+            raise ValueError(
+                "orientation_protocol must be 'so3_n28' or 'legacy_euler', "
+                f"got {obj.orientation_protocol!r}"
+            )
+        if obj.orientation_protocol == "so3_n28":
+            for key in ("alpha", "beta", "gamma"):
+                kwargs.pop(key, None)
+
+    if with_dihed:
+        from ligandparam.recipes.dihed_options import apply_dihed_options
+
+        apply_dihed_options(obj, kwargs)
+
+    obj.kwargs = kwargs
 
 
 class Parametrization(Driver):
@@ -137,7 +193,26 @@ class Parametrization(Driver):
 class Recipe(Parametrization):
     """Convenience alias for a ligand-parametrization workflow.
 
-    Subclasses typically implement :meth:`setup` to populate ``self.stages``
-    and may override :meth:`execute` for logging around the base pipeline.
+    Subclasses typically implement :meth:`setup` to populate ``self.stages``.
+    :meth:`execute` logs start/done around the base stage pipeline.
     """
-    pass
+
+    @override
+    def execute(
+        self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None
+    ) -> Any:
+        """Run all stages defined by :meth:`setup`.
+
+        Parameters
+        ----------
+        dry_run : bool, optional
+            If True, log planned commands without running external programs.
+        nproc : int, optional
+            Override the recipe processor count for this run.
+        mem : int, optional
+            Override the recipe memory allocation in GB for this run.
+        """
+        name = type(self).__name__
+        self.logger.info(f"Starting the {name} recipe at {self.cwd}")
+        super().execute(dry_run=dry_run, nproc=nproc, mem=mem)
+        self.logger.info(f"Done with the {name} recipe")

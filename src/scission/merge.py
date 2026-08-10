@@ -6,7 +6,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from .frcmod import FrcmodFile, parse_dihe_atom_types
+from .frcmod import FrcmodFile, _normalize_param_name_to_key
 
 _ITERATION_FRCMOD_RE = re.compile(r"it(\d+)\.frcmod$")
 _FRAGMENT_SUFFIX_RE = re.compile(r"(\d+)$")
@@ -182,26 +182,6 @@ def _load_fit_torsions(path: Path) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
         raise ValueError(f"Expected a list in {path}")
     return payload
-
-
-def _normalize_param_name_to_key(param_name: str) -> tuple[str, str, str, str] | None:
-    """Convert an ``ffpopt`` parameter family name into a DIHE atom-type key.
-
-    Args:
-        param_name: Parameter family such as ``LIG_ca-ca-c-o``.
-
-    Returns:
-        Normalized four-atom-type tuple, or ``None`` when the name does not
-        describe a four-atom dihedral family.
-    """
-
-    normalized = param_name.removeprefix("LIG_").replace("_", "-")
-    atom_types = parse_dihe_atom_types(normalized)
-    if atom_types is None:
-        return None
-    from .frcmod import _normalize_dihe_key
-
-    return _normalize_dihe_key(atom_types)
 
 
 def _collect_param_keys(param_names) -> set[tuple[str, str, str, str]]:

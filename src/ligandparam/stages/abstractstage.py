@@ -1,4 +1,4 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 from pathlib import Path
 from typing import Optional, Union, Any
 
@@ -76,31 +76,13 @@ class AbstractStage(metaclass=ABCMeta):
         self.mem = kwargs.get("mem", 1)
         self.dry_run = kwargs.get("dry_run", False)
 
-    @abstractmethod
     def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Append a stage to the current stage.
+        """Append a stage; default is a no-op that returns ``stage``."""
+        return stage
 
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        pass
-
-    @abstractmethod
     def _clean(self):
-        """
-        Clean up the stage.
-
-        This method performs any necessary cleanup after the stage has been executed.
-        """
-        pass
+        """Clean up after execution; default is a no-op."""
+        return
 
     def append_stage(self, stage: "AbstractStage") -> "AbstractStage":
         """
@@ -135,12 +117,23 @@ class AbstractStage(metaclass=ABCMeta):
         self.mem = self.mem if mem is None else mem
         self._check_required()
 
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Stage body for the template-method :meth:`execute`.
+
+        Subclasses that use the base :meth:`execute` must implement ``_run``.
+        Stages with a custom end-to-end ``execute`` may leave this unused.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _run or override execute"
+        )
+
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
-        Execute the stage.
+        Execute the stage (template method).
 
-        Subclasses should override this method. The base implementation is a
-        placeholder and should not be called directly.
+        Logs start, sets up execution, calls :meth:`_run`, then records new
+        files created in ``cwd``. Subclasses with custom control flow may
+        override this method entirely instead of implementing ``_run``.
 
         Parameters
         ----------
@@ -154,17 +147,15 @@ class AbstractStage(metaclass=ABCMeta):
         Returns
         -------
         Any
-            The result of the execution.
+            The result of :meth:`_run`.
         """
         self.logger.info(f"Executing {self.stage_name}")
         starting_files = self.list_files_in_directory(self.cwd)
-        self._check_required()
-
         self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
-        self.execute(self, nproc=self.nproc, mem=self.mem)
+        result = self._run(dry_run=dry_run, nproc=self.nproc, mem=self.mem)
         ending_files = self.list_files_in_directory(self.cwd)
         self.new_files = [f for f in ending_files if f not in starting_files]
-        return
+        return result
 
     def clean(self) -> None:
         """

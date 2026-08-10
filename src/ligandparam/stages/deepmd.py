@@ -72,22 +72,6 @@ class DPMinimize(AbstractStage):
         self.steps = kwargs.get("steps", 1000)
         self.charge = kwargs.get("charge", 0)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the DeepMD minimization.
@@ -210,12 +194,6 @@ class DPMinimize(AbstractStage):
             f.writelines(out_lines)
 
     
-    def _clean(self):
-        """
-        Clean the files generated during the stage.
-        """
-        raise NotImplementedError("clean method not implemented")
-
 
 class DPModel(object):
     """ This class is a wrapper for the DeepMD model that uses xtb + deepmd to calculate the energy and forces of a molecule.

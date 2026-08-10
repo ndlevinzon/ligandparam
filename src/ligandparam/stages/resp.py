@@ -62,22 +62,6 @@ class StageLazyResp(AbstractStage):
         else:
             self.additional_args = {}
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Appends the stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """
         Execute antechamber to convert the Gaussian output to a mol2 file.
@@ -111,17 +95,6 @@ class StageLazyResp(AbstractStage):
             **self.additional_args,
         )
         return
-
-    def _clean(self):
-        """
-        Clean the files generated during the stage.
-
-        Raises
-        ------
-        NotImplementedError
-            If the method is not implemented.
-        """
-        raise NotImplementedError("clean method not implemented")
 
 
 class StageMultiRespFit(AbstractStage):
@@ -159,9 +132,6 @@ class StageMultiRespFit(AbstractStage):
         self.out_respfit = Path(kwargs["out_respfit"])
         self.net_charge = kwargs.get("net_charge", 0.0)
         self.expected_gaussian_logs = kwargs.get("expected_gaussian_logs")
-
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        return stage
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """Run multi-state RESP fitting on the discovered Gaussian logs.
@@ -216,5 +186,3 @@ class StageMultiRespFit(AbstractStage):
 
         return
 
-    def _clean(self):
-        raise NotImplementedError("clean method not implemented")

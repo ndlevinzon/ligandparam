@@ -96,22 +96,6 @@ class StageBuild(AbstractStage):
         else:
             raise ValueError("ERROR: Please provide a valid build type: aq, gas, or target")
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """
         Execute the Leap system build for the selected ``build_type``.
@@ -131,17 +115,6 @@ class StageBuild(AbstractStage):
             self._gas_build(dry_run=dry_run)
         elif self.build_type == 2:
             self._target_build(dry_run=dry_run)
-
-    def _clean(self):
-        """
-        Clean the files generated during the stage.
-
-        Raises
-        ------
-        NotImplementedError
-            If the method is not implemented.
-        """
-        raise NotImplementedError("clean method not implemented")
 
     def _aq_build(self, dry_run=False):
         """

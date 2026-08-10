@@ -65,22 +65,6 @@ class StageParmChk(AbstractStage):
         self.out_frcmod = Path(kwargs["out_frcmod"])
         self.net_charge = kwargs.get("net_charge", 0.0)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """
         Execute the parmchk calculation to obtain the frcmod file.
@@ -111,8 +95,3 @@ class StageParmChk(AbstractStage):
             raise RuntimeError(f"ATTN found in {self.out_frcmod}\n{lines}")
         return
 
-    def _clean(self):
-        """
-        Clean the files generated during the stage.
-        """
-        raise NotImplementedError("clean method not implemented")

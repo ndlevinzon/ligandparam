@@ -80,22 +80,6 @@ class StageLeap(AbstractStage):
         else:
             self.leaprc = ["leaprc.gaff2"]
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Append a stage to the current stage.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            The stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
 
 
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
@@ -148,8 +132,3 @@ class StageLeap(AbstractStage):
 
         return
 
-    def _clean(self):
-        """
-        Clean the files generated during the stage.
-        """
-        raise NotImplementedError("clean method not implemented")

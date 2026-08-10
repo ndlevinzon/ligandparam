@@ -12,12 +12,7 @@ class TestStage(AbstractStage):
         self._parse_inputoptions(kwargs)
         return
     
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         self.logger.info("This worked!")
         return
 
-    def _clean(self):
-        raise NotImplementedError("clean method not implemented")

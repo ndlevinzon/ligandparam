@@ -70,12 +70,6 @@ class StageSmilesToPDB(AbstractStage):
         except Exception as e:
             self.logger.error(f"Failed to write to  {self.out_pdb}. Got exception: {e}")
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        raise NotImplementedError
-
-    def _clean(self):
-        raise NotImplementedError
-
     def normalize_to_reference(self, mol: Chem.Mol, reference_pdb: Path, align: bool = False) -> Chem.Mol:
         """Normalize atom names to a reference PDB (see ``ligandparam.io.smiles``)."""
         return normalize_mol_to_reference(

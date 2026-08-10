@@ -109,12 +109,6 @@ class StageDihedTwistCorrection(AbstractStage):
         self.add_required(self.in_lib)
         self.add_required(self.in_frcmod)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        return stage
-
-    def _clean(self) -> None:
-        raise NotImplementedError
-
     def execute(
         self,
         dry_run: bool = False,

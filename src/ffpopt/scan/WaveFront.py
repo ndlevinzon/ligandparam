@@ -182,18 +182,11 @@ class WavefrontNode:
         ensure_soft_opt_attrs(self)
     def replace_with_pickle(self) -> None:
         """Replace node fields from a sidecar pickle if present (restores ``los``)."""
-        filename = Path(f"{self.node_pkl}")
-        if Path.is_file(filename):
-            print("Found existing pickle file for node:", self.node_id)
-            los = self.los
-            from .wavefront_mixins import pickle_load_compat
+        from .wavefront_mixins import replace_node_with_pickle
 
-            loaded_node = pickle_load_compat(filename)
-            self.__dict__.update(loaded_node.__dict__)
-            if self.los is None:
-                self.los = los
-            self._ensure_soft_opt_attrs()
-            print("Node data replaced with pickle data.")
+        replace_node_with_pickle(
+            self, found_msg=f"Found existing pickle file for node: {self.node_id}"
+        )
 
     def calculate(self) -> None:
         """Calculate the energy of the atoms."""
@@ -239,28 +232,27 @@ class WavefrontNode:
         from .wavefront_mixins import mark_node_failed
 
         mark_node_failed(self, reason, error, where=self.angle)
+
     def _precheck_geometry(self, min_dist: float = 0.8) -> Optional[str]:
         """Return a failure reason, or ``None`` if the geometry looks usable.
 
         Distinguishes real clashes from precheck exceptions (imports, constraint
         apply failures, …) so failure reports are not all labeled as clashes.
         """
-        try:
-            from ffpopt.Constraints import FillConstraints, ApplyConstraints, has_nonbonded_clash
+        from .wavefront_mixins import precheck_geometry_clash
+
+        def _atoms():
+            from ffpopt.Constraints import FillConstraints, ApplyConstraints
+
             myatoms = self.struct.GetASEAtoms()
             cons = FillConstraints(myatoms, copy.deepcopy(self.constraints))
-            myatoms = ApplyConstraints(myatoms, cons)
-            clashed, i, j, dist = has_nonbonded_clash(
-                myatoms.get_positions(), self.struct.data["bonds"], min_dist=min_dist
-            )
-            if clashed:
-                print(f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Ang (< {min_dist} Ang)")
-                return "clash_precheck"
-        except Exception as e:
-            print(f"Precheck failed due to error: {e}")
-            return f"precheck_error: {e}"
-        return None
+            return ApplyConstraints(myatoms, cons)
 
+        return precheck_geometry_clash(
+            get_atoms=_atoms,
+            bonds=self.struct.data["bonds"],
+            min_dist=min_dist,
+        )
 class WavefrontLevel:
     """ This class represents a level in the wavefront algorithm, containing multiple nodes. 
     
@@ -726,7 +718,6 @@ class Wavefront:
             
         """
         import multiprocessing
-        import time
         from collections import deque
 
         # Seed the queue: a fresh run initializes level 1; a restart re-enqueues
@@ -756,53 +747,21 @@ class Wavefront:
             )
 
         from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
+        from .wavefront_mixins import run_mp_spawn_drain_loop
 
         checkpoint_every = wf_checkpoint_every(self.nproc)
-        try:
-            in_flight = {}        # AsyncResult -> node; transient, never pickled
-            since_checkpoint = 0
-            while pending or in_flight:
-                # Top up the pool (or run one node inline when serial).
-                while pending and len(in_flight) < self.nproc:
-                    node = pending.popleft()
-                    node.replace_with_pickle()
-                    if node.complete:
-                        pending.extend(self._on_complete(node))
-                        continue
-                    if not node.active:
-                        continue
-                    if pool is None:
-                        node.calculate()
-                        pending.extend(self._on_complete(node))
-                        since_checkpoint += 1
-                        break
-                    in_flight[pool.apply_async(_run_node_job, (node.to_job(),))] = node
-
-                # Harvest finished workers; sleep briefly only when none are
-                # ready so the pool is not polled in a busy loop.
-                if in_flight:
-                    progressed = False
-                    for async_result in list(in_flight):
-                        if async_result.ready():
-                            node = in_flight.pop(async_result)
-                            result = async_result.get()
-                            node.apply_result(result)
-                            pending.extend(self._on_complete(node))
-                            since_checkpoint += 1
-                            progressed = True
-                    if not progressed:
-                        time.sleep(0.1)
-
-                if since_checkpoint >= checkpoint_every:
-                    self._resume_queue = list(pending) + list(in_flight.values())
-                    self.save_checkpoint()
-                    self._cleanup_completed()
-                    self._print_progress(len(pending), len(in_flight))
-                    since_checkpoint = 0
-        finally:
-            if pool is not None:
-                pool.terminate()
-                pool.join()
+        run_mp_spawn_drain_loop(
+            pending=pending,
+            nproc=self.nproc,
+            pool=pool,
+            run_node_job=_run_node_job,
+            on_complete=self._on_complete,
+            set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
+            save_checkpoint=self.save_checkpoint,
+            cleanup_completed=self._cleanup_completed,
+            print_progress=self._print_progress,
+            checkpoint_every=checkpoint_every,
+        )
 
         self._resume_queue = []
         self.save_checkpoint()

@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover
     Draw = None
 
 
-def _safe_name(text: str) -> str:
+def safe_name(text: str) -> str:
     """Normalize free-form text into a filesystem-safe slug.
 
     Args:
@@ -33,6 +33,9 @@ def _safe_name(text: str) -> str:
     """
 
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("_")
+
+
+_safe_name = safe_name
 
 
 def _atom_name_map(mol: "Chem.Mol") -> dict[str, int]:

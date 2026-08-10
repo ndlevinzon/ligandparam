@@ -68,9 +68,6 @@ class StageUpdateCharge(AbstractStage):
 
         return
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         # Supress the inevitable mol2 file warnings.
@@ -98,9 +95,6 @@ class StageUpdateCharge(AbstractStage):
             )
 
         return
-
-    def _clean(self):
-        raise NotImplementedError("clean method not implemented")
 
 
 class StageNormalizeCharge(AbstractStage):
@@ -163,9 +157,6 @@ class StageNormalizeCharge(AbstractStage):
 
         self.add_required(self.in_mol2)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the charge normalization stage.
@@ -222,9 +213,6 @@ class StageNormalizeCharge(AbstractStage):
                     i=self.tmp_mol2, fi="mol2", o=self.out_mol2, fo="mol2", pf="y", at=self.atom_type, an="no",
                     nc=self.net_charge, dry_run=dry_run
                 )
-
-    def _clean(self):
-        raise NotImplementedError("clean method not implemented")
 
     def normalize(self, charges, charge_difference):
         """

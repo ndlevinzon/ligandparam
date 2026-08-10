@@ -292,3 +292,114 @@ def pickle_load_compat(file_or_path):
         return pickle.load(file_or_path)
     with open(file_or_path, "rb") as f:
         return pickle.load(f)
+
+
+def replace_node_with_pickle(node: Any, *, found_msg: Optional[str] = None) -> None:
+    """Replace node fields from a sidecar pickle if present (restores ``los``)."""
+    filename = Path(f"{node.node_pkl}")
+    if not filename.is_file():
+        return
+    print(found_msg if found_msg is not None else f"Found existing pickle file for node: {node.node_id}")
+    los = node.los
+    loaded_node = pickle_load_compat(filename)
+    node.__dict__.update(loaded_node.__dict__)
+    if node.los is None:
+        node.los = los
+    ensure = getattr(node, "_ensure_soft_opt_attrs", None)
+    if callable(ensure):
+        ensure()
+    else:
+        ensure_soft_opt_attrs(node)
+    print("Node data replaced with pickle data.")
+
+
+def precheck_geometry_clash(
+    *,
+    get_atoms,
+    bonds,
+    min_dist: float = 0.8,
+) -> Optional[str]:
+    """Shared clash precheck after constraints are applied.
+
+    ``get_atoms`` should return an ASE atoms object with constraints applied.
+    """
+    try:
+        from ffpopt.Constraints import has_nonbonded_clash
+
+        myatoms = get_atoms()
+        clashed, i, j, dist = has_nonbonded_clash(
+            myatoms.get_positions(), bonds, min_dist=min_dist
+        )
+        if clashed:
+            print(
+                f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Ang (< {min_dist} Ang)"
+            )
+            return "clash_precheck"
+    except Exception as e:
+        print(f"Precheck failed due to error: {e}")
+        return f"precheck_error: {e}"
+    return None
+
+
+def run_mp_spawn_drain_loop(
+    *,
+    pending,
+    nproc: int,
+    pool,
+    run_node_job,
+    on_complete,
+    set_resume_queue,
+    save_checkpoint,
+    cleanup_completed,
+    print_progress,
+    checkpoint_every: int,
+) -> None:
+    """Shared multiprocessing drain loop for 1-D and N-D wavefront scans.
+
+    ``pool`` may be ``None`` for serial execution. Callers create the pool and
+    own finish bookkeeping after this returns.
+    """
+    import time
+
+    try:
+        in_flight = {}
+        since_checkpoint = 0
+        while pending or in_flight:
+            while pending and len(in_flight) < nproc:
+                node = pending.popleft()
+                node.replace_with_pickle()
+                if node.complete:
+                    pending.extend(on_complete(node))
+                    continue
+                if not node.active:
+                    continue
+                if pool is None:
+                    node.calculate()
+                    pending.extend(on_complete(node))
+                    since_checkpoint += 1
+                    break
+                in_flight[pool.apply_async(run_node_job, (node.to_job(),))] = node
+
+            if in_flight:
+                progressed = False
+                for async_result in list(in_flight):
+                    if async_result.ready():
+                        node = in_flight.pop(async_result)
+                        result = async_result.get()
+                        node.apply_result(result)
+                        pending.extend(on_complete(node))
+                        since_checkpoint += 1
+                        progressed = True
+                if not progressed:
+                    time.sleep(0.1)
+
+            if since_checkpoint >= checkpoint_every:
+                set_resume_queue(list(pending) + list(in_flight.values()))
+                save_checkpoint()
+                cleanup_completed()
+                print_progress(len(pending), len(in_flight))
+                since_checkpoint = 0
+    finally:
+        if pool is not None:
+            pool.terminate()
+            pool.join()

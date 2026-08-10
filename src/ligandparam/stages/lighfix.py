@@ -314,12 +314,6 @@ class LigHFix(AbstractStage):
         self.logger.error(err_msg)
         raise ValueError(err_msg)
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        raise NotImplementedError
-
-    def _clean(self):
-        raise NotImplementedError
-
     @staticmethod
     def draw(mol, filepath: Path):
         """

@@ -1350,11 +1350,7 @@ def _build_structure_image_map(frag_dir: Path, fit_torsions: list) -> dict:
         except (json.JSONDecodeError, OSError):
             manifest_images = {}
 
-    import re
-    def _safe(label: str) -> str:
-        # Mirror scission.writers._safe_name (re-emitted here to avoid a
-        # scission dep just for one regex).
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", label).strip("_")
+    from scission.writers import safe_name
 
     out: dict = {}
     for t in fit_torsions:
@@ -1365,7 +1361,7 @@ def _build_structure_image_map(frag_dir: Path, fit_torsions: list) -> dict:
         if img_str:
             img = Path(img_str)
         else:
-            img = frag_dir / f"torsion_{_safe(label)}.svg"
+            img = frag_dir / f"torsion_{safe_name(label)}.svg"
         if not img.exists():
             continue
         bond_pair = tuple(i - 1 for i in t["fragment_rotatable_bond"])
@@ -1458,48 +1454,7 @@ def _split_fragment_nproc(
     )
 
 
-# Spawn Process subclass must live at module scope so pool workers pickle.
-_SpawnProcessBase = __import__("multiprocessing").get_context("spawn").Process
-
-
-class _NonDaemonSpawnProcess(_SpawnProcessBase):
-    """Spawn process that ignores daemon=True (may create nested pools)."""
-
-    @property
-    def daemon(self):
-        return False
-
-    @daemon.setter
-    def daemon(self, value):
-        pass
-
-
-class _NonDaemonSpawnContext:
-    """Context wrapper so ``Pool`` uses :class:`_NonDaemonSpawnProcess`."""
-
-    def __init__(self):
-        import multiprocessing as mp
-
-        self._ctx = mp.get_context("spawn")
-        self.Process = _NonDaemonSpawnProcess
-
-    def __getattr__(self, name):
-        return getattr(self._ctx, name)
-
-
-def _make_nondaemon_spawn_pool(n_workers: int):
-    """Spawn ``Pool`` whose workers are non-daemon (may nest wavefront pools).
-
-    ``multiprocessing.get_context(...).Pool`` is a factory method, not a class,
-    so it cannot be subclassed. Pass ``multiprocessing.pool.Pool`` a context
-    whose ``Process`` is :class:`_NonDaemonSpawnProcess` instead.
-    """
-    from multiprocessing.pool import Pool
-
-    return Pool(
-        processes=max(1, int(n_workers)),
-        context=_NonDaemonSpawnContext(),
-    )
+from ffpopt.runtime.nondaemon_pool import make_nondaemon_spawn_pool as _make_nondaemon_spawn_pool
 
 
 def _slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:

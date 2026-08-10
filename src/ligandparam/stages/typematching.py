@@ -80,22 +80,6 @@ class StageUpdate(AbstractStage):
         self.add_required(Path(self.in_mol2))
         self.add_required(Path(self.source_mol2))
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Appends the stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
-
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the update of atom types, names, charges, or residue names in a mol2 file.
@@ -169,12 +153,6 @@ class StageUpdate(AbstractStage):
                 **self.additional_args,
             )
 
-    def _clean(self):
-        """
-        Not implemented. Cleans up after stage execution.
-        """
-        raise NotImplementedError
-
 
 class StageMatchAtomNames(AbstractStage):
     """
@@ -217,22 +195,6 @@ class StageMatchAtomNames(AbstractStage):
         self.source_mol = Path(kwargs["source_mol"])
         self.add_required(Path(self.in_mol2))
         self.add_required(Path(self.source_mol))
-
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Appends the stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        return stage
 
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
@@ -283,8 +245,3 @@ class StageMatchAtomNames(AbstractStage):
                 break
 
 
-    def _clean(self):
-        """
-        Not implemented. Cleans up after stage execution.
-        """
-        raise NotImplementedError

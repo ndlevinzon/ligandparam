@@ -1,21 +1,15 @@
 from pathlib import Path
-from typing import Optional, Union, Any
+from typing import Union
 
 from typing_extensions import override
 
-from ligandparam.parametrization import Recipe, apply_option_defaults
-from ligandparam.stages import (
-    StageInitialize,
-    StageDisplaceMol,
-    StageNormalizeCharge,
-    GaussianMinimizeRESP,
-    StageLazyResp,
-    StageUpdate,
-    StageParmChk,
-    StageLeap,
-    DPMinimize,
+from ligandparam.parametrization import Recipe, configure_gaussian_recipe
+from ligandparam.recipes.common import (
+    charge_update_parmchk_leap_stages,
+    high_theory_lazy_resp_stages,
+    init_normalize_center_stages,
+    normalize_update_names_stages,
 )
-from ligandparam.recipes.common import charge_update_parmchk_leap_stages
 
 
 class SQMLigand(Recipe):
@@ -61,36 +55,13 @@ class SQMLigand(Recipe):
     @override
     def __init__(self, in_filename: Union[Path, str], cwd: Union[Path, str], *args, **kwargs):
         super().__init__(in_filename, cwd, *args, **kwargs)
-        # logger will be passed manually to each stage
-        kwargs.pop("logger", None)
-
-        # required options
-        for opt in ("net_charge",):
-            try:
-                setattr(self, opt, kwargs[opt])
-                del kwargs[opt]
-            except KeyError:
-                raise KeyError(f"Missing {opt}")
-        # required options with defaults (mutable defaults are created fresh)
-        apply_option_defaults(
-            self,
-            kwargs,
-            ("theory", "leaprc", "force_gaussian_rerun", "nproc", "mem"),
-        )
-
-        # optional options, without defaults
-        for opt in ("gaussian_root", "gauss_exedir", "gaussian_binary", "gaussian_scratch"):
-            setattr(self, opt, kwargs.pop(opt, None))
-
-        self.kwargs = kwargs
+        configure_gaussian_recipe(self, kwargs)
 
     def setup(self):
         """Build the ordered SQMLigand stage list on ``self.stages``."""
         initial_mol2 = self.cwd / f"{self.label}.initial.mol2"
-        centered_mol2 = self.cwd / f"{self.label}.centered.mol2"
-        lowtheory_minimization_gaussian_log = self.cwd / f"{self.label}.lowtheory.minimization.log"
-        hightheory_minimization_gaussian_log = self.cwd / f"{self.label}.hightheory.minimization.log"
         resp_mol2_low = self.cwd / f"{self.label}.lowtheory.mol2"
+        hightheory_minimization_gaussian_log = self.cwd / f"{self.label}.hightheory.minimization.log"
         resp_mol2_high = self.cwd / f"{self.label}.minimized.mol2"
         resp_mol2 = self.cwd / f"{self.label}.resp.mol2"
         final_mol2 = self.cwd / f"final_{self.label}.mol2"
@@ -99,79 +70,24 @@ class SQMLigand(Recipe):
         lib = self.cwd / f"{self.label}.lib"
 
         self.stages = [
-            StageInitialize(
-                "Initialize",
-                main_input=self.in_filename,
-                cwd=self.cwd,
-                out_mol2=initial_mol2,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
+            *init_normalize_center_stages(
+                recipe=self,
+                initial_mol2=initial_mol2,
+                centered_out=resp_mol2_low,
             ),
-            StageNormalizeCharge(
-                "Normalize1",
-                main_input=initial_mol2,
-                cwd=self.cwd,
-                net_charge=self.net_charge,
-                out_mol2=initial_mol2,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageDisplaceMol(
-                "Centering",
-                main_input=initial_mol2,
-                cwd=self.cwd,
-                out_mol=resp_mol2_low,
-                logger=self.logger,
-            ),
-            GaussianMinimizeRESP(
-                "MinimizeHighTheory",
+            *high_theory_lazy_resp_stages(
+                recipe=self,
                 main_input=resp_mol2_low,
-                cwd=self.cwd,
-                nproc=self.nproc,
-                mem=self.mem,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-                net_charge=self.net_charge,
-                resp_theory=self.theory["low"],
-                force_gaussian_rerun=self.force_gaussian_rerun,
-                out_gaussian_log=hightheory_minimization_gaussian_log,
-                logger=self.logger,
+                high_log=hightheory_minimization_gaussian_log,
+                resp_mol2_high=resp_mol2_high,
                 minimize=False,
-                **self.kwargs,
             ),
-            StageLazyResp(
-                "LazyRespHigh",
-                main_input=hightheory_minimization_gaussian_log,
-                cwd=self.cwd,
-                out_mol2=resp_mol2_high,
-                net_charge=self.net_charge,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageNormalizeCharge(
-                "Normalize2",
-                main_input=resp_mol2_high,
-                cwd=self.cwd,
-                net_charge=self.net_charge,
-                out_mol2=resp_mol2,
-                logger=self.logger,
-                **self.kwargs,
-            ),
-            StageUpdate(
-                "UpdateNames",
-                main_input=resp_mol2,
-                cwd=self.cwd,
-                source_mol2=initial_mol2,
-                out_mol2=final_mol2,
-                net_charge=self.net_charge,
-                update_names=True,
-                update_types=False,
-                update_resname=True,
-                logger=self.logger,
-                **self.kwargs,
+            *normalize_update_names_stages(
+                recipe=self,
+                resp_mol2_high=resp_mol2_high,
+                resp_mol2=resp_mol2,
+                initial_mol2=initial_mol2,
+                final_mol2=final_mol2,
             ),
             *charge_update_parmchk_leap_stages(
                 recipe=self,
@@ -182,20 +98,3 @@ class SQMLigand(Recipe):
                 lib=lib,
             ),
         ]
-
-    @override
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        """Run all stages defined by :meth:`setup`.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, log planned commands without running external programs.
-        nproc : int, optional
-            Override the recipe processor count for this run.
-        mem : int, optional
-            Override the recipe memory allocation in GB for this run.
-        """
-        self.logger.info(f"Starting the SQMLigand recipe at {self.cwd}")
-        super().execute(dry_run=dry_run, nproc=nproc, mem=mem)
-        self.logger.info("Done with the SQMLigand recipe")

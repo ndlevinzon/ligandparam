@@ -131,28 +131,6 @@ class PDB_Name_Fixer(AbstractStage):
             self.logger.error(
                 f"Failed to write to  {self.out_pdb}. Got exception: {e}")
 
-    def _append_stage(self, stage: "AbstractStage") -> "AbstractStage":
-        """
-        Not implemented. Appends a stage to the workflow.
-
-        Parameters
-        ----------
-        stage : AbstractStage
-            Stage to append.
-
-        Returns
-        -------
-        AbstractStage
-            The appended stage.
-        """
-        raise NotImplementedError
-
-    def _clean(self):
-        """
-        Not implemented. Cleans up after stage execution.
-        """
-        raise NotImplementedError
-
     def normalize_to_reference(self, mol: Chem.Mol, reference_pdb: Path, align: bool = False) -> Chem.Mol:
         """Normalize atom names to a reference PDB (see ``ligandparam.io.smiles``)."""
         return normalize_mol_to_reference(

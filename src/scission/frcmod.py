@@ -26,6 +26,24 @@ def _normalize_dihe_key(atom_types: tuple[str, str, str, str]) -> tuple[str, str
     return min(atom_types, reversed_types)
 
 
+def _normalize_param_name_to_key(param_name: str) -> tuple[str, str, str, str] | None:
+    """Convert an ``ffpopt`` parameter family name into a DIHE atom-type key.
+
+    Args:
+        param_name: Parameter family such as ``LIG_ca-ca-c-o``.
+
+    Returns:
+        Normalized four-atom-type tuple, or ``None`` when the name does not
+        describe a four-atom dihedral family.
+    """
+
+    normalized = param_name.removeprefix("LIG_").replace("_", "-")
+    atom_types = parse_dihe_atom_types(normalized)
+    if atom_types is None:
+        return None
+    return _normalize_dihe_key(atom_types)
+
+
 def parse_dihe_atom_types(line: str) -> tuple[str, str, str, str] | None:
     """Extract the atom-type key from a single ``DIHE`` line.
 
