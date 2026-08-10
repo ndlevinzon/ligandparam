@@ -285,7 +285,7 @@ Issues and pull requests are welcome.
 2. Commit the bump, then tag it:
 
 ```bash
-git tag 1.4.1
+git tag 1.5.0
 git push origin --tags
 ```
 

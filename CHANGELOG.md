@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.5.0] — 2026-08-10
+
+### Added
+
+- **Startup banner** — CLI / console attach prints the ligandparam ASCII logo, authors, and version at the top of stdout (once per process).
+
 ### Fixed
 
 - **geomeTRIC constraint targets** — constraint files / enforce paths use the scan **target** dihedral (``force=False`` fill), not the post-twist ``force=True`` snapshot.
@@ -149,5 +157,6 @@ Prior releases focused on core RESP / FreeLigand recipes, orientation protocols 
 
 ---
 
+[1.5.0]: https://github.com/piskulichz/ligandparam/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/piskulichz/ligandparam/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/piskulichz/ligandparam/compare/v1.0.1...v1.4.0

@@ -26,6 +26,82 @@ _PREFIXED_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[")
 # Leading ``[scope]`` tokens embedded in the message / print body.
 _LEADING_SCOPE = re.compile(r"^\[([^\]]+)\]\s*")
 
+_BANNER_PRINTED = False
+
+_LOGO = r"""
+.____    .__                         ._____________                              
+|    |   |__| _________    ____    __| _/\______   \_____ ____________    _____  
+|    |   |  |/ ___\__  \  /    \  / __ |  |     ___/\__  \\_  __ \__  \  /     \ 
+|    |___|  / /_/  > __ \|   |  \/ /_/ |  |    |     / __ \|  | \// __ \|  Y Y  \
+|_______ \__\___  (____  /___|  /\____ |  |____|    (____  /__|  (____  /__|_|  /
+        \/ /_____/     \/     \/      \/                 \/           \/      \/ 
+""".strip(
+    "\n"
+)
+
+_AUTHORS = (
+    "Zeke Piskulich <piskulichz@gmail.com>",
+    "German P. Barletta",
+    "Timothy J. Giese",
+    "Nate Levinzon <ndlevinzon@gmail.com>",
+)
+
+
+def package_version() -> str:
+    """Return the installed ``ligandparam`` version string."""
+    try:
+        from ligandparam import __version__
+
+        return str(__version__)
+    except Exception:
+        try:
+            from importlib.metadata import version
+
+            return version("ligandparam")
+        except Exception:
+            return "unknown"
+
+
+def format_startup_banner(*, version: str | None = None) -> str:
+    """ASCII logo + version + authors (no timestamp prefix)."""
+    ver = version if version is not None else package_version()
+    authors = "\n".join(f"  {a}" for a in _AUTHORS)
+    return (
+        f"{_LOGO}\n"
+        f"\n"
+        f"  ligandparam  v{ver}\n"
+        f"  Amber ligand parameterization + ffpopt / scission\n"
+        f"\n"
+        f"  Authors:\n"
+        f"{authors}\n"
+    )
+
+
+def print_startup_banner(
+    *,
+    stream: TextIO | None = None,
+    force: bool = False,
+) -> bool:
+    """Print the project banner once per process to stdout.
+
+    Returns
+    -------
+    bool
+        ``True`` if the banner was printed on this call.
+    """
+    global _BANNER_PRINTED
+    if _BANNER_PRINTED and not force:
+        return False
+    out = stream if stream is not None else sys.__stdout__
+    text = format_startup_banner()
+    try:
+        out.write(text if text.endswith("\n") else text + "\n")
+        out.flush()
+    except OSError:
+        return False
+    _BANNER_PRINTED = True
+    return True
+
 
 def console_timestamp() -> str:
     """Return a local wall-clock timestamp suitable for console lines."""
@@ -221,6 +297,8 @@ def attach_console_handlers(
     for handler in logger.handlers:
         if getattr(handler, "_lp_console_marker", None):
             return
+
+    print_startup_banner()
 
     tags = _normalize_tags(tag)
     marker = "ffpopt.console:" + "/".join(tags)

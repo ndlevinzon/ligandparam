@@ -65,7 +65,11 @@ def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-scission`` / convenience wrapper."""
+    from ffpopt.runtime.console import print_startup_banner
+
     raw = list(sys.argv[1:] if argv is None else argv)
+    if not any(a in ("-h", "--help") for a in raw):
+        print_startup_banner()
     try:
         expanded = _expand_fragment_shortcuts(raw)
     except FileNotFoundError as exc:
