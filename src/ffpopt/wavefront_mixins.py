@@ -142,3 +142,29 @@ def maybe_write_success_checkpoint(node: Any) -> None:
 
     if write_success_node_pickle():
         write_node_pickle(node)
+
+
+def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):
+    """Unpickle a Wavefront object and optionally restore soft-opt attrs.
+
+    Soft-opt restoration matches the 1-D loader behavior and is safe for N-D
+    nodes that lack ``_ensure_soft_opt_attrs``.
+    """
+    with open(filename, "rb") as f:
+        wavefront = pickle.load(f)
+    if restore_soft_opt:
+        for level in getattr(wavefront, "levels", []) or []:
+            for node in getattr(level, "nodes", []) or []:
+                ensure = getattr(node, "_ensure_soft_opt_attrs", None)
+                if callable(ensure):
+                    ensure()
+                else:
+                    ensure_soft_opt_attrs(node)
+        for node in getattr(wavefront, "_resume_queue", None) or []:
+            ensure = getattr(node, "_ensure_soft_opt_attrs", None)
+            if callable(ensure):
+                ensure()
+            else:
+                ensure_soft_opt_attrs(node)
+    print("Wavefront object loaded from", filename)
+    return wavefront

@@ -158,74 +158,68 @@ def CopyParm(parm):
 
     return _copy_parm(parm)
 
-def MakeUniqueBondParams( p, xlist, scale=1.0 ):
-    """ Make unique bond parameters
-    
+def MakeUniqueParams(p, xlist, *, type_attr: str, type_factory, scale: float = 1.0):
+    """Duplicate selected bonded parameter types so they are unique to ``xlist``.
+
     Parameters
     ----------
-    p : parmed object
-        The parmed object
+    p : parmed Structure
+        Parameter container (has ``bond_types`` / ``angle_types`` / …).
     xlist : list
-        The list of bonds
+        Bond / angle / dihedral objects whose types should be uniquified.
+    type_attr : str
+        Name of the type list attribute on ``p`` (e.g. ``"bond_types"``).
+    type_factory : callable
+        ``type_factory(old_type, scale, type_list) -> new_type``.
     scale : float, optional
-        The scale factor. Default is 1.0
+        Scale factor applied when cloning types.
     """
     from collections import defaultdict as ddict
-    byidx = ddict( list )
-    for x in xlist:
-        byidx[ x.type.idx ].append( x )
-    for idx in byidx:
-        x = byidx[idx][0].type
-        p.bond_types.append( parmed.BondType( x.k*scale, x.req, p.bond_types ) )
-        for x in byidx[idx]:
-            #help(p.bonds[0])
-            #p.bonds[ x.idx ].type = p.bond_types[-1]
-            x.type = p.bond_types[-1]
 
-def MakeUniqueAngleParams( p, xlist, scale=1.0 ):
-    """ Make unique angle parameters
-    
-    Parameters
-    ----------
-    p : parmed object
-        The parmed object
-    xlist : list
-        The list of angles
-    scale : float, optional
-        The scale factor. Default is 1.0
-    """
-    from collections import defaultdict as ddict
-    byidx = ddict( list )
+    byidx = ddict(list)
     for x in xlist:
-        byidx[ x.type.idx ].append( x )
+        byidx[x.type.idx].append(x)
+    type_list = getattr(p, type_attr)
     for idx in byidx:
-        x = byidx[idx][0].type
-        p.angle_types.append( parmed.AngleType( x.k*scale, x.theteq, p.angle_types ) )
+        old = byidx[idx][0].type
+        type_list.append(type_factory(old, scale, type_list))
         for x in byidx[idx]:
-            #p.angles[ x.idx ].type = p.angle_types[-1]
-            x.type = p.angle_types[-1]
+            x.type = type_list[-1]
 
-def MakeUniqueDihedralParams( p, xlist, scale=1.0 ):
-    """ Make unique dihedral parameters
-    
-    Parameters
-    ----------
-    p : parmed object
-        The parmed object
-    xlist : list
-        The list of dihedrals
-    scale : float, optional
-        The scale factor. Default is 1.0"""
-    from collections import defaultdict as ddict
-    byidx = ddict( list )
-    for x in xlist:
-        byidx[ x.type.idx ].append( x )
-    for idx in byidx:
-        x = byidx[idx][0].type
-        p.dihedral_types.append( parmed.DihedralType( x.phi_k*scale, x.per, x.phase, x.scee, x.scnb, p.dihedral_types ) )
-        for x in byidx[idx]:
-            #p.dihedrals[ x.idx ].type = p.dihedral_types[-1]
-            x.type = p.dihedral_types[-1]
+
+def MakeUniqueBondParams(p, xlist, scale=1.0):
+    """Make unique bond parameters for the given bonds."""
+    MakeUniqueParams(
+        p,
+        xlist,
+        type_attr="bond_types",
+        type_factory=lambda t, s, lst: parmed.BondType(t.k * s, t.req, lst),
+        scale=scale,
+    )
+
+
+def MakeUniqueAngleParams(p, xlist, scale=1.0):
+    """Make unique angle parameters for the given angles."""
+    MakeUniqueParams(
+        p,
+        xlist,
+        type_attr="angle_types",
+        type_factory=lambda t, s, lst: parmed.AngleType(t.k * s, t.theteq, lst),
+        scale=scale,
+    )
+
+
+def MakeUniqueDihedralParams(p, xlist, scale=1.0):
+    """Make unique dihedral parameters for the given dihedrals."""
+    MakeUniqueParams(
+        p,
+        xlist,
+        type_attr="dihedral_types",
+        type_factory=lambda t, s, lst: parmed.DihedralType(
+            t.phi_k * s, t.per, t.phase, t.scee, t.scnb, lst
+        ),
+        scale=scale,
+    )
 
                 
 def GetSelectedAtomIndices(param,maskstr):

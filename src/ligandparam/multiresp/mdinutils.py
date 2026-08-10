@@ -3,8 +3,7 @@
     The main classes are:
     - AmberCmd: used to generate the command line for sander.MPI   
     - Mdin: used to generate the mdin file
-    - Disang1D: used to generate the disang file for distance restraints
-    - Disang2D: used to generate the disang file for distance restraints
+    - Disang / Disang1D / Disang2D: generate disang restraint files from templates
     - Computer: used to generate the bash script for running the simulation
     - BASH: used to generate the bash script for running the simulation
     - PERCEVAL: used to generate the bash script for running the simulation
@@ -117,86 +116,44 @@ class AmberCmd(object):
              
         return cmd
 
-class Disang1D(object):
-    """ This class is used to generate the disang file for distance restraints. """
-    def __init__(self,template,r1,k1):
-        """ Initialize the Disang1D object.
-        
-        Parameters
-        ----------
-        template : str
-            The template file
-        r1 : float
-            The distance restraint
-        k1 : float
-            The force constant
-        """
+class Disang(object):
+    """Generate a disang file by substituting restraint placeholders in a template.
+
+    Placeholders are ``R1``, ``K1``, ``R2``, ``K2``, … matching the keyword
+    arguments passed at construction (case-insensitive keys become upper-case
+    tokens).
+    """
+
+    def __init__(self, template, **restraints):
         self.TEMPLATE = template
-        self.R1 = r1
-        self.K1 = k1
+        self.restraints = {str(k).upper(): float(v) for k, v in restraints.items()}
+        for key, value in self.restraints.items():
+            setattr(self, key, value)
 
-    def WriteDisang(self,fname):
-        """ Write the disang file. 
-
-        Parameters
-        ----------
-        fname : str
-            The name of the file
-        """
+    def WriteDisang(self, fname):
+        """Write the disang file with restraint values substituted."""
         import re
-        cout = open(fname,"w")
-        cin = open(self.TEMPLATE,"r")
-        for line in cin:
-            line = re.sub(r'R1',"%.2f"%(self.R1),line)
-            line = re.sub(r'K1',"%.2f"%(self.K1),line)
-            cout.write(line)
-        cin.close()
-        cout.close()
-    
-class Disang2D(object):
-    """ This class is used to generate the disang file for distance restraints. """
-    def __init__(self,template,r1,k1,r2,k2):
-        """ Initialize the Disang2D object.
-        
-        Parameters
-        ----------
-        template : str
-            The template file
-        r1 : float
-            The distance restraint for the first atom
-        k1 : float
-            The force constant for the first atom
-        r2 : float
-            The distance restraint for the second atom
-        k2 : float
-            The force constant for the second atom
-        """
-        self.TEMPLATE = template
-        self.R1 = r1
-        self.K1 = k1
-        self.R2 = r2
-        self.K2 = k2
 
-    def WriteDisang(self,fname):
-        """ Write the disang file.
-        
-        Parameters
-        ----------
-        fname : str
-            The name of the file
-        """
-        import re
-        cout = open(fname,"w")
-        cin = open(self.TEMPLATE,"r")
-        for line in cin:
-            line = re.sub(r'R1',"%.2f"%(self.R1),line)
-            line = re.sub(r'K1',"%.2f"%(self.K1),line)
-            line = re.sub(r'R2',"%.2f"%(self.R2),line)
-            line = re.sub(r'K2',"%.2f"%(self.K2),line)
-            cout.write(line)
-        cin.close()
-        cout.close()
-    
+        with open(self.TEMPLATE, "r") as cin, open(fname, "w") as cout:
+            for line in cin:
+                for key, value in self.restraints.items():
+                    line = re.sub(key, "%.2f" % (value,), line)
+                cout.write(line)
+
+
+class Disang1D(Disang):
+    """1-D distance restraint disang (``R1`` / ``K1``)."""
+
+    def __init__(self, template, r1, k1):
+        super().__init__(template, R1=r1, K1=k1)
+
+
+class Disang2D(Disang):
+    """2-D distance restraint disang (``R1`` / ``K1`` / ``R2`` / ``K2``)."""
+
+    def __init__(self, template, r1, k1, r2, k2):
+        super().__init__(template, R1=r1, K1=k1, R2=r2, K2=k2)
+ 
 
 class Mdin(AmberCmd):
     """ This class is used to generate the mdin file. """

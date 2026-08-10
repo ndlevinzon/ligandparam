@@ -1,4 +1,4 @@
-"""I/O helpers for ligandparam (coordinates, Gaussian, Amber bundles, …)."""
+"""I/O helpers for ligandparam (coordinates, Gaussian, Amber bundles, ...)."""
 
 from ligandparam.io.amber_bundle import AmberLigandBundle, resolve_getparam_bundle
 

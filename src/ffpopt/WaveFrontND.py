@@ -1579,26 +1579,10 @@ class Wavefront(object):
 #     return chosen_first, chosen_second
 
 def wavefront_loader(filename: str) -> Wavefront:
-    """ Load a Wavefront object from a pickle file.
-    
-    This function loads a Wavefront object from a pickle file. This is useful for restarting calculations
-    that were previously interrupted.
-    
-    Parameters
-    ----------
-    filename : str
-        The name of the pickle file to load the Wavefront object from.
-        
-    Returns
-    -------
-    Wavefront
-        The loaded Wavefront object.
-        
-    """
-    with open(filename, 'rb') as f:
-        wavefront = pickle.load(f)
-    print("Wavefront object loaded from", filename)
-    return wavefront
+    """Load a Wavefront object from a pickle file (see ``wavefront_mixins``)."""
+    from ffpopt.wavefront_mixins import load_wavefront_pickle
+
+    return load_wavefront_pickle(filename, restore_soft_opt=True)
 
 
 def run_dihed_wavefront(

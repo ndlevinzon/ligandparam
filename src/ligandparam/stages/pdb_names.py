@@ -3,10 +3,16 @@ from typing import Optional, Union, Any
 
 from ligandparam.stages import AbstractStage
 from rdkit import Chem
-from rdkit.Chem import rdFMCS
-from rdkit.Chem.AllChem import ETKDGv3, EmbedMolecule, AlignMol
+from rdkit.Chem.AllChem import ETKDGv3, EmbedMolecule
 from typing_extensions import override
 
+from ligandparam.io.smiles import (
+    get_available_names_per_element,
+    get_element_name_and_number,
+    get_mcs_mol,
+    normalize_to_reference as normalize_mol_to_reference,
+    pad_atom_name,
+)
 from ligandparam.stages import set_atom_pdb_info
 
 
@@ -148,164 +154,18 @@ class PDB_Name_Fixer(AbstractStage):
         raise NotImplementedError
 
     def normalize_to_reference(self, mol: Chem.Mol, reference_pdb: Path, align: bool = False) -> Chem.Mol:
-        """
-        Normalize atom names in a molecule to match a reference PDB file.
+        """Normalize atom names to a reference PDB (see ``ligandparam.io.smiles``)."""
+        return normalize_mol_to_reference(
+            mol,
+            reference_pdb,
+            align=align,
+            remove_hs=False,
+            logger=self.logger,
+        )
 
-        Parameters
-        ----------
-        mol : Chem.Mol
-            Molecule to normalize.
-        reference_pdb : Path
-            Path to reference PDB file.
-        align : bool, optional
-            Whether to align molecule coordinates to reference (default is False).
+    pad_atom_name = staticmethod(pad_atom_name)
+    get_element_name_and_number = staticmethod(get_element_name_and_number)
+    get_mcs_mol = staticmethod(get_mcs_mol)
 
-        Returns
-        -------
-        Chem.Mol
-            Normalized molecule.
-        """
-        # Normalize the atom names to match the reference PDB
-        ref_mol = Chem.MolFromPDBFile(str(reference_pdb), removeHs=False)
-        if not ref_mol:
-            raise ValueError(f"Failed to read reference PDB file {reference_pdb}")
-        if len([at for at in ref_mol.GetAtoms() if at.GetAtomicNum() == 1]) == 0:
-            self.logger.warn(
-                f"Reference '{reference_pdb}' does not contain any hydrogen atoms. It's not a good reference PDB.")
-
-        mcs_mol = self.get_mcs_mol(ref_mol, mol)
-        mol_match = mol.GetSubstructMatch(mcs_mol)
-        ref_match = ref_mol.GetSubstructMatch(mcs_mol)
-        assert len(mol_match) == len(ref_match), \
-            f"Mismatch in number of common atoms. {len(mol_match)} vs {len(ref_match)}. This is likely a bug."
-
-        # Get the mapping of the atoms in the target molecule to the reference molecule
-        atom_map = list(zip(mol_match, ref_match))
-        dict_atom_map = dict(zip(mol_match, ref_match))
-        ref_atoms = list(ref_mol.GetAtoms())
-
-        # Atom names will come, either from the reference molecule or from the available names per element.
-        # We do this to avoid repeating atom names in the output molecule.
-        available_names_per_element = self.get_available_names_per_element(ref_mol, ref_match, mol)
-        for a in mol.GetAtoms():
-            pdb_info = a.GetPDBResidueInfo()
-            if a.GetIdx() in dict_atom_map:
-                name = ref_atoms[dict_atom_map[a.GetIdx()]].GetPDBResidueInfo().GetName()
-            else:
-                name = available_names_per_element[a.GetAtomicNum()].pop(0)
-            pdb_info.SetName(self.pad_atom_name(name))
-            a.SetMonomerInfo(pdb_info)
-        if align:
-            AlignMol(mol, ref_mol, atomMap=atom_map)
-        return mol
-
-    @staticmethod
-    def pad_atom_name(name) -> str:
-        """
-        Pad atom name to 4 characters for PDB format.
-
-        Parameters
-        ----------
-        name : str
-            Atom name.
-
-        Returns
-        -------
-        str
-            Padded atom name.
-        """
-        name = f" {name}" if len(name) < 4 else name
-        return name.ljust(4)
-
-    
     def get_available_names_per_element(self, ref_mol: Chem.Mol, ref_match, mol: Chem.Mol) -> dict[int, list[str]]:
-        """
-        Get available atom names per element from reference and target molecules.
-
-        Parameters
-        ----------
-        ref_mol : Chem.Mol
-            Reference molecule.
-        ref_match : list
-            Atom indices matched in reference molecule.
-        mol : Chem.Mol
-            Target molecule.
-
-        Returns
-        -------
-        dict[int, list[str]]
-            Mapping from atomic number to available atom names.
-        """
-        ref_atoms = list(ref_mol.GetAtoms())
-        mol_atoms = list(mol.GetAtoms())
-        natoms = len(mol_atoms)
-        available_names_per_element = {}
-
-        for atm in mol_atoms:
-            element_number, name, number, element = self.get_element_name_and_number(atm)
-            if element_number not in available_names_per_element:
-                available_names_per_element[element_number] = [ f"{element}{i}" for i in range(1, natoms+1)]
-
-        for idx in ref_match:
-            element_number, name, number, element = self.get_element_name_and_number(ref_atoms[idx])
-            if element_number not in available_names_per_element:
-                available_names_per_element[element_number] = [ f"{element}{i}" for i in range(1, natoms+1)]
-            if number not in available_names_per_element[element_number]:
-                available_names_per_element[element_number].append(f"{element}{number}")
-            try:
-                available_names_per_element[element_number].remove(name)
-            except ValueError as e:
-                print(name)
-                print(available_names_per_element)
-                print("element_number", element_number, "name", name, "number", number, "element", element)
-                self.logger.warn(f"Name '{name}' not found in available names for element {element_number}.")
-                raise e
-
-        return available_names_per_element
-
-    @staticmethod
-    def get_element_name_and_number(atom) -> tuple[int, str, int, str]:
-        """
-        Get atomic number, atom name, atom number, and element symbol from an atom.
-
-        Parameters
-        ----------
-        atom : Chem.Atom
-            RDKit atom object.
-
-        Returns
-        -------
-        tuple
-            (atomic number, atom name, atom number, element symbol)
-        """
-        element_number = atom.GetAtomicNum()
-        name = atom.GetPDBResidueInfo().GetName().strip()
-        if name == '':
-            name = Chem.GetPeriodicTable().GetElementSymbol(element_number) + "0"
-            number = 0
-            element = Chem.GetPeriodicTable().GetElementSymbol(element_number)
-        else:
-            number = int(''.join(char for char in name if char.isdigit()))
-            element = ''.join(char for char in name if not char.isdigit())
-        return element_number, name, number, element
-    
-    @staticmethod
-    def get_mcs_mol(ref_mol: Chem.Mol, mol: Chem.Mol) -> Chem.Mol:
-        """
-        Get the Maximum Common Substructure (MCS) molecule between reference and target.
-
-        Parameters
-        ----------
-        ref_mol : Chem.Mol
-            Reference molecule.
-        mol : Chem.Mol
-            Target molecule.
-
-        Returns
-        -------
-        Chem.Mol
-            MCS molecule.
-        """
-        mcs = rdFMCS.FindMCS([ref_mol, mol])
-        common_mol = Chem.rdmolfiles.MolFromSmarts(mcs.smartsString)
-        return common_mol
+        return get_available_names_per_element(ref_mol, ref_match, mol)

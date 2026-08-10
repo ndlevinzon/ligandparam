@@ -1,9 +1,11 @@
-import rdkit
 import re
 import shutil
+from pathlib import Path
+
 import MDAnalysis as mda
 import numpy as np
-
+import rdkit
+from rdkit import Chem
 from rdkit.Chem import rdFMCS
 
 class PDBFromSMILES:
@@ -185,8 +187,11 @@ class RenamePDBTypes:
     
     def find_mcs(self):
         """Find the maximum common substructure between loaded molecules."""
-        mcs = rdFMCS.FindMCS([mol.rdkit_mol for mol in self.mols])
-        self.mcs_mol = rdkit.Chem.rdmolfiles.MolFromSmarts(mcs.smartsString)
+        if len(self.mols) == 2:
+            self.mcs_mol = get_mcs_mol(self.mols[0].rdkit_mol, self.mols[1].rdkit_mol)
+        else:
+            mcs = rdFMCS.FindMCS([mol.rdkit_mol for mol in self.mols])
+            self.mcs_mol = Chem.rdmolfiles.MolFromSmarts(mcs.smartsString)
         return
     
     def common_atoms(self):
@@ -243,17 +248,127 @@ def clean_pdb(pdb_filename, resname):
                 f.write(line)
 
     return
-    
-if __name__ == "__main__":
-    # Create the PDBFromSMILES object
-    pdb = PDBFromSMILES("F3G", "O=C1NC(C(F)(F)F)=NC2=C1N=CN2")
-    
-    # Generate the molecule
-    mol = pdb.mol_from_smiles()
-    
-    # Write the PDB file
-    pdb.write_pdb(mol, "test.pdb")
 
-    new = RenamePDBTypes("test.pdb", "F3G")
-    new.add_mol("align.pdb")
-    new.rename_by_reference()
+
+# ---------------------------------------------------------------------------
+# Shared RDKit helpers used by StageSmilesToPDB / PDB_Name_Fixer (write once)
+# ---------------------------------------------------------------------------
+
+
+def get_mcs_mol(ref_mol, mol):
+    """Return an RDKit molecule for the MCS between ``ref_mol`` and ``mol``."""
+    mcs = rdFMCS.FindMCS([ref_mol, mol])
+    return Chem.rdmolfiles.MolFromSmarts(mcs.smartsString)
+
+
+def pad_atom_name(name) -> str:
+    """Pad an atom name to 4 characters for PDB format."""
+    name = f" {name}" if len(name) < 4 else name
+    return name.ljust(4)
+
+
+def get_element_name_and_number(atom) -> tuple[int, str, int, str]:
+    """Return ``(atomic_num, name, number, element_symbol)`` from PDB residue info."""
+    element_number = atom.GetAtomicNum()
+    name = atom.GetPDBResidueInfo().GetName().strip()
+    if name == "":
+        element = Chem.GetPeriodicTable().GetElementSymbol(element_number)
+        return element_number, element + "0", 0, element
+    number = int("".join(char for char in name if char.isdigit()) or "0")
+    element = "".join(char for char in name if not char.isdigit())
+    return element_number, name, number, element
+
+
+def get_available_names_per_element(ref_mol, ref_match, mol) -> dict[int, list[str]]:
+    """Build per-element pools of unused atom names for non-MCS atoms."""
+    ref_atoms = list(ref_mol.GetAtoms())
+    mol_atoms = list(mol.GetAtoms())
+    natoms = len(mol_atoms)
+    available: dict[int, list[str]] = {}
+
+    for atm in mol_atoms:
+        element_number, _name, _number, element = get_element_name_and_number(atm)
+        if element_number not in available:
+            available[element_number] = [f"{element}{i}" for i in range(1, natoms + 1)]
+
+    for idx in ref_match:
+        element_number, name, number, element = get_element_name_and_number(
+            ref_atoms[idx]
+        )
+        if element_number not in available:
+            available[element_number] = [f"{element}{i}" for i in range(1, natoms + 1)]
+        if f"{element}{number}" not in available[element_number]:
+            available[element_number].append(f"{element}{number}")
+        try:
+            available[element_number].remove(name)
+        except ValueError as exc:
+            raise ValueError(
+                f"Name '{name}' not found in available names for element "
+                f"{element_number}."
+            ) from exc
+    return available
+
+
+def normalize_to_reference(
+    mol,
+    reference_pdb,
+    *,
+    align: bool = False,
+    remove_hs: bool = False,
+    logger=None,
+):
+    """Rename atoms in ``mol`` to match ``reference_pdb`` via MCS mapping.
+
+    Parameters
+    ----------
+    mol : Chem.Mol
+        Target molecule (already has PDB residue info).
+    reference_pdb : path-like
+        Reference PDB path.
+    align : bool
+        If True, also align coordinates to the reference.
+    remove_hs : bool
+        Forwarded to ``Chem.MolFromPDBFile`` for the reference.
+    logger
+        Optional logger; warns when the reference has no hydrogens.
+    """
+    from rdkit.Chem.AllChem import AlignMol
+
+    reference_pdb = Path(reference_pdb) if not isinstance(reference_pdb, Path) else reference_pdb
+    ref_mol = Chem.MolFromPDBFile(str(reference_pdb), removeHs=remove_hs)
+    if not ref_mol:
+        raise ValueError(f"Failed to read reference PDB file {reference_pdb}")
+    if len([at for at in ref_mol.GetAtoms() if at.GetAtomicNum() == 1]) == 0:
+        msg = (
+            f"Reference '{reference_pdb}' does not contain any hydrogen atoms. "
+            "It's not a good reference PDB."
+        )
+        if logger is not None:
+            logger.warn(msg)
+
+    mcs_mol = get_mcs_mol(ref_mol, mol)
+    mol_match = mol.GetSubstructMatch(mcs_mol)
+    ref_match = ref_mol.GetSubstructMatch(mcs_mol)
+    if len(mol_match) != len(ref_match):
+        raise AssertionError(
+            f"Mismatch in number of common atoms. {len(mol_match)} vs "
+            f"{len(ref_match)}. This is likely a bug."
+        )
+
+    atom_map = list(zip(mol_match, ref_match))
+    dict_atom_map = dict(zip(mol_match, ref_match))
+    ref_atoms = list(ref_mol.GetAtoms())
+    available_names_per_element = get_available_names_per_element(
+        ref_mol, ref_match, mol
+    )
+    for a in mol.GetAtoms():
+        pdb_info = a.GetPDBResidueInfo()
+        if a.GetIdx() in dict_atom_map:
+            name = ref_atoms[dict_atom_map[a.GetIdx()]].GetPDBResidueInfo().GetName()
+        else:
+            name = available_names_per_element[a.GetAtomicNum()].pop(0)
+        pdb_info.SetName(pad_atom_name(name))
+        a.SetMonomerInfo(pdb_info)
+    if align:
+        AlignMol(mol, ref_mol, atomMap=atom_map)
+    return mol

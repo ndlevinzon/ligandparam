@@ -294,71 +294,58 @@ class EndState(object):
                 #print "%s.resp.out"%(base)
                 self.read_next_resp(out)
 
-    def preserve_residue_charges_by_shifting(self):
-        """ Preserve the residue charges by shifting """
+    def _shift_charges_to_preserve_residue_totals(self, *, reset_sele=None):
+        """Shift fragment RESP samples so each residue total matches MM.
+
+        Atoms in ``reset_sele`` (if given) are pinned to their MM charge and
+        excluded from the shift pool (used by ``preserve_mm_charges_by_shifting``).
+        """
+        reset_sele = set(reset_sele or [])
         for res in self.parm.residues:
-            mmq = 0.
-            q = 0.
+            mmq = 0.0
+            q = 0.0
             n = 0
             for a in res.atoms:
                 mmq += self.mmcharges[a.idx]
                 if a.idx in self.frag.atomsel:
-                    avg,std,err = respfunctions.GetAvgStdDevAndErr(self.charge_data[a.idx])
-                    q += avg
-                    if a.epsilon > 0.001:
-                        n += 1
-                else:
-                    q += self.mmcharges[a.idx]
-            if n > 0:
-                dq = (mmq-q)/n
-                for a in res.atoms:
-                    if a.idx in self.frag.atomsel:
-                        if a.epsilon > 0.001:
-                            for i in range(len(self.charge_data[a.idx])):
-                                self.charge_data[a.idx][i] += dq
-
-
-    def preserve_mm_charges_by_shifting(self,mm_mask):
-        """ Preserve the MM charges by shifting 
-        
-        Parameters
-        ----------
-        mm_mask : str
-            The mask for the MM charges
-        
-        """
-        reset_sele = parmhelper.GetSelectedAtomIndices(self.parm,mm_mask)
-        for res in self.parm.residues:
-            mmq = 0.
-            q   = 0.
-            n   = 0
-            for a in res.atoms:
-                mmq += self.mmcharges[a.idx]
-                if a.idx in self.frag.atomsel:
                     if a.idx in reset_sele:
-                        self.charge_data[a.idx] = [ self.mmcharges[a.idx] ]
+                        self.charge_data[a.idx] = [self.mmcharges[a.idx]]
                         avg = self.mmcharges[a.idx]
                     else:
-                        avg,std,err = respfunctions.GetAvgStdDevAndErr(self.charge_data[a.idx])
+                        avg, std, err = respfunctions.GetAvgStdDevAndErr(
+                            self.charge_data[a.idx]
+                        )
                     q += avg
                     if a.epsilon > 0.001 and a.idx not in reset_sele:
                         n += 1
                 else:
                     q += self.mmcharges[a.idx]
             if n > 0:
-                dq = (mmq-q)/n
+                dq = (mmq - q) / n
                 for a in res.atoms:
                     if a.idx in self.frag.atomsel:
                         if a.epsilon > 0.001 and a.idx not in reset_sele:
                             for i in range(len(self.charge_data[a.idx])):
                                 self.charge_data[a.idx][i] += dq
 
+    def preserve_residue_charges_by_shifting(self):
+        """Preserve the residue charges by shifting."""
+        self._shift_charges_to_preserve_residue_totals()
 
-                                
-                            
-    def print_resp(self,prefix="",fh=sys.stdout):
-        """ Print the RESP charges
-        
+    def preserve_mm_charges_by_shifting(self, mm_mask):
+        """Preserve the MM charges by shifting.
+
+        Parameters
+        ----------
+        mm_mask : str
+            The mask for the MM charges
+        """
+        reset_sele = parmhelper.GetSelectedAtomIndices(self.parm, mm_mask)
+        self._shift_charges_to_preserve_residue_totals(reset_sele=reset_sele)
+
+    def print_resp(self, prefix="", fh=sys.stdout):
+        """Print the RESP charges.
+
         Parameters
         ----------
         prefix : str, optional

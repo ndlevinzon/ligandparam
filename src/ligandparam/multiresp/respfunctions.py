@@ -131,6 +131,34 @@ def GetAtomsBondedToIdx(parm, idx, adjacency=None):
     return adjacency.get(idx, [])
 
 
+def GetEquivNeighbors(
+    parm,
+    sele,
+    *,
+    center_pred,
+    neighbor_pred,
+):
+    """Collect sorted neighbor groups bonded to selected centers.
+
+    For each atom in ``sele`` that passes ``center_pred``, gather bonded atoms
+    that pass ``neighbor_pred``. Groups with more than one neighbor are returned.
+    """
+    adjacency = GetBondAdjacency(parm)
+    groups = []
+    for hvy in sele:
+        if not center_pred(parm.atoms[hvy]):
+            continue
+        neighbors = [
+            bat
+            for bat in GetAtomsBondedToIdx(parm, hvy, adjacency=adjacency)
+            if neighbor_pred(parm.atoms[bat])
+        ]
+        if len(neighbors) > 1:
+            neighbors.sort()
+            groups.append(neighbors)
+    return groups
+
+
 def GetEquivHydrogens(parm, sele):
     """Get the equivalent hydrogens bonded to a given atom.
 
@@ -146,18 +174,12 @@ def GetEquivHydrogens(parm, sele):
     hpairs : list of list of int
         The indices of the equivalent hydrogens.
     """
-    adjacency = GetBondAdjacency(parm)
-    hpairs = []
-    for hvy in sele:
-        if parm.atoms[hvy].atomic_number > 1:
-            hbnds = []
-            for bat in GetAtomsBondedToIdx(parm, hvy, adjacency=adjacency):
-                if parm.atoms[bat].atomic_number == 1:
-                    hbnds.append(bat)
-            if len(hbnds) > 1:
-                hbnds.sort()
-                hpairs.append(hbnds)
-    return hpairs
+    return GetEquivNeighbors(
+        parm,
+        sele,
+        center_pred=lambda atom: atom.atomic_number > 1,
+        neighbor_pred=lambda atom: atom.atomic_number == 1,
+    )
 
 
 def GetEquivNonbridgeOxygens(parm, sele):
@@ -175,18 +197,12 @@ def GetEquivNonbridgeOxygens(parm, sele):
     hpairs : list of list of int
         The indices of the equivalent non-bridge oxygens.
     """
-    adjacency = GetBondAdjacency(parm)
-    hpairs = []
-    for hvy in sele:
-        if parm.atoms[hvy].atomic_number == 15:
-            hbnds = []
-            for bat in GetAtomsBondedToIdx(parm, hvy, adjacency=adjacency):
-                if parm.atoms[bat].type == "O2" or parm.atoms[bat].type == "o2":
-                    hbnds.append(bat)
-            if len(hbnds) > 1:
-                hbnds.sort()
-                hpairs.append(hbnds)
-    return hpairs
+    return GetEquivNeighbors(
+        parm,
+        sele,
+        center_pred=lambda atom: atom.atomic_number == 15,
+        neighbor_pred=lambda atom: atom.type in ("O2", "o2"),
+    )
 
 def GetResidueNameFromAtomIdx(parm,iat,unique_residues):
 #    rname = parm.atoms[iat].residue.name[0].upper()

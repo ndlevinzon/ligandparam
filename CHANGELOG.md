@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Leaner tree / write-once helpers** — dropped facade/`runtime/` sandwich; shared DirLock + console handlers + Gaussian core-budget split + wavefront node IPC live in one place each. SMILES CLI uses ``io.smiles.PDBFromSMILES``. GLOSSARY paths use ``src/ffpopt/...``.
+- **Further DRY** — MCS/PDB atom-name helpers in ``ligandparam.io.smiles`` (stages thin wrappers); ``MakeUniqueParams`` / ``Disang`` bases; shared ``load_wavefront_pickle``; equiv-neighbor + residue charge-shift helpers in multiresp.
 - ligandparam: lazy ``stages`` / ``recipes`` exports; ``recipes.registry.get_recipe``; ``deprecated/`` removed.
 
 ---
