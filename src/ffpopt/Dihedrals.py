@@ -1406,7 +1406,7 @@ class FitInputType(object):
                 x, info = joint_linear_solve_from_caches(self, caches)
                 print(
                     f"[ffpopt] Joint linear initial guess: rank={info['rank']}/"
-                    f"{info['nparam']}, cond≈{info['cond']:.3e}, "
+                    f"{info['nparam']}, cond~={info['cond']:.3e}, "
                     f"npts={info['npts']}"
                 )
                 if info["rank"] >= info["nparam"]:
@@ -1595,7 +1595,7 @@ def joint_design_matrix_from_caches(finp, caches, kcal_per_ev):
     """Build mean-centered design matrix / target for the fixed-geometry NL model.
 
     Columns follow :meth:`FitInputType.get_params` order. Each profile is
-    mean-centered independently so χ² matches :func:`shape_match_delta`.
+    mean-centered independently so chi^2 matches :func:`shape_match_delta`.
     """
     import numpy as np
 
@@ -2011,11 +2011,15 @@ def NonlinearSolve(args,finp):
             f"(npts={A.shape[0]}, nparam={nparam})"
         )
         res = lsq_linear(A, y, bounds=(xlo, xhi), method="bvls")
-        print(res)
+        print(
+            f"[ffpopt] lsq_linear: success={bool(res.success)} "
+            f"status={res.status} cost={float(res.cost):.6e} "
+            f"nit={int(res.nit)} msg={res.message}"
+        )
         finp.set_params(res.x)
-        # One objective evaluation for mfit.*.dat plots / χ² report.
+        # One objective evaluation for mfit.*.dat plots / chi^2 report.
         chisq = DihedFitObjFcn(res.x, finp)
-        print(f"[ffpopt] Final shape-match χ² = {chisq:.6e}")
+        print(f"[ffpopt] Final shape-match chi^2 = {chisq:.6e}")
         return
 
     bounds = [(lo, hi) for lo, hi in zip(xlo, xhi)]
@@ -2032,7 +2036,11 @@ def NonlinearSolve(args,finp):
         },
     )
 
-    print(res)
+    print(
+        f"[ffpopt] L-BFGS-B: success={bool(res.success)} "
+        f"nit={getattr(res, 'nit', '?')} "
+        f"fun={float(res.fun):.6e} msg={res.message}"
+    )
     finp.set_params(res.x)
 
 def WriteParmedScript(fname,p,dfcns): #,bytype):

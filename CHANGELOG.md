@@ -17,7 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Startup banner** — CLI / console attach prints the ligandparam ASCII logo, authors, and version at the top of stdout (once per process).
 - **Wavefront pickle path aliases** — ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` re-export ``scan.*`` so checkpoints written before the ``scan/`` move still load.
 - **Install validation suite** — ``python -m unittest tests.test_install_validation -v`` checks packages, CLIs, and core helpers after ``pip install``.
-- **Developer regression suite** — ``python -m unittest tests.test_developer_regression -v`` covers recipe ``setup()`` graphs, logging contracts, Amber bundle I/O, dihed/bond helpers, scission torsions/merge, and ffpopt pure helpers.
+- **Developer regression suite** — ``python -m unittest tests.test_developer_regression -v`` covers recipe ``setup()`` graphs, logging contracts, Amber bundle I/O, dihed/bond helpers, scission torsions/merge, and ffpopt pure helpers. Specialized / duplicate unit tests were removed; these two modules are the supported test entry points.
+- **ASCII fit logs** — dihedral-fit status lines use ``cond~=`` / ``chi^2`` (and concise ``lsq_linear`` summaries) so Windows / latin-1 Slurm logs do not mojibake Unicode.
 
 ### Fixed
 

@@ -72,10 +72,10 @@ policy (``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum``):
 ``loose`` / ``*-loose`` recoveries are treated like soft for spawn. Soft-maxiter
 stays soft. ``--fast`` remains a wall-time trade (coarser Δ, looser converge).
 
-## Dihedral fit χ²
+## Dihedral fit chi^2
 
-GenDihedFit’s objective is a **shape match**: mean-centered HL−LL residual
+GenDihedFit's objective is a **shape match**: mean-centered HL-LL residual
 (``d = (hl - ll) - mean(hl - ll)``). Independent min-shifts of HL and LL are
-not used in χ² (plot files may still min-shift for display). Under fixed
+not used in chi^2 (plot files may still min-shift for display). Under fixed
 geometry, force constants enter linearly and are solved with bounded linear
 least squares (phase fixed at 0).

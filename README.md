@@ -72,17 +72,16 @@ should report `OK` (with possible `skipped` optional tests).
 
 ### Developer regression tests
 
-After changing code under `src/`, run the developer regression suite to catch
-breaks in recipe wiring, logging, I/O contracts, and core helpers:
+After changing code under `src/`, run the developer regression suite:
 
 ```bash
 python -m unittest tests.test_developer_regression -v
 ```
 
-For the full unit battery (wavefront policy, scission screen, geomopt, …):
+Both suites together:
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest tests.test_install_validation tests.test_developer_regression -v
 ```
 
 ### Optional extras
