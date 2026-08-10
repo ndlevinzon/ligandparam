@@ -96,7 +96,7 @@ class StageInitialize(AbstractStage):
         if "ek" in kwargs:
             self.additional_args["ek"] = kwargs["ek"]
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the initialization stage to generate a mol2 file from a PDB file.
 
@@ -118,7 +118,6 @@ class StageInitialize(AbstractStage):
         ValueError
             If the input file type is not supported.
         """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         Remove_PDB_CONECT(self.in_pdb)
         ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
         detect_type = self.in_pdb.suffix.lower()

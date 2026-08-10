@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional,  Union, Any
 
 import requests
-from ligandparam.stages import AbstractStage
+from ligandparam.stages.abstractstage import AbstractStage
 from ligandparam.utils import stderr_redirector
 from rdkit import Chem
 from rdkit.Chem import Mol

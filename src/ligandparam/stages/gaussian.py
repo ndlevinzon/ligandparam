@@ -864,7 +864,7 @@ class StageGaussianRotation(AbstractStage):
                 SimpleXYZ(file_obj, frame)
 
 
-class StageGaussiantoMol2(AbstractStage):
+class StageGaussianToMol2(AbstractStage):
     """
     Convert Gaussian output to mol2 format and assign charges to the mol2 file.
 
@@ -1003,3 +1003,7 @@ class StageGaussiantoMol2(AbstractStage):
             # Write the non-blank lines back to the file
             with open(file_path, "w") as file:
                 file.writelines(non_blank_lines)
+
+
+# Back-compat alias
+StageGaussiantoMol2 = StageGaussianToMol2

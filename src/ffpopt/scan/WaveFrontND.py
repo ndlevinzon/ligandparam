@@ -32,6 +32,24 @@ from ffpopt.GeomOpt import (
 from ffpopt.Constraints import ConstraintList
 from ffpopt.Restraints import RestraintList
 
+from .wavefront_mixins import (
+    apply_slim_node_result,
+    atomic_pickle_dump,
+    clear_los_calc,
+    clone_struct_geometry,
+    ensure_soft_opt_attrs,
+    load_wavefront_pickle,
+    mark_node_failed,
+    maybe_write_success_checkpoint,
+    pickle_load_compat,
+    precheck_geometry_clash,
+    replace_node_with_pickle,
+    run_mp_spawn_drain_loop,
+    slim_node_result,
+    write_node_pickle,
+)
+
+
 
 # Per-process worker state (Pool initializer / MPI bcast).
 _WORKER: dict = {}
@@ -63,30 +81,17 @@ def GetGridNeighbors(bidx, grid, validbins=None):
     return newpts
 
 
-def _clear_los_calc(los: ListOfStruct) -> None:
-    from .wavefront_mixins import clear_los_calc
-
-    clear_los_calc(los)
-
-
 def _init_worker(los, conlist, reslist, template_struct) -> None:
     """Pool/MPI initializer: share los + templates once per worker."""
-    _clear_los_calc(los)
+    clear_los_calc(los)
     _WORKER["los"] = los
     _WORKER["conlist"] = copy.deepcopy(conlist)
     _WORKER["reslist"] = copy.deepcopy(reslist)
     _WORKER["template"] = copy.deepcopy(template_struct)
 
 
-def _clone_struct_geometry(struct, coords, ene=0.0, frcs=None):
-    """Prefer ``Struct.clone_geometry``; fall back to deepcopy for test doubles."""
-    from .wavefront_mixins import clone_struct_geometry
-
-    return clone_struct_geometry(struct, coords, ene=ene, frcs=frcs)
-
-
 def _struct_from_coords(coords) -> Struct:
-    return _clone_struct_geometry(
+    return clone_struct_geometry(
         _WORKER["template"], coords, ene=0.0, frcs=None
     )
 
@@ -241,26 +246,18 @@ class WavefrontNode(object):
 
     def to_result(self) -> dict:
         """Slim result: energy + optimized coords (not ``los`` / full node)."""
-        from .wavefront_mixins import slim_node_result
-
         return slim_node_result(self)
 
     def apply_result(self, result: dict) -> None:
         """Merge a slim worker result into this parent-side node."""
-        from .wavefront_mixins import apply_slim_node_result
-
-        apply_slim_node_result(self, result, clone_fn=_clone_struct_geometry)
+        apply_slim_node_result(self, result, clone_fn=clone_struct_geometry)
 
     def _ensure_soft_opt_attrs(self) -> None:
         """Fill soft-opt fields missing from older node pickles / checkpoints."""
-        from .wavefront_mixins import ensure_soft_opt_attrs
-
         ensure_soft_opt_attrs(self)
 
     def replace_with_pickle(self) -> None:
         """Replace node fields from a sidecar pickle if present (restores ``los``)."""
-        from .wavefront_mixins import replace_node_with_pickle
-
         replace_node_with_pickle(
             self, found_msg=f"EXISTING NODE PICKLE {self.node_pkl}"
         )
@@ -302,8 +299,6 @@ class WavefrontNode(object):
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 self.forces = self.opt_geom.data.get("forces", self.forces)
-                from .wavefront_mixins import maybe_write_success_checkpoint
-
                 maybe_write_success_checkpoint(self)
                 self.complete = True
                 
@@ -314,8 +309,6 @@ class WavefrontNode(object):
 
     def _write_checkpoint(self) -> None:
         """Write the node's data to a pickle file (without ``los``)."""
-        from .wavefront_mixins import write_node_pickle
-
         write_node_pickle(self, verbose=True)
 
     def cleanup(self) -> None:
@@ -329,14 +322,10 @@ class WavefrontNode(object):
                 print(f"Failed to remove {self.node_pkl} because it disappeared")
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
-        from .wavefront_mixins import mark_node_failed
-
         mark_node_failed(self, reason, error, where=self.rcs)
 
     def _precheck_geometry(self, min_dist: float = 0.8) -> Optional[str]:
         """Return a failure reason, or ``None`` if the geometry looks usable."""
-        from .wavefront_mixins import precheck_geometry_clash
-
         def _atoms():
             from ffpopt.Constraints import ApplyConstraints
 
@@ -793,8 +782,6 @@ class Wavefront(object):
             )
 
         from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
-        from .wavefront_mixins import run_mp_spawn_drain_loop
-
         checkpoint_every = wf_checkpoint_every(self.nproc)
         run_mp_spawn_drain_loop(
             pending=pending,
@@ -1107,8 +1094,6 @@ class Wavefront(object):
         if self.los is not None:
             self.los.clear_runtime_caches()
         self._slim_nodes_for_checkpoint()
-        from .wavefront_mixins import atomic_pickle_dump
-
         atomic_pickle_dump(self, self.checkpoint)
         print(f"Checkpoint saved to {self.checkpoint}.")
 
@@ -1540,8 +1525,6 @@ class Wavefront(object):
 
 def wavefront_loader(filename: str) -> Wavefront:
     """Load a Wavefront object from a pickle file (see ``wavefront_mixins``)."""
-    from .wavefront_mixins import load_wavefront_pickle
-
     return load_wavefront_pickle(filename, restore_soft_opt=True)
 
 
@@ -1708,8 +1691,6 @@ def run_dihed_wavefront(
     if starting_checkpoint_path.exists():
         if not is_worker:
             print(f"Checkpoint file {starting_checkpoint_path} exists. Loading previous wavefront run.")
-        from .wavefront_mixins import pickle_load_compat
-
         wf_run = pickle_load_compat(starting_checkpoint_path)
         wf_run.restart_options(
             los,

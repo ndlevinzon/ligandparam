@@ -7,11 +7,7 @@ from typing_extensions import override
 
 from ligandparam.io.smiles import (
     PDBFromSMILES,
-    get_available_names_per_element,
-    get_element_name_and_number,
-    get_mcs_mol,
     normalize_to_reference as normalize_mol_to_reference,
-    pad_atom_name,
 )
 from ligandparam.stages.utilsstages import set_atom_pdb_info
 
@@ -39,8 +35,7 @@ class StageSmilesToPDB(AbstractStage):
             self.normalize_atom_names = False
             self.align = False
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         try:
             builder = PDBFromSMILES(self.resname, self.in_smiles)
             seed = self.random_seed if self.random_seed is not None else 0xF00D
@@ -60,7 +55,13 @@ class StageSmilesToPDB(AbstractStage):
         mol = set_atom_pdb_info(mol, self.resname)
 
         if self.normalize_atom_names:
-            mol = self.normalize_to_reference(mol, self.reference_pdb, self.align)
+            mol = normalize_mol_to_reference(
+                mol,
+                self.reference_pdb,
+                align=self.align,
+                remove_hs=True,
+                logger=self.logger,
+            )
 
         flavor = 0 if self.add_conect else 2
         self.logger.info(f"Writing {self.in_smiles} to {self.out_pdb}")
@@ -69,23 +70,6 @@ class StageSmilesToPDB(AbstractStage):
             Chem.MolToPDBFile(mol, str(self.out_pdb), flavor=flavor)
         except Exception as e:
             self.logger.error(f"Failed to write to  {self.out_pdb}. Got exception: {e}")
-
-    def normalize_to_reference(self, mol: Chem.Mol, reference_pdb: Path, align: bool = False) -> Chem.Mol:
-        """Normalize atom names to a reference PDB (see ``ligandparam.io.smiles``)."""
-        return normalize_mol_to_reference(
-            mol,
-            reference_pdb,
-            align=align,
-            remove_hs=True,
-            logger=self.logger,
-        )
-
-    pad_atom_name = staticmethod(pad_atom_name)
-    get_element_name_and_number = staticmethod(get_element_name_and_number)
-    get_mcs_mol = staticmethod(get_mcs_mol)
-
-    def get_available_names_per_element(self, ref_mol: Chem.Mol, ref_match, mol: Chem.Mol) -> dict[int, list[str]]:
-        return get_available_names_per_element(ref_mol, ref_match, mol)
 
 
 StageSmilestoPDB = StageSmilesToPDB

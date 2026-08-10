@@ -43,9 +43,3 @@ def make_nondaemon_spawn_pool(n_workers: int):
         processes=max(1, int(n_workers)),
         context=NonDaemonSpawnContext(),
     )
-
-
-# Private aliases matching former Workflows names.
-_NonDaemonSpawnProcess = NonDaemonSpawnProcess
-_NonDaemonSpawnContext = NonDaemonSpawnContext
-_make_nondaemon_spawn_pool = make_nondaemon_spawn_pool

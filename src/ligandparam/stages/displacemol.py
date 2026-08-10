@@ -57,7 +57,7 @@ class StageDisplaceMol(AbstractStage):
             self.center = True
         self.add_required(Path(self.in_molecule))
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> np.ndarray:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> np.ndarray:
         """
         Execute the displacement or centering of the molecule.
 

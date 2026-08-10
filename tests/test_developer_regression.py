@@ -182,7 +182,8 @@ class TestRecipeSetupGraphs(unittest.TestCase):
 
     def test_sqmligand_setup(self):
         from ligandparam.recipes.optligand import SQMLigand
-        from ligandparam.stages import DPMinimize, StageInitialize
+        from ligandparam.stages import StageInitialize, StageLazyResp
+        from ligandparam.stages.deepmd import DPMinimize
 
         with tempfile.TemporaryDirectory() as td:
             inp, cwd = self._tmp_recipe_args(td)
@@ -190,8 +191,31 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             recipe.setup()
             types = [type(s) for s in recipe.stages]
             self.assertEqual(types[0], StageInitialize)
-            self.assertIn(DPMinimize, types)
+            self.assertIn(StageLazyResp, types)
+            self.assertNotIn(DPMinimize, types)
             self._assert_tail_parmchk_leap(recipe.stages)
+
+    def test_lazierligand_execute_forwards_overrides(self):
+        """LazierLigand must forward dry_run/nproc/mem (not hardcode 1/1)."""
+        from ligandparam.recipes.lazierligand import LazierLigand
+
+        with tempfile.TemporaryDirectory() as td:
+            inp, cwd = self._tmp_recipe_args(td)
+            recipe = LazierLigand(inp, cwd, net_charge=0, nproc=4, logger="stream")
+            recipe.setup()
+            seen = []
+
+            def _capture(stage):
+                def _exec(*, dry_run=False, nproc=None, mem=None):
+                    seen.append((dry_run, nproc, mem))
+
+                return _exec
+
+            for stage in recipe.stages:
+                stage.execute = _capture(stage)
+            recipe.execute(dry_run=True, nproc=8, mem=16)
+            self.assertTrue(seen)
+            self.assertTrue(all(t == (True, 8, 16) for t in seen))
 
     def test_dihed_correct_appends_twist_stage(self):
         from ligandparam.recipes.freeligand import FreeLigand
@@ -288,6 +312,97 @@ class TestCommonRecipeTail(unittest.TestCase):
             [type(s) for s in stages],
             [StageUpdate, StageParmChk, StageLeap],
         )
+
+    def test_init_normalize_center_and_gaussian_kwargs(self):
+        _require_rdkit(self)
+        from ligandparam.recipes.common import (
+            gaussian_runtime_kwargs,
+            init_normalize_center_stages,
+            rotation_stage_kwargs,
+        )
+        from ligandparam.stages import StageDisplaceMol, StageInitialize, StageNormalizeCharge
+
+        recipe = SimpleNamespace(
+            in_filename=Path("lig.pdb"),
+            cwd=Path("."),
+            net_charge=0,
+            logger=None,
+            kwargs={},
+            nproc=2,
+            mem=4,
+            gaussian_root=None,
+            gauss_exedir=None,
+            gaussian_binary=None,
+            gaussian_scratch=None,
+            force_gaussian_rerun=False,
+            orientation_protocol="so3_n28",
+            theory={"low": "HF/6-31G*", "high": "PBE1PBE/6-31G*"},
+        )
+        stages = init_normalize_center_stages(
+            recipe=recipe,
+            initial_mol2="i.mol2",
+            centered_out="c.mol2",
+        )
+        self.assertEqual(
+            [type(s) for s in stages],
+            [StageInitialize, StageNormalizeCharge, StageDisplaceMol],
+        )
+        gkw = gaussian_runtime_kwargs(recipe)
+        self.assertEqual(gkw["nproc"], 2)
+        self.assertEqual(gkw["mem"], 4)
+        self.assertIn("force_gaussian_rerun", gkw)
+        rkw = rotation_stage_kwargs(recipe)
+        self.assertEqual(rkw["orientation_protocol"], "so3_n28")
+
+
+class TestAbstractStageTemplate(unittest.TestCase):
+    def test_execute_calls_run_and_tracks_new_files(self):
+        from ligandparam.stages.abstractstage import AbstractStage
+
+        class _Tiny(AbstractStage):
+            def _run(self, dry_run=False, nproc=None, mem=None):
+                self.seen = (dry_run, nproc, mem)
+                (self.cwd / "created.txt").write_text("x", encoding="utf-8")
+                return "ok"
+
+        with tempfile.TemporaryDirectory() as td:
+            cwd = Path(td)
+            stage = _Tiny("Tiny", cwd / "in.pdb", cwd, logger=MagicMock())
+            stage.required = []
+            out = stage.execute(dry_run=True, nproc=3, mem=7)
+            self.assertEqual(out, "ok")
+            self.assertEqual(stage.seen, (True, 3, 7))
+            self.assertIn("created.txt", stage.new_files)
+
+
+class TestWavefrontMixinHelpers(unittest.TestCase):
+    def test_precheck_geometry_clash_reports_error(self):
+        from ffpopt.scan.wavefront_mixins import precheck_geometry_clash
+
+        def boom():
+            raise RuntimeError("bad geom")
+
+        err = precheck_geometry_clash(get_atoms=boom, bonds=[], min_dist=0.8)
+        self.assertIsNotNone(err)
+        self.assertIn("precheck_error", err)
+
+    def test_replace_node_with_pickle_noop_when_missing(self):
+        from ffpopt.scan.wavefront_mixins import replace_node_with_pickle
+
+        node = SimpleNamespace(node_pkl=Path("definitely-missing-node.pkl"), node_id=1, los="keep")
+        replace_node_with_pickle(node)
+        self.assertEqual(node.los, "keep")
+
+
+class TestScissionHelpers(unittest.TestCase):
+    def test_safe_name_and_param_key(self):
+        from scission.frcmod import _normalize_param_name_to_key
+        from scission.writers import safe_name
+
+        self.assertEqual(safe_name("foo/bar"), "foo_bar")
+        self.assertIsNone(_normalize_param_name_to_key("not_a_dihe"))
+        key = _normalize_param_name_to_key("LIG_ca-ca-c-o")
+        self.assertEqual(len(key), 4)
 
 
 # ---------------------------------------------------------------------------

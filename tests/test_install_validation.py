@@ -132,9 +132,15 @@ class TestPublicAPISurface(unittest.TestCase):
             "GaussianMinimizeRESP",
             "GaussianRESP",
             "StageGaussianRotation",
+            "StageGaussianToMol2",
             "StageGaussiantoMol2",
         ):
             self.assertTrue(isinstance(getattr(m, name), type), name)
+        self.assertIs(m.StageGaussiantoMol2, m.StageGaussianToMol2)
+
+        if _has_module("rdkit"):
+            pdb_names = importlib.import_module("ligandparam.stages.pdb_names")
+            self.assertIs(pdb_names.PDB_Name_Fixer, pdb_names.StagePdbNameFixer)
 
     def test_gaussian_and_smiles_stages(self):
         if not _has_module("rdkit"):
@@ -194,12 +200,24 @@ class TestPublicAPISurface(unittest.TestCase):
             "ffpopt.runtime.console",
             "ffpopt.runtime.cpu_budget",
             "ffpopt.runtime.fast_wavefront",
+            "ffpopt.runtime.nondaemon_pool",
             "ffpopt.runtime.progress_board",
             "ffpopt.scan.wavefront_mixins",
             "ffpopt.scan.ScanAnalysis",
         )
         for mod in runtime:
             importlib.import_module(mod)
+
+        pool_mod = importlib.import_module("ffpopt.runtime.nondaemon_pool")
+        self.assertTrue(callable(pool_mod.make_nondaemon_spawn_pool))
+
+        writers = importlib.import_module("scission.writers")
+        self.assertEqual(writers.safe_name("a/b c"), "a_b_c")
+        frcmod = importlib.import_module("scission.frcmod")
+        key = frcmod._normalize_param_name_to_key("LIG_ca-c3-c-o")
+        self.assertIsNotNone(key)
+        self.assertEqual(len(key), 4)
+        self.assertEqual(key, frcmod._normalize_dihe_key(key))
 
     def test_scission_public_api(self):
         import scission

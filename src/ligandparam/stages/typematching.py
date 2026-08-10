@@ -80,7 +80,7 @@ class StageUpdate(AbstractStage):
         self.add_required(Path(self.in_mol2))
         self.add_required(Path(self.source_mol2))
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the update of atom types, names, charges, or residue names in a mol2 file.
 
@@ -98,7 +98,6 @@ class StageUpdate(AbstractStage):
         Any
             None
         """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
@@ -196,7 +195,7 @@ class StageMatchAtomNames(AbstractStage):
         self.add_required(Path(self.in_mol2))
         self.add_required(Path(self.source_mol))
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the update of atom names in a mol2 file to match a source structure file.
 

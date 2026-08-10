@@ -62,7 +62,7 @@ class StageLazyResp(AbstractStage):
         else:
             self.additional_args = {}
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute antechamber to convert the Gaussian output to a mol2 file.
 
@@ -133,7 +133,7 @@ class StageMultiRespFit(AbstractStage):
         self.net_charge = kwargs.get("net_charge", 0.0)
         self.expected_gaussian_logs = kwargs.get("expected_gaussian_logs")
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """Run multi-state RESP fitting on the discovered Gaussian logs.
 
         Parameters

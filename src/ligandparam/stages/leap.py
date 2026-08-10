@@ -82,7 +82,7 @@ class StageLeap(AbstractStage):
 
 
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Setup and execute the leap library file generation.
 

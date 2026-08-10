@@ -68,8 +68,7 @@ class StageUpdateCharge(AbstractStage):
 
         return
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         # Supress the inevitable mol2 file warnings.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -157,7 +156,7 @@ class StageNormalizeCharge(AbstractStage):
 
         self.add_required(self.in_mol2)
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the charge normalization stage.
 
@@ -175,7 +174,6 @@ class StageNormalizeCharge(AbstractStage):
         ValueError
             If the charge normalization fails.
         """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.logger.debug("Checking charges")

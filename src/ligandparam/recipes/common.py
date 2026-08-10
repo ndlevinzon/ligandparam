@@ -10,7 +10,7 @@ from ligandparam.stages import (
     StageNormalizeCharge,
     StageDisplaceMol,
     GaussianMinimizeRESP,
-    StageGaussiantoMol2,
+    StageGaussianToMol2,
     StageGaussianRotation,
     StageLazyResp,
     StageMultiRespFit,
@@ -33,6 +33,17 @@ def gaussian_runtime_kwargs(recipe: Any) -> dict:
         "force_gaussian_rerun": recipe.force_gaussian_rerun,
         "logger": recipe.logger,
     }
+
+
+def rotation_stage_kwargs(recipe: Any) -> dict:
+    """Kwargs for StageGaussianRotation (orientation protocol + legacy euler)."""
+    rotation_kwargs = {
+        **recipe.kwargs,
+        "orientation_protocol": recipe.orientation_protocol,
+    }
+    if recipe.orientation_protocol == "legacy_euler":
+        rotation_kwargs.update(legacy_euler_kwargs())
+    return rotation_kwargs
 
 
 def init_normalize_center_stages(
@@ -142,12 +153,7 @@ def free_minimize_resp_rotation_stages(
 ) -> List:
     """FreeLigand path: low min+RESP, high min+GaussiantoMol2, rotation."""
     gkw = gaussian_runtime_kwargs(recipe)
-    rotation_kwargs = {
-        **recipe.kwargs,
-        "orientation_protocol": recipe.orientation_protocol,
-    }
-    if recipe.orientation_protocol == "legacy_euler":
-        rotation_kwargs.update(legacy_euler_kwargs())
+    rotation_kwargs = rotation_stage_kwargs(recipe)
 
     return [
         GaussianMinimizeRESP(
@@ -183,7 +189,7 @@ def free_minimize_resp_rotation_stages(
             **gkw,
             **recipe.kwargs,
         ),
-        StageGaussiantoMol2(
+        StageGaussianToMol2(
             "GrabGaussianCharge",
             main_input=high_log,
             cwd=recipe.cwd,
@@ -218,12 +224,7 @@ def dp_high_resp_rotation_stages(
 ) -> List:
     """DPFreeLigand Gaussian block after DeepMD: high ESP (no min) + rotation."""
     gkw = gaussian_runtime_kwargs(recipe)
-    rotation_kwargs = {
-        **recipe.kwargs,
-        "orientation_protocol": recipe.orientation_protocol,
-    }
-    if recipe.orientation_protocol == "legacy_euler":
-        rotation_kwargs.update(legacy_euler_kwargs())
+    rotation_kwargs = rotation_stage_kwargs(recipe)
 
     return [
         GaussianMinimizeRESP(
@@ -237,7 +238,7 @@ def dp_high_resp_rotation_stages(
             **gkw,
             **recipe.kwargs,
         ),
-        StageGaussiantoMol2(
+        StageGaussianToMol2(
             "GrabGaussianCharge",
             main_input=high_log,
             cwd=recipe.cwd,

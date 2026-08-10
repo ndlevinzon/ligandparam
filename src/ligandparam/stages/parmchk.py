@@ -65,7 +65,7 @@ class StageParmChk(AbstractStage):
         self.out_frcmod = Path(kwargs["out_frcmod"])
         self.net_charge = kwargs.get("net_charge", 0.0)
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """
         Execute the parmchk calculation to obtain the frcmod file.
 

@@ -35,9 +35,6 @@ def safe_name(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("_")
 
 
-_safe_name = safe_name
-
-
 def _atom_name_map(mol: "Chem.Mol") -> dict[str, int]:
     """Map Tripos atom names to RDKit atom indices.
 
@@ -157,7 +154,7 @@ def _write_fragment_drawings(
                 legend=f"{torsion_label} | charge={fragment_net_charge:.3f}",
             )
             drawer.FinishDrawing()
-            out_path = fragment_dir / f"torsion_{_safe_name(torsion_label)}.svg"
+            out_path = fragment_dir / f"torsion_{safe_name(torsion_label)}.svg"
             out_path.write_text(drawer.GetDrawingText())
             torsion_image_paths[torsion_label] = out_path
     except Exception as exc:

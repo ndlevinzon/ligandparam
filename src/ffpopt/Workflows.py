@@ -44,6 +44,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
+from ffpopt.runtime.nondaemon_pool import make_nondaemon_spawn_pool
+
 
 _LOG = logging.getLogger("ffpopt.workflows")
 
@@ -527,7 +529,7 @@ def _run_scans_for_bonds(
     if n_bond_workers == 1:
         raw = [_run_bond_scan_job(job) for job in jobs]
     else:
-        pool = _make_nondaemon_spawn_pool(n_bond_workers)
+        pool = make_nondaemon_spawn_pool(n_bond_workers)
         try:
             raw = pool.map(_run_bond_scan_job, jobs)
         finally:
@@ -1454,9 +1456,6 @@ def _split_fragment_nproc(
     )
 
 
-from ffpopt.runtime.nondaemon_pool import make_nondaemon_spawn_pool as _make_nondaemon_spawn_pool
-
-
 def _slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
     """Drop heavy ``wf_run`` objects so fragment-pool IPC stays picklable."""
     if twist_result is None:
@@ -1928,7 +1927,7 @@ def run_fragmented_dihed_twist_workflow(
                     result["fragment_id"],
                 )
         else:
-            pool = _make_nondaemon_spawn_pool(n_frag_workers)
+            pool = make_nondaemon_spawn_pool(n_frag_workers)
             try:
                 # Unordered so progress logs appear as each fragment finishes;
                 # restore runnable order afterward for stable merge input.

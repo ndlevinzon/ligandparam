@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ligandparam.stages import PDB_Name_Fixer
+from ligandparam.stages import StagePdbNameFixer
 
 
 def set_file_logger(
@@ -97,7 +97,7 @@ def worker(
 
     if reference_pdb is not None:
         logger.info(f"Reference PDB file: {reference_pdb}")
-        fix_pdb_stage = PDB_Name_Fixer(
+        fix_pdb_stage = StagePdbNameFixer(
             f"build_{resname}",
             binder_pdb,
             binder_dir,
