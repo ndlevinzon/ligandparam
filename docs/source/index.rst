@@ -69,6 +69,7 @@ See the examples directory and the pages below for details.
    :hidden:
 
    ./documentation_pages/overview.rst
+   ./documentation_pages/design_philosophy.rst
    ./documentation_pages/installation.rst
    ./documentation_pages/cli.rst
    ./documentation_pages/dihedrals.rst

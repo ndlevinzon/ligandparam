@@ -65,3 +65,7 @@ high-level model (for example ``xtb`` or ``qdpi2``), and write a merged
 ``{label}.dihed.frcmod``. The ``lib`` is left unchanged.
 
 See also :doc:`cli`, :doc:`ffpopt`, and :doc:`scission`.
+
+For how we intend the code to stay maintainable (SOLID, DRY, KISS, YAGNI,
+separation of concerns) and a maintainability score, see
+:doc:`design_philosophy`.
