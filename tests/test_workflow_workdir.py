@@ -220,10 +220,11 @@ class TestSplitFragmentNproc(unittest.TestCase):
             fake_pool.imap_unordered.assert_called_once()
             jobs = fake_pool.imap_unordered.call_args.args[1]
             self.assertEqual(len(jobs), 2)
-            self.assertEqual(jobs[0]["wf_nproc"], 4)
-            self.assertEqual(jobs[1]["wf_nproc"], 4)
+            self.assertTrue(jobs[0]["budget_path"])
+            self.assertEqual(jobs[0]["budget_total"], 8)
             self.assertTrue(jobs[0]["status_path"])
             self.assertTrue((out_dir / "FRAG_STATUS.txt").is_file())
+            self.assertTrue((out_dir / ".cpu_budget.json").is_file())
             fake_pool.close.assert_called_once()
             fake_pool.join.assert_called_once()
             self.assertEqual(result["merged_frcmod"], str(merged.resolve()))

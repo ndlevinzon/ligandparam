@@ -165,7 +165,9 @@ Runtime packages live at [`src/ffpopt`](src/ffpopt/) and
 [`src/scission`](src/scission/) (next to `ligandparam`). After
 `lig-getparam` finishes, run torsion correction in the same session
 (fragmented dihed-twist → merged frcmod; the `.lib` is unchanged). You need
-AmberTools on `PATH` plus an HL model stack (e.g. `xtb` via tblite, or `qdpi2`):
+AmberTools on `PATH` plus an HL model stack (e.g. `xtb` via tblite, or `qdpi2`).
+Fragment workers fair-share `-n` / `nproc` cores via a live lease file and
+reclaim cores from finished fragments at the next scan phase.
 
 ```bash
 lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32

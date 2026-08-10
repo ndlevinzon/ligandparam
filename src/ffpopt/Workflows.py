@@ -811,6 +811,9 @@ def run_dihed_twist_workflow(
     workdir: PathLike | None = None,
     logger: logging.Logger | None = None,
     progress: Callable[[str, str], None] | None = None,
+    cpu_budget_path: PathLike | None = None,
+    budget_owner: str | None = None,
+    budget_total: int | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -901,6 +904,15 @@ def run_dihed_twist_workflow(
         update a live status board. Stages include ``hl_scan``, ``orig_scan``,
         ``compare``, ``fit/...``, ``apply/...``, ``rescan/...``, ``finished``.
         Default is None.
+    cpu_budget_path : path-like, optional
+        Shared :class:`~ffpopt.cpu_budget.CpuBudget` JSON path. When set, each
+        scan phase re-leases cores so finished sibling fragments free capacity
+        for remaining work. Default is None (fixed ``nproc``).
+    budget_owner : str, optional
+        Lease owner id (typically the fragment id). Required with
+        ``cpu_budget_path``.
+    budget_total : int, optional
+        Total cores in the shared budget (defaults to ``nproc``).
     **standard_kwargs
         Forwarded to the wavefront. Accepts anything declared by
         :func:`ffpopt.Options.AddStandardOptions` (``model``, ``mfile``,
@@ -928,6 +940,11 @@ def run_dihed_twist_workflow(
         )
     log = _resolve_logger(logger)
     wd = _as_path(workdir).resolve() if workdir is not None else None
+    nproc = max(1, int(nproc))
+    budget_path = (
+        _as_path(cpu_budget_path).resolve() if cpu_budget_path is not None else None
+    )
+    budget_tot = max(1, int(budget_total if budget_total is not None else nproc))
 
     def _prog(stage: str, detail: str = "") -> None:
         if progress is not None:
@@ -935,6 +952,23 @@ def run_dihed_twist_workflow(
                 progress(stage, detail)
             except Exception:
                 pass
+
+    def _lease_nproc(phase: str) -> int:
+        """Return cores for this scan phase (re-lease when a shared budget exists)."""
+        if budget_path is None or not budget_owner:
+            return nproc
+        from .cpu_budget import CpuBudget
+
+        budget = CpuBudget(budget_path, budget_tot)
+        leased = max(1, int(budget.lease(str(budget_owner))))
+        log.info(
+            "[twist] %s leased %s/%s cores (owner=%s)",
+            phase,
+            leased,
+            budget_tot,
+            budget_owner,
+        )
+        return leased
 
     import argparse
     from types import SimpleNamespace
@@ -984,6 +1018,7 @@ def run_dihed_twist_workflow(
     )
 
     # Common wavefront kwargs, reused on every _run_one_scan call.
+    # ``nproc`` is refreshed per scan phase when a shared CPU budget is used.
     wf_kwargs = dict(
         delta=delta,
         nproc=nproc,
@@ -1005,14 +1040,16 @@ def run_dihed_twist_workflow(
     }
 
     # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
-    _prog("hl_scan", f"model={model} | {len(scans)} bond(s)")
+    phase_nproc = _lease_nproc("hl_scan")
+    wf_kwargs["nproc"] = phase_nproc
+    _prog("hl_scan", f"model={model} | {len(scans)} bond(s) | nproc={phase_nproc}")
     results["scans"].extend(
         _run_scans_for_bonds(
             scans,
             prefix=hlname,
             model=model,
             inp=args.inp,
-            nproc=nproc,
+            nproc=phase_nproc,
             skip_existing=skip_existing,
             workdir=wd,
             logger=log,
@@ -1021,14 +1058,16 @@ def run_dihed_twist_workflow(
     )
 
     # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
-    _prog("orig_scan", f"sander reference | {len(scans)} bond(s)")
+    phase_nproc = _lease_nproc("orig_scan")
+    wf_kwargs["nproc"] = phase_nproc
+    _prog("orig_scan", f"sander reference | {len(scans)} bond(s) | nproc={phase_nproc}")
     results["scans"].extend(
         _run_scans_for_bonds(
             scans,
             prefix="orig",
             model="sander",
             inp=args.inp,
-            nproc=nproc,
+            nproc=phase_nproc,
             skip_existing=skip_existing,
             workdir=wd,
             logger=log,
@@ -1118,14 +1157,19 @@ def run_dihed_twist_workflow(
         )
 
         # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
-        _prog(f"rescan/{citname}", f"sander | {len(scans)} bond(s)")
+        phase_nproc = _lease_nproc(f"rescan/{citname}")
+        wf_kwargs["nproc"] = phase_nproc
+        _prog(
+            f"rescan/{citname}",
+            f"sander | {len(scans)} bond(s) | nproc={phase_nproc}",
+        )
         results["scans"].extend(
             _run_scans_for_bonds(
                 scans,
                 prefix=citname,
                 model="sander",
                 inp=str(_in_workdir(wd, f"{citname}.json")),
-                nproc=nproc,
+                nproc=phase_nproc,
                 skip_existing=skip_existing,
                 workdir=wd,
                 logger=log,
@@ -1435,6 +1479,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
     """Worker entry: prepare + twist one fragment (picklable job dict)."""
     from types import SimpleNamespace
 
+    from .cpu_budget import CpuBudget
     from .fragment_progress import (
         FragmentProgressStore,
         fragment_stdio_to_file,
@@ -1467,20 +1512,30 @@ def _run_fragment_twist_job(job: dict) -> dict:
     frag_log = make_fragment_file_logger(fragment_id, frag_log_path)
     structure_images = _build_structure_image_map(frag_dir, fragment.fit_torsions)
 
+    budget = None
+    budget_path = job.get("budget_path")
+    budget_total = int(job.get("budget_total") or job.get("wf_nproc") or 1)
+    if budget_path:
+        budget = CpuBudget(budget_path, budget_total)
+        leased = max(1, int(budget.lease(fragment_id)))
+    else:
+        leased = max(1, int(job.get("wf_nproc") or 1))
+
     _set(
         status="running",
         stage="prepare",
-        detail=f"{len(bonds)} bond(s) | wf_nproc={job['wf_nproc']}",
+        detail=f"{len(bonds)} bond(s) | nproc={leased}",
         bonds=len(bonds),
         log_path=str(frag_log_path),
     )
     frag_log.info(
-        "[frag-twist] %s: %s bond(s) %s -> running twist in %s (wf_nproc=%s)",
+        "[frag-twist] %s: %s bond(s) %s -> running twist in %s (leased %s/%s cores)",
         fragment_id,
         len(bonds),
         bonds,
         frag_dir,
-        job["wf_nproc"],
+        leased,
+        budget_total,
     )
 
     try:
@@ -1492,9 +1547,16 @@ def _run_fragment_twist_job(job: dict) -> dict:
                 workdir=frag_dir,
             )
             twist_kwargs = dict(job["twist_kwargs"])
-            twist_kwargs["nproc"] = int(job["wf_nproc"])
+            twist_kwargs["nproc"] = int(leased)
             twist_kwargs.pop("logger", None)
             twist_kwargs.pop("progress", None)
+            twist_kwargs.pop("cpu_budget_path", None)
+            twist_kwargs.pop("budget_owner", None)
+            twist_kwargs.pop("budget_total", None)
+            if budget_path:
+                twist_kwargs["cpu_budget_path"] = str(budget_path)
+                twist_kwargs["budget_owner"] = fragment_id
+                twist_kwargs["budget_total"] = budget_total
             twist_result = run_dihed_twist_workflow(
                 inp=start_json,
                 bond=bonds,
@@ -1522,6 +1584,17 @@ def _run_fragment_twist_job(job: dict) -> dict:
         )
         frag_log.exception("[frag-twist] %s: failed", fragment_id)
         raise
+    finally:
+        if budget is not None:
+            try:
+                budget.release(fragment_id)
+                frag_log.info(
+                    "[frag-twist] %s released CPU lease", fragment_id
+                )
+            except Exception:
+                frag_log.exception(
+                    "[frag-twist] %s: failed to release CPU lease", fragment_id
+                )
 
 
 def run_fragmented_dihed_twist_workflow(
@@ -1604,11 +1677,12 @@ def run_fragmented_dihed_twist_workflow(
     nlmaxiter : int, optional
         Forwarded to ``ffpopt-GenDihedFit.py``. Default is 300.
     nproc : int, optional
-        Total CPU workers for the fragmented workflow. Split across
-        fragment-level jobs and per-fragment wavefront pools:
-        ``n_fragment_workers = min(nproc, n_runnable_fragments)`` and
-        ``wf_nproc = max(1, nproc // n_fragment_workers)`` (all ``nproc``
-        go to wavefront when only one fragment runs). Default is 1.
+        Total CPU budget for the fragmented workflow. Caps concurrent
+        fragment workers at ``min(nproc, n_runnable_fragments)``. Per-fragment
+        wavefront ``nproc`` is leased dynamically from a shared
+        ``.cpu_budget.json`` (fair share at job start and again before each
+        scan phase) so finished fragments free cores for remaining work.
+        Default is 1.
     wf_starting_nodes : int, optional
         Wavefront starting nodes. Default is 4.
     wf_num_conformers : int, optional
@@ -1759,9 +1833,16 @@ def run_fragmented_dihed_twist_workflow(
             "no fragments had fittable torsions - nothing to merge"
         )
 
-    n_frag_workers, n_wf = _split_fragment_nproc(nproc, len(runnable))
+    n_frag_workers, _n_wf_hint = _split_fragment_nproc(nproc, len(runnable))
+    budget_path = out_dir_path / ".cpu_budget.json"
+    from .cpu_budget import CpuBudget
+
+    CpuBudget(budget_path, nproc)  # initialize shared lease table
     for job in runnable:
-        job["wf_nproc"] = n_wf
+        job["budget_path"] = str(budget_path)
+        job["budget_total"] = int(nproc)
+        # Hint only; workers lease dynamically from the shared budget.
+        job["wf_nproc"] = max(1, int(nproc // max(1, n_frag_workers)))
 
     from .fragment_progress import FragmentBoardWatcher, FragmentProgressStore
 
@@ -1779,11 +1860,11 @@ def run_fragmented_dihed_twist_workflow(
 
     log.info(
         "[frag-twist] parallel plan: %s fragment(s), nproc=%s -> "
-        "%s fragment worker(s) x wf_nproc=%s",
+        "%s concurrent fragment worker(s); dynamic CPU leases via %s",
         len(runnable),
         nproc,
         n_frag_workers,
-        n_wf,
+        budget_path,
     )
     log.info(
         "[frag-twist] live status board: %s "

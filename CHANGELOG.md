@@ -43,6 +43,7 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 - **Gaussian orientation status board** — FreeLigand / multi-ESP `StageGaussianRotation` writes the same style of board (`gaussianCalcs/ROT_STATUS.txt`) tracking each orientation/angle (`q012` or Euler triple), status, stage (`gaussian` / finished), and log detail while jobs run in parallel.
 - **Slurm-friendly console logging** — per-fragment / recipe `.log` content is teed to stdout (INFO) and stderr (WARNING+) with timestamps and tags (`[ligandparam]`, `[ffpopt]`, `[ffpopt:<fragment_id>]`) so job `.out` / `.err` capture the full trail.
 - **Gaussian resume / `-O`** — Gaussian stages skip logs that already show `Normal termination` (including partial multi-orientation ESP resumes). `lig-getparam -O` / `--force-gaussian-rerun` overrides the skip. Incomplete logs are re-run; a complete `gaussianCalcs/*.log` is promoted to the final path when needed.
+- **Dynamic fragment CPU leases** — fragmented dihedral twist no longer freezes `nproc // n_frags` for the whole run. A shared `.cpu_budget.json` fair-shares cores at fragment start and again before each scan phase (`hl_scan` / `orig_scan` / `rescan`), so finished fragments free cores for remaining work.
 
 ---
 
