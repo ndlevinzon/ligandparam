@@ -67,11 +67,6 @@ class TestRecipeRegistry(unittest.TestCase):
             get_recipe("not-a-recipe")
         self.assertIn("Unknown recipe", str(ctx.exception))
 
-    def test_buildligand_not_registered(self):
-        from ligandparam.recipes.registry import available_recipes
-
-        self.assertNotIn("buildligand", available_recipes())
-
 
 class TestRecipeSetupGraphs(unittest.TestCase):
     """Each registered recipe builds a non-empty, ordered stage list."""

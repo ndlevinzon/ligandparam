@@ -25,29 +25,6 @@ class ParamListType(object):
         self.lb_zetascl = 0.1
         self.ub_zetascl = 1.0
 
-    # off = 0
-    # if optq:
-    #     lb[off:off+nfree] = -np.inf
-    #     ub[off:off+nfree] =  np.inf
-    #     off += nfree
-    # if optchempot:
-    #     lb[off:off+npar] = -2.
-    #     ub[off:off+npar] =  0.
-    #     off += npar
-    # if opthardness:
-    #     lb[off:off+npar] =  0.1
-    #     ub[off:off+npar] = 50.00
-    #     xfree[off:off+npar] = mc.GetHardnessFreeParams() * 2
-    #     for i in range(npar):
-    #         xfree[off+i] = min(ub[off+i],max(lb[off+i],xfree[off+i]))
-    #     off += npar
-    # if optzscl:
-    #     lb[off] = 0.1
-    #     ub[off] = 1.
-    #     xfree[off] = 1.
-    #     off += 1
-        
-    # xfree[-1] = 1.
         
         
     def SetOptParamsFromArray(self,x,mc):
@@ -434,23 +411,6 @@ def FixedChargeAndCPEObjective(xfree,mc,params,penfc,skipcpe,return_grad):
                 glb_dpendh[m.paridxs[i]] += mydh[i]
                 glb_dpendu[m.paridxs[i]] += mydu[i]
 
-    # if penfc > 0 and params.opt_q:
-    #     refhardness = np.zeros( (mc.npar,) )
-    #     for m in mc.mols:
-    #         for i,k in enumerate(m.paridxs):
-    #             refhardness[k] = m.refhardness[i]
-    #     for i in range(mc.npar):
-    #         q2             = q0[i]**2
-    #         pen           += 0.5 * penfc * refhardness[i] * q2
-    #         glb_dpendq[i] +=       penfc * refhardness[i] * q0[i]
-    #         if q0[i] > 2.:
-    #             d = q0[i]-2.
-    #             pen += 0.5 * 10. * d*d
-    #             glb_dpendq[i] += 10.*d
-    #         if q0[i] < -1.:
-    #             d = q0[i]+1.
-    #             pen += 0.5 * 10. * d*d
-    #             glb_dpendq[i] += 10.*d
         
                 
 
@@ -494,52 +454,6 @@ def OptimizeHardness(mc,params):
     from scipy.optimize import minimize
     from scipy.optimize import Bounds
 
-    # nfree = mc.nfree
-    # npar = mc.npar
-
-    # optchempot = False
-    # optzscl = True
-    # opthardness = True
-    # optq = False
-    
-    # nparam = 0
-    # if optq:
-    #     nparam += nfree
-    # if optchempot:
-    #     nparam += npar
-    # if opthardness:
-    #     nparam += npar
-    # if optzscl:
-    #     nparam += 1
-    
-    # xfree = np.zeros( (nparam,) )
-
-    # lb = np.zeros( (nparam,) )
-    # ub = np.zeros( (nparam,) )
-
-    # off = 0
-    # if optq:
-    #     lb[off:off+nfree] = -np.inf
-    #     ub[off:off+nfree] =  np.inf
-    #     off += nfree
-    # if optchempot:
-    #     lb[off:off+npar] = -2.
-    #     ub[off:off+npar] =  0.
-    #     off += npar
-    # if opthardness:
-    #     lb[off:off+npar] =  0.1
-    #     ub[off:off+npar] = 50.00
-    #     xfree[off:off+npar] = mc.GetHardnessFreeParams() * 2
-    #     for i in range(npar):
-    #         xfree[off+i] = min(ub[off+i],max(lb[off+i],xfree[off+i]))
-    #     off += npar
-    # if optzscl:
-    #     lb[off] = 0.1
-    #     ub[off] = 1.
-    #     xfree[off] = 1.
-    #     off += 1
-        
-    # xfree[-1] = 1.
 
     xfree,lb,ub = params.GetOptParams(mc)
 
@@ -579,52 +493,6 @@ def OptimizeCPE(mc,params,penfc,skipcpe):
     from scipy.optimize import minimize
     from scipy.optimize import Bounds
 
-    # nfree = mc.nfree
-    # npar = mc.npar
-
-    # optchempot = True
-    # optzscl = True
-    # opthardness = True
-    # optq = False
-    
-    # nparam = 0
-    # if optq:
-    #     nparam += nfree
-    # if optchempot:
-    #     nparam += npar
-    # if opthardness:
-    #     nparam += npar
-    # if optzscl:
-    #     nparam += 1
-    
-    # xfree = np.zeros( (nparam,) )
-
-    # lb = np.zeros( (nparam,) )
-    # ub = np.zeros( (nparam,) )
-
-    # off = 0
-    # if optq:
-    #     lb[off:off+nfree] = -np.inf
-    #     ub[off:off+nfree] =  np.inf
-    #     off += nfree
-    # if optchempot:
-    #     lb[off:off+npar] = -2.
-    #     ub[off:off+npar] =  0.
-    #     off += npar
-    # if opthardness:
-    #     lb[off:off+npar] =  0.1
-    #     ub[off:off+npar] = 50.0
-    #     xfree[off:off+npar] = mc.GetHardnessFreeParams() * 2
-    #     for i in range(npar):
-    #         xfree[off+i] = min(ub[off+i],max(lb[off+i],xfree[off+i]))
-    #     off += npar
-    # if optzscl:
-    #     lb[off] = 0.01
-    #     ub[off] = 1.
-    #     xfree[off] = 1.
-    #     off += 1
-        
-    # xfree[-1] = 1.
 
     xfree,lb,ub = params.GetOptParams(mc)
     
@@ -662,16 +530,6 @@ def OptimizeFixedCharge(mc,params,penfc):
 
     xfree,lb,ub = params.GetOptParams(mc)
     
-    # nfree = mc.nfree
-    # npar = mc.npar
-    # nparam = nfree
-    # xfree = np.zeros( (nparam,) )
-    # lb = np.zeros( (nparam,) )
-    # ub = np.zeros( (nparam,) )
-
-    # off = 0
-    # lb[off:off+nfree] = -np.inf
-    # ub[off:off+nfree] =  np.inf
 
     res = minimize(FixedChargeObjective, xfree,
                    args=(mc,params,penfc),
@@ -704,27 +562,6 @@ def AssignUniqueParams(mols,digits=3,verbose=True):
         offset = 1000 * ( imol + 1 )
         glbids = []
         for i in range(len(atnums)):
-            # if an atom is part of a group, then its id has been shifted
-            # so it is > 100. If it is part of a group, then we prevent it
-            # from being constrained to charges in other molecules.
-            #
-            # Only atoms not part of a group can share parameters with
-            # atoms in other molecules
-            #if atnums[i] > 100:
-            #    atnums[i] += offset
-            #
-            # I am changing the output of get_group_shifted_ids()
-            # so it is no longer an integer; it is now a list of integers,
-            # where the first element is the atomic number, and the
-            # remaining integers flag the group occupancies for that molecule
-            #
-            # I will create a global id string here.
-            # If all group occupancies are zero, then the string will
-            # simply be the atomic number (but as a string)
-            # If at least one occupancy is nonzero, then the molecule
-            # offset is added to the nonzero occupancy, and the string
-            # concatenates the id list separated by underscores.
-            #
             occsum = 0
             if len(atnums[i]) > 1:
                 occsum = sum(atnums[i][1:])
@@ -769,17 +606,6 @@ def AssignUniqueParams(mols,digits=3,verbose=True):
 
 
 def SetUniqueParams(mols,parammap):
-    #
-    # parammap is a list of list
-    # Each row in the list is a unique parameter
-    # Each column in the sublist is a residue:atom name
-    # The first residue:atom name in the sublist is the
-    # name of the unique parameter
-    #
-    # The residue:atom name is stored in the mol.atnames attribute
-    #
-    # The unique global parameter name is stnored in mol.parnames
-    #
     from collections import defaultdict as ddict
     import numpy as np
     
@@ -888,14 +714,6 @@ class MoleculeCollection(object):
         for m in self.mols:
             self.hardness[ m.paridxs ] = m.refhardness
             
-    # def GetHardnessFreeParams(self):
-    #     import numpy as np
-    #     hfree = np.zeros( (self.npar,) )
-    #     for m in self.mols:
-    #         for a in range(len(m.paridxs)):
-    #             k = m.paridxs[a]
-    #             hfree[k] = m.hardness[a]
-    #     return hfree
 
     
     def GetAtomParamsFromFreeParams(self,q):

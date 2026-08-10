@@ -28,7 +28,6 @@ _EXPORTS = {
     "StagePdbNameFixer": ".pdb_names",
     "DPMinimize": ".deepmd",
     "StageDihedTwistCorrection": ".ffpopt_dihed",
-    "StageBuild": ".build_system",
     "StageSageCreate": ".generate_sage_params",
     "StageSageToAmber": ".generate_sage_params",
 }

@@ -20,7 +20,6 @@ enabled (see :doc:`dihedrals`).
    ./stages/parmchk.rst
    ./stages/leap.rst
    ./stages/ffpopt_dihed.rst
-   ./stages/build_system.rst
    ./stages/typematching.rst
 
 .. toctree::
@@ -28,4 +27,3 @@ enabled (see :doc:`dihedrals`).
    :caption: Development Stages:
 
    ./stages/abstractstage.rst
-   ./stages/teststage.rst

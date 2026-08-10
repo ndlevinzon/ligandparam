@@ -1471,57 +1471,6 @@ class Wavefront(object):
         
         
         
-# def find_adjacent_dihedrals(con: Constraint, los: ListOfStruct) -> tuple[list[int], list[int]]:
-#     """ Generates initial conformers based on the initial geometry optimization.
-    
-#     Parameters
-#     ----------
-#     atoms : ase.Atoms
-#         The atoms to optimize.
-#     con : Constraints
-#         The constraints to apply during optimization.
-#     stdargs
-#         The standard arguments for the optimization."""
-    
-#     compare_dih = con.idxs
-#     first = compare_dih[:2]
-#     second = compare_dih[2:]
-#     chosen_first, chosen_second = None, None
-#     mol = los[0].GetParmedAtoms()
-    
-#     for d in mol.dihedrals:
-#         if d.improper:
-#             continue
-#         idxs = [d.atom1.idx, d.atom2.idx, d.atom3.idx, d.atom4.idx]
-#         # Check that neither atom 2 nor atom 3 is a carbon atom with less than 4 bonds
-#         flag_value=False
-#         for atom_idx in [idxs[1], idxs[2]]:
-#             atom = mol.atoms[atom_idx]
-#             # Make sure that the atom is not a carbon with less than 4 bonds or a nitrogen with less than 3 bonds
-#             # if found, it will likely force a planar bond.
-#             if atom.atomic_number == 6 and len(atom.bonds) < 4:
-#                 flag_value=True
-#             if atom.atomic_number == 7 and len(atom.bonds) < 3:
-#                 flag_value=True
-#         if flag_value:
-#             continue
-#         if idxs[1] == first[0] and idxs[2] == first[1]:
-#             chosen_first = idxs
-#         elif idxs[2] == first[0] and idxs[1] == first[1]:
-#             chosen_first = idxs[::-1]
-#         elif idxs[1] == second[0] and idxs[2] == second[1]:
-#             chosen_second = idxs
-#         elif idxs[2] == second[0] and idxs[1] == second[1]:
-#             chosen_second = idxs[::-1]
-#         else:
-#             continue
-#         if chosen_first and chosen_second:
-#             break
-#     if chosen_first is None and chosen_second is None:
-#         print("No adjacent dihedrals found for conformer generation.")
-#     else:
-#         print(chosen_first, chosen_second)
-#     return chosen_first, chosen_second
 
 def wavefront_loader(filename: str) -> Wavefront:
     """Load a Wavefront object from a pickle file (see ``wavefront_mixins``)."""

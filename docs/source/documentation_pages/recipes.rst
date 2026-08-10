@@ -32,5 +32,3 @@ Additional recipes such as :class:`~ligandparam.recipes.DPLigand` and
 
    ./recipes/lazyligand.rst
    ./recipes/freeligand.rst
-   ./recipes/buildligand.rst
-   ./recipes/rnaligand.rst

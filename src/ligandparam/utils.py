@@ -67,62 +67,6 @@ def find_word_and_get_line(filepath: Union[Path, str], word: str):
     return lines_found
 
 
-def modify_gaussian_com(filepath: Path, nproc: int, mem: int):
-    """Update ``%NPROC`` / ``%MEM`` header lines in a Gaussian ``.com`` file.
-
-    Parameters
-    ----------
-    filepath : Path
-        Gaussian input file to modify in place.
-    nproc : int
-        Processor count.
-    mem : int
-        Memory in GB.
-
-    Returns
-    -------
-    bool
-        True if the file was rewritten successfully.
-    """
-    config_line_regex = re.compile(
-    br"%NPROC=\d+(?:, |\r?\n)%MEM=\d+GB"
-    )
-    
-    nproc_bytes = str(nproc).encode()
-    mem_bytes = str(mem).encode()
-    
-    new_line = (
-        b"%NPROC="
-        + nproc_bytes
-        + b"\n%MEM="
-        + mem_bytes
-        + b"GB"
-    )
-
-    with open(filepath, 'r+b') as f:
-        mm = mmap.mmap(f.fileno(), 0)
-        try:
-            output_parts = []
-            last_match_end = 0
-            for match in config_line_regex.finditer(mm):
-                start_index = match.start()
-                end_index = match.end()
-                output_parts.append(mm[last_match_end:start_index])
-                output_parts.append(new_line)
-                last_match_end = end_index
-            output_parts.append(mm[last_match_end:])
-            new_content = b"".join(output_parts)
-
-            mm.close()
-            f.seek(0)
-            f.truncate(0)
-            f.write(new_content)
-            return True
-        finally:
-            if 'mm' in locals() and not mm.closed:
-                mm.close()
-
-
 @contextmanager
 def stderr_redirector(stream):
     """Temporarily redirect C-level stderr into ``stream``.
