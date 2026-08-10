@@ -21,6 +21,37 @@ Editable install for development:
 This installs three packages from ``src/``: ``ligandparam``, ``ffpopt``, and
 ``scission``, plus the CLI entry points listed in :doc:`cli`.
 
+Validate your install
+---------------------
+
+After ``pip install`` / ``pip install -e .``, run the install-validation suite
+(no AmberTools or Gaussian required for the core checks):
+
+.. code-block:: bash
+
+    python -m unittest tests.test_install_validation -v
+
+Optional extras (``tblite``, ``geometric``, AmberTools on ``PATH``) are checked
+when present and skipped with an explicit reason when absent.
+
+Developer regression tests
+--------------------------
+
+After changing code under ``src/``, run:
+
+.. code-block:: bash
+
+    python -m unittest tests.test_developer_regression -v
+
+Both suites:
+
+.. code-block:: bash
+
+    python -m unittest tests.test_install_validation tests.test_developer_regression -v
+
+These two modules are the supported test entry points (recipe wiring, logging,
+I/O contracts, and core helpers).
+
 Optional extras
 ---------------
 

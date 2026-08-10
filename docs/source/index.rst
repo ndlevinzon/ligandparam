@@ -1,14 +1,14 @@
 Welcome to ligandparam's documentation!
 ========================================
 
-``ligandparam`` **1.4** is a modular Python toolkit for Amber ligand
+``ligandparam`` **1.5** is a modular Python toolkit for Amber ligand
 parameterization. Workflows are expressed as **recipes** (ordered lists of
 **stages**) that wrap familiar tools such as Antechamber, Gaussian,
 ``parmchk2``, and LEaP.
 
 The repository also ships two integrated companion packages under ``src/``:
 
-* ``ffpopt`` — post-hoc torsion (dihedral) fitting
+* ``ffpopt`` — post-hoc torsion (dihedral) fitting (``runtime/``, ``scan/``, …)
 * ``scission`` — Amber-aware ligand fragmentation for torsion scans
 
 Quick start
@@ -42,7 +42,7 @@ Same-session CLI (parameterize, then optional torsion correction)
 .. code-block:: bash
 
    lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand -c 0 -n 10 -mem 32
-   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
 
 ``--label`` is the recipe file stem (from the input filename). Fragmentation
 alone is available via ``lig-scission`` / ``scission``.

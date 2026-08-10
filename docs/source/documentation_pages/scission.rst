@@ -36,6 +36,11 @@ Merge fitted fragment frcmods:
        --out LIG.merged.frcmod \
        --fragments-root frags
 
+When collecting a fragment's contribution, DIHE lines are accumulated from
+**all** ``itXX.frcmod`` files in order (drop-mode survivors from earlier
+iterations are kept unless a later file explicitly refits the same key).
+Parent merge still applies scanned-vs-unscanned conflict rules.
+
 Requirements
 ------------
 

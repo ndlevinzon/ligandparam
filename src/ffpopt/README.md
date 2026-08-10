@@ -21,7 +21,9 @@ under ``scan/``).
 | ``ase/``, ``cpefit/``, ``confsearch/``, ``constants/``, ``scosmo/``, ``bin/`` | Specialty stacks + CLIs |
 
 Root entrypoints use the canonical packages ``ffpopt.runtime.*`` and
-``ffpopt.scan.*`` (no compatibility shims).
+``ffpopt.scan.*``. Thin root modules ``ffpopt.WaveFront`` /
+``ffpopt.WaveFrontND`` re-export ``scan.*`` so older wavefront checkpoints
+still unpickle after the ``scan/`` move.
 
 Primary API for ligandparam integration:
 

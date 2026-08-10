@@ -284,13 +284,22 @@ make html
 
 ```text
 src/
-├── ligandparam/    # Parameterization recipes, stages, CLI
+├── ligandparam/         # Parameterization recipes, stages, CLI
 │   ├── recipes/
-│   ├── stages/     # Includes StageDihedTwistCorrection
-│   ├── cli/        # lig-getparam, lig-dihed-correct, lig-scission, …
+│   ├── stages/          # Includes StageDihedTwistCorrection
+│   ├── cli/             # lig-getparam, lig-dihed-correct, lig-scission, …
+│   ├── io/              # gaussian_io, leap_io, smiles, orientations, …
 │   └── …
-├── ffpopt/         # Torsion optimization (geomopt, wavefront, workflows, …)
-└── scission/       # Integrated ligand fragmentation package
+├── ffpopt/              # Torsion optimization
+│   ├── runtime/         # console, progress boards, CPU budget, --fast
+│   ├── scan/            # WaveFront, WaveFrontND, mixins, ScanAnalysis
+│   ├── Workflows.py, Dihedrals.py, GeomOpt.py, …
+│   └── WaveFront.py     # pickle-compat alias → scan.WaveFront
+└── scission/            # Integrated ligand fragmentation + frcmod merge
+
+tests/
+├── test_install_validation.py    # user install gate
+└── test_developer_regression.py  # developer regression after code changes
 ```
 
 ---
@@ -302,8 +311,9 @@ Issues and pull requests are welcome.
 1. Fork and clone the repository
 2. Create a feature branch
 3. Install in editable mode: `pip install -e ".[docs]"`
-4. Make focused changes with clear commit messages
-5. Open a PR describing *why* the change is needed
+4. Run `python -m unittest tests.test_developer_regression -v`
+5. Make focused changes with clear commit messages
+6. Open a PR describing *why* the change is needed
 
 ### Releasing a new version
 

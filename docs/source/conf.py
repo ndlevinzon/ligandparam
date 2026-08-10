@@ -25,8 +25,8 @@ import ligandparam
 # -- Project information -----------------------------------------------------
 
 project = 'ligandparam'
-copyright = '2024, Zeke Piskulich'
-author = 'Zeke Piskulich, Nate Levinzon, et al.'
+copyright = '2024–2026, Zeke Piskulich, Nate Levinzon, et al.'
+author = 'Zeke Piskulich, Nate Levinzon, German P. Barletta, Timothy J. Giese, et al.'
 
 # The full version, including alpha/beta/rc tags\
 version = ligandparam.__version__

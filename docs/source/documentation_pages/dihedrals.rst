@@ -28,12 +28,20 @@ Pipeline
    merge DIHE by atom type  →  {label}.dihed.frcmod
                                (lib unchanged)
 
+Drop-mode iterations accumulate DIHE from **all** ``itXX.frcmod`` files in
+order so earlier survivors are kept unless a later iteration explicitly
+refits the same key.
+
 CLI
 ---
 
 .. code-block:: bash
 
-   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
+
+``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` applies coarser wavefront / looser
+geomeTRIC presets (wall-time trade). Explicit ``--delta`` and related knobs
+still win when not left at library defaults.
 
 Python stage (also used when ``dihed_correct=True`` on FreeLigand / LazyLigand /
 DPFreeLigand). Recipe kwargs ``dihed_delta`` and ``dihed_fragment_config``
@@ -71,15 +79,31 @@ Avoid ``sander`` as the HL target: that compares the force field to itself.
 
 ``qdpi2`` remains available if you install the DeepMD / qdpi stack.
 
+Fit numerics (shape-match chi^2)
+--------------------------------
+
+GenDihedFit matches **profile shape**, not absolute energy zero:
+
+* Objective: ``d = (hl - ll) - mean(hl - ll)`` (free vertical offset)
+* Fixed-geometry path: analytical torsions + bounded ``lsq_linear``
+* HL/LL scan JSONs are always angle-aligned before fitting
+
+See ``src/ffpopt/README.md`` for the wavefront soft/hard evaluate policy.
+
 geomeTRIC notes
 ---------------
 
-Constrained dihedral scans keep the frozen torsion via geomeTRIC. If the
-optimizer fails twice to invert an IC step, upstream geomeTRIC tries a
+Constrained dihedral scans keep the frozen torsion via geomeTRIC. Constraint
+files use the **target** dihedral (scan step), not the pre-twist snapshot.
+If the optimizer fails twice to invert an IC step, upstream geomeTRIC tries a
 Cartesian recovery that **cannot** keep constraints and raises
 ``Cannot continue a constrained optimization``. ffpopt runs geomeTRIC through
 ``python -m ffpopt.geometric_compat``, which rebuilds the same constrained IC
 system instead of aborting.
+
+Soft / loose recoveries (``soft-maxiter``, ``*-soft``, ``loose``, ``*-loose``)
+may fill the profile but follow the soft spawn policy (seed once; do not
+displace a lower soft min with a worse hard point).
 
 If opts are still unstable:
 
@@ -95,5 +119,6 @@ Requirements
 * Integrated ``ffpopt`` and ``scission`` (installed with ligandparam from ``src/``)
 * AmberTools ``tleap`` on ``PATH`` (scission writes fragment ``parm7`` / ``rst7``)
 * Calculator stack for the chosen ``--model``
+* For ``xtb``: ``pip install ".[tblite,dihed]"``
 
 See :doc:`ffpopt`, :doc:`scission`, and :doc:`cli`.

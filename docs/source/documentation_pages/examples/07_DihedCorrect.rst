@@ -32,10 +32,10 @@ Commands
    # Optional: inspect fragments only
    lig-scission fragment -d CHA3 -r CHA --label chaps
 
-   # Fit torsions (example HL model: xtb)
+   # Fit torsions (example HL model: xtb; --fast for wall-time presets)
    lig-dihed-correct \
        -d CHA3 -r CHA --label chaps \
-       --model xtb -n 10
+       --model xtb -n 10 --fast
 
 Expected files under ``CHA3/CHA/``
 ---------------------------------

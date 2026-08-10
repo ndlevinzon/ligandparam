@@ -5,6 +5,28 @@ ffpopt
 ligandparam uses it for post-parameterization dihedral correction
 (:doc:`dihedrals`).
 
+Package layout
+--------------
+
+.. code-block:: text
+
+   ffpopt/
+   ├── runtime/     # console logging, progress boards, CPU budget, --fast presets
+   ├── scan/        # WaveFront, WaveFrontND, wavefront_mixins, ScanAnalysis
+   ├── Workflows.py
+   ├── Dihedrals.py # GenDihedFit types + shape-match chi^2 / lsq_linear
+   ├── GeomOpt.py
+   ├── WaveFront.py / WaveFrontND.py   # pickle-compat aliases → scan.*
+   └── ase/, cpefit/, confsearch/, …
+
+Canonical imports:
+
+.. code-block:: python
+
+   from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
+   from ffpopt.scan.WaveFront import run_dihed_wavefront
+   from ffpopt.runtime.console import attach_console_handlers
+
 Primary API
 -----------
 
@@ -33,6 +55,31 @@ bonds) is :func:`ffpopt.Workflows.run_dihed_twist_workflow`. Pass
 still work). Scission's ``fit_torsions`` use 1-based indices and are converted
 at the fragmented-workflow boundary via
 :func:`ffpopt.Workflows.bonds0_from_scission_fit_torsions`.
+
+Wavefront evaluate policy
+-------------------------
+
+Profile minima and neighbor spawn share one policy in
+``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum`` (1-D and N-D):
+
+* Soft first-at-bin: store and **spawn once** (coverage seed).
+* Soft improves soft min: update; no spawn.
+* Hard replaces soft only if ``E_hard <= E_soft``.
+* Hard within energy threshold: quiet min update; no spawn.
+* Hard below ``min - threshold``: update and spawn.
+
+``loose`` / ``*-loose`` recoveries are treated like soft for spawn.
+``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` is a wall-time trade (coarser Δ,
+looser converge); it does not change this policy beyond soft/loose handling.
+
+Fit objective (chi^2)
+---------------------
+
+GenDihedFit uses a **shape match**: mean-centered HL−LL residual
+(``d = (hl - ll) - mean(hl - ll)``). Under fixed geometry, force constants
+enter linearly and are solved with bounded ``lsq_linear`` (phase fixed at 0).
+Status lines in logs use ASCII (``cond~=``, ``chi^2``) for Slurm / Windows
+compatibility.
 
 ligandparam wrapper
 -------------------

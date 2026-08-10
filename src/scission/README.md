@@ -20,6 +20,11 @@ lig-scission fragment --mol2 LIG.mol2 --lib LIG.lib --frcmod LIG.frcmod --outdir
 lig-scission fragment -d CHA3 -r CHA --label chaps
 ```
 
+When merging fragment fits back to the parent, DIHE terms are accumulated from
+**all** ``itX.frcmod`` files in each fragment directory (in order). Drop-mode
+survivors from earlier iterations are kept unless a later file explicitly
+refits the same key.
+
 Requires AmberTools (``tleap``) on ``PATH`` for ``parm7``/``rst7`` writing.
 RDKit is already a ligandparam dependency and is used for SMARTS / drawings.
 

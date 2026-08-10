@@ -45,7 +45,11 @@ common confusions with similar terms.
 until neighboring energies agree within a threshold.
 
 **Detail.** Replaces the older sequential forward/reverse `DihedScan` path in
-modern twist workflows. Driven by `ffpopt.WaveFront.run_dihed_wavefront`.
+modern twist workflows. Driven by `ffpopt.scan.WaveFront.run_dihed_wavefront`
+(1-D) or `ffpopt.scan.WaveFrontND` (N-D). Soft/loose recoveries follow
+`evaluate_wavefront_minimum` in `wavefront_mixins` (soft seeds once; hard
+replaces soft only if not higher). Root `ffpopt.WaveFront` is a pickle-compat
+alias for older checkpoints.
 
 **Authoritative source.** `src/ffpopt/scan/WaveFront.py`
 
@@ -53,7 +57,7 @@ modern twist workflows. Driven by `ffpopt.WaveFront.run_dihed_wavefront`.
 
 **Definition.** Iterative loop that scans a torsion at high level (HL) and
 with the current Amber force field (LL), fits cosine force constants, applies
-them, and rescans until HL≈LL or `maxiter` is reached.
+them, and rescans until HL~=LL or `maxiter` is reached.
 
 **Detail.** Exposed as `run_dihed_twist_workflow` (single molecule) and
 `run_fragmented_dihed_twist_workflow` (scission fragments + merge).
@@ -78,10 +82,22 @@ profiles match a chosen high-level model along rotatable bonds.
 `qdpi2`); low-level (LL) is the current Amber force field evaluated with
 `sander`.
 
-**Detail.** Fit residuals are HL−LL energy profiles along the scanned
-dihedral. Convergence heuristics can drop bonds that already match.
+**Detail.** Fit residuals are mean-centered HL-LL energy profiles along the
+scanned dihedral (shape match). Convergence heuristics can drop bonds that
+already match.
 
 **Authoritative source.** `src/ffpopt/Workflows.py:run_dihed_twist_workflow`
+
+### Shape-match chi^2
+
+**Definition.** Dihedral-fit objective `d = (hl - ll) - mean(hl - ll)` with a
+free vertical offset (not independent HL/LL min-shifts).
+
+**Detail.** Under fixed geometry, FCs enter linearly and are solved with
+bounded `lsq_linear`. Phase is kept at 0 for this pass.
+
+**Authoritative source.** `src/ffpopt/Dihedrals.py` (`shape_match_delta`,
+`NonlinearSolve`)
 
 ### bytype (global) vs bespoke parameters
 
@@ -101,7 +117,7 @@ per torsion parameter family.
 
 **Detail.** Default is 3 (periods 1, 2, and 3).
 
-**Authoritative source.** `README.md` (GenDihedFit / DihedTwistWorkflow)
+**Authoritative source.** `src/ffpopt/Dihedrals.py` (GenDihedFit / `nprim`)
 
 ## Operational terms
 
@@ -113,6 +129,8 @@ terms back into a parent frcmod.
 
 **Detail.** Inputs are parent `mol2` + `lib` + `frcmod`. Output is
 `merged.frcmod` (+ `.merge_report.json`); the parent `lib` is unchanged.
+Per-fragment merge accumulates DIHE from all `itXX.frcmod` files in order
+(drop-mode survivors retained unless a later iteration refits the same key).
 
 **Authoritative source.** `src/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
 

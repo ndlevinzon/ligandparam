@@ -26,12 +26,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Wavefront evaluate policy** — soft first-at-bin seeds spawn once; quiet min updates within threshold; hard replaces soft only if ``E_hard <= E_soft``; ``loose`` / ``*-loose`` recoveries treated as soft for spawn. Shared helper in ``ffpopt.scan.wavefront_mixins`` (1-D and N-D).
 - **HL/LL angle align** — GenDihedFit always angle-aligns profiles (not only when lengths differ); empty common-angle sets raise.
 - **Drop-mode frcmod merge** — fragment DIHE merge accumulates **all** ``itXX.frcmod`` in order so earlier survivors are kept unless a later file refits the same key.
-- **Dihedral fit χ² / solver** — objective is mean-centered shape match only (invariant to a constant LL offset); joint linear initial guess over all fitted torsions; ``lstsq`` / ``lsq_linear`` for fixed-geometry FC fits (replaces COBYLA); reopt mode uses L-BFGS-B.
+- **Dihedral fit chi^2 / solver** — objective is mean-centered shape match only (invariant to a constant LL offset); joint linear initial guess over all fitted torsions; ``lstsq`` / ``lsq_linear`` for fixed-geometry FC fits (replaces COBYLA); reopt mode uses L-BFGS-B.
 - **Wavefront checkpoints** — atomic pickle writes (``tmp`` + ``os.replace``); N-D ``restart_options`` restores soft-opt attrs like 1-D.
 
 ### Changed
 
-- **Package layout** — ``ffpopt.runtime/`` (console, progress boards, CPU budget, fast presets) and ``ffpopt.scan/`` (WaveFront engines + mixins); no root compatibility shims — import the canonical packages. ligandparam: ``gaussian_io`` / ``leap_io`` / ``smiles_to_pdb``; recipe charge→parmchk→leap tail in ``recipes.common``.
+- **Package layout** — ``ffpopt.runtime/`` (console, progress boards, CPU budget, fast presets) and ``ffpopt.scan/`` (WaveFront engines + mixins); import the canonical packages (root ``WaveFront`` / ``WaveFrontND`` exist only as pickle-compat aliases). ligandparam: ``gaussian_io`` / ``leap_io`` / ``smiles_to_pdb``; recipe charge→parmchk→leap tail in ``recipes.common``.
+- **Docs** — Sphinx overview / installation / ffpopt / dihedrals / scission / CLI updated for 1.5 layout, wavefront policy, shape-match chi^2, cumulative merge, and the two supported test modules.
 - **Further DRY** — MCS/PDB atom-name helpers in ``ligandparam.io.smiles``; StageSmilesToPDB uses ``PDBFromSMILES``; ``MakeUniqueParams`` / ``Disang``; shared ``load_wavefront_pickle``; cpefit/Gaussian budgets via ``split_core_budget``; Reader owns ``FixParmedAtomicNumbers`` / ``ReadMol2``; UFF radius from ``constants``.
 - ligandparam: lazy ``stages`` / ``recipes`` exports (incl. Sage/Build); ``recipes.registry.get_recipe``; ``deprecated/`` removed; deleted redundant ``gaussian_budget.py``.
 
@@ -112,7 +113,7 @@ Targeted wall-time and I/O reductions for HL wavefront scans (especially `--mode
 
 #### GenDihedFit & torsions
 
-- **Fixed-geometry NL cache** — base LL energy once with fitted torsions deleted; each COBYLA step adds analytical torsions (no GeomOpt per iteration). Legacy path: `FFPOPT_DIHED_FIT_REOPT=1`.
+- **Fixed-geometry NL cache** — base LL energy once with fitted torsions deleted; each solver step adds analytical torsions (no GeomOpt per iteration). As of 1.5 the fixed-geom path uses ``lsq_linear`` (not COBYLA). Legacy GeomOpt-per-iter path: `FFPOPT_DIHED_FIT_REOPT=1`.
 - **`bare_potential_energy`** — reuse opt energy by subtracting restraint penalties analytically (drops post-opt single-point SCF on wavefront nodes).
 
 #### Scission / RDKit / graphs

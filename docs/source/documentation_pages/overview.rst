@@ -10,14 +10,26 @@ a concrete step (Gaussian ESP, RESP fitting, Leap, …).
 Repository layout
 -----------------
 
-As of version **1.4**, the installable tree under ``src/`` is:
+As of version **1.5**, the installable tree under ``src/`` is:
 
 .. code-block:: text
 
    src/
-   ├── ligandparam/   # recipes, stages, CLI (lig-getparam, …)
-   ├── ffpopt/        # torsion / dihedral fitting (lig-dihed-correct)
-   └── scission/      # ligand fragmentation (lig-scission / scission)
+   ├── ligandparam/          # recipes, stages, CLI (lig-getparam, …)
+   │   ├── recipes/
+   │   ├── stages/           # includes StageDihedTwistCorrection
+   │   ├── cli/
+   │   ├── io/               # gaussian_io, leap_io, smiles, orientations, …
+   │   └── …
+   ├── ffpopt/               # torsion / dihedral fitting (lig-dihed-correct)
+   │   ├── runtime/          # console, progress boards, CPU budget, --fast
+   │   ├── scan/             # WaveFront, WaveFrontND, wavefront_mixins
+   │   ├── Workflows.py
+   │   ├── Dihedrals.py
+   │   ├── GeomOpt.py
+   │   ├── WaveFront.py      # pickle-compat alias → scan.WaveFront
+   │   └── …
+   └── scission/             # ligand fragmentation (lig-scission / scission)
 
 ``ligandparam`` owns parameterization (charges, typing, baseline
 ``frcmod`` / ``lib``). ``ffpopt`` + ``scission`` own optional **post-hoc**
@@ -25,6 +37,10 @@ torsion correction on that Amber triplet. After ``pip install``, only the
 packages under ``src/`` are used. Optional ``ffpopt-main/`` / ``scission-main/``
 checkouts (often gitignored) are upstream reference trees only — not a runtime
 dependency.
+
+Canonical imports use ``ffpopt.runtime.*`` and ``ffpopt.scan.*``. Thin root
+modules ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` exist only so older
+wavefront checkpoints still unpickle after the ``scan/`` move.
 
 Multi-orientation RESP
 ----------------------
