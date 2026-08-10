@@ -1,3 +1,6 @@
+# Local maintainer / one-off refactor scripts (not part of the install)
+/scripts/
+
 # misc
 nohup.out
 

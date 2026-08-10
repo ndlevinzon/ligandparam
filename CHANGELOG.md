@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Startup banner** — CLI / console attach prints the ligandparam ASCII logo, authors, and version at the top of stdout (once per process).
 - **Wavefront pickle path aliases** — ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` re-export ``scan.*`` so checkpoints written before the ``scan/`` move still load.
+- **Install validation suite** — ``python -m unittest tests.test_install_validation -v`` checks packages, CLIs, and core helpers after ``pip install``.
 
 ### Fixed
 

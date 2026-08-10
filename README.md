@@ -58,6 +58,18 @@ conda activate ligandparam
 pip install .
 ```
 
+### Validate your install
+
+After installing, run the install-validation suite (no AmberTools / Gaussian required):
+
+```bash
+python -m unittest tests.test_install_validation -v
+```
+
+Optional extras (`tblite`, `geometric`, AmberTools on `PATH`) are checked when
+present and skipped with an explicit reason when absent. A clean core install
+should report `OK` (with possible `skipped` optional tests).
+
 ### Optional extras
 
 ```bash
