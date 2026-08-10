@@ -42,7 +42,7 @@ _LAZY = {
     "scan": ".scan",
     "Workflows": ".Workflows",
     "Dihedrals": ".Dihedrals",
-    "WaveFront": ".scan.WaveFront",
+    # WaveFront / WaveFrontND are real pickle-compat modules at package root.
 }
 
 

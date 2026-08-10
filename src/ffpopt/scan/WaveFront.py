@@ -186,9 +186,10 @@ class WavefrontNode:
         if Path.is_file(filename):
             print("Found existing pickle file for node:", self.node_id)
             los = self.los
-            with open(filename, 'rb') as f:
-                loaded_node = pickle.load(f)
-                self.__dict__.update(loaded_node.__dict__)
+            from .wavefront_mixins import pickle_load_compat
+
+            loaded_node = pickle_load_compat(filename)
+            self.__dict__.update(loaded_node.__dict__)
             if self.los is None:
                 self.los = los
             self._ensure_soft_opt_attrs()
@@ -1485,7 +1486,9 @@ def run_dihed_wavefront(
 
     if starting_checkpoint_path.exists():
         print(f"Checkpoint file {starting_checkpoint_path} exists. Loading previous wavefront run.")
-        wf_run = pickle.load(open(starting_checkpoint_path, "rb"))
+        from .wavefront_mixins import pickle_load_compat
+
+        wf_run = pickle_load_compat(starting_checkpoint_path)
         wf_run.restart_options(
             inps,
             max_levels=int(args.wf_max_levels),

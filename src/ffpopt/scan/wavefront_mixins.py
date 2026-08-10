@@ -255,7 +255,14 @@ def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):
 
     Soft-opt restoration matches the 1-D loader behavior and is safe for N-D
     nodes that lack ``_ensure_soft_opt_attrs``.
+
+    Imports pickle-compat aliases (``ffpopt.WaveFront`` / ``WaveFrontND``) so
+    checkpoints written before the ``scan/`` move still resolve.
     """
+    # Side-effect imports: register old module paths for pickle.find_class.
+    import ffpopt.WaveFront  # noqa: F401
+    import ffpopt.WaveFrontND  # noqa: F401
+
     with open(filename, "rb") as f:
         wavefront = pickle.load(f)
     if restore_soft_opt:
@@ -274,3 +281,14 @@ def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):
                 ensure_soft_opt_attrs(node)
     print("Wavefront object loaded from", filename)
     return wavefront
+
+
+def pickle_load_compat(file_or_path):
+    """``pickle.load`` with wavefront module-path aliases registered."""
+    import ffpopt.WaveFront  # noqa: F401
+    import ffpopt.WaveFrontND  # noqa: F401
+
+    if hasattr(file_or_path, "read"):
+        return pickle.load(file_or_path)
+    with open(file_or_path, "rb") as f:
+        return pickle.load(f)
