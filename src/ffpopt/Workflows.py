@@ -1463,6 +1463,38 @@ def _slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
     return slim_twist_result(twist_result)
 
 
+# Sentinel written when a fragment twist finishes successfully. On parent
+# restart with ``skip_existing``, fragments that already have this marker are
+# not re-queued (and therefore do not take a CPU lease).
+_FRAG_TWIST_DONE = "frag-twist.done"
+
+
+def fragment_twist_done_path(frag_dir: PathLike) -> Path:
+    return Path(frag_dir) / _FRAG_TWIST_DONE
+
+
+def is_fragment_twist_done(frag_dir: PathLike) -> bool:
+    """True when a prior successful twist left a completion sentinel."""
+    return fragment_twist_done_path(frag_dir).is_file()
+
+
+def mark_fragment_twist_done(frag_dir: PathLike) -> Path:
+    """Create the completion sentinel for ``frag_dir``."""
+    path = fragment_twist_done_path(frag_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("ok\n", encoding="utf-8")
+    return path
+
+
+def clear_fragment_twist_done(frag_dir: PathLike) -> None:
+    """Remove the completion sentinel (forced recompute)."""
+    path = fragment_twist_done_path(frag_dir)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def _run_fragment_twist_job(job: dict) -> dict:
     """Worker entry: prepare + twist one fragment (picklable job dict)."""
     from types import SimpleNamespace
@@ -1493,6 +1525,27 @@ def _run_fragment_twist_job(job: dict) -> dict:
     def _set(**kwargs):
         if store is not None:
             store.update(fragment_id, **kwargs)
+
+    # Already complete from a prior run: report done without leasing CPUs.
+    if job.get("skip_existing") and is_fragment_twist_done(frag_dir):
+        _set(
+            status="done",
+            stage="finished",
+            detail="skipped (complete)",
+            bonds=len(bonds),
+            log_path=str(frag_log_path),
+        )
+        return {
+            "fragment_id": fragment_id,
+            "dir": str(frag_dir),
+            "bonds": bonds,
+            "twist_result": None,
+            "log_path": str(frag_log_path),
+            "skipped_complete": True,
+        }
+
+    if not job.get("skip_existing"):
+        clear_fragment_twist_done(frag_dir)
 
     def _progress(stage: str, detail: str = "") -> None:
         _set(status="running", stage=stage, detail=detail)
@@ -1555,6 +1608,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
                 **twist_kwargs,
             )
         _set(status="done", stage="finished", detail="ok")
+        mark_fragment_twist_done(frag_dir)
         frag_log.info("[frag-twist] %s: twist workflow finished", fragment_id)
         return {
             "fragment_id": fragment_id,
@@ -1836,6 +1890,8 @@ def run_fragmented_dihed_twist_workflow(
             continue
         bonds = bonds0_from_scission_fit_torsions(fragment.fit_torsions)
         frag_dir = _as_path(fragment.manifest_path).parent.resolve()
+        if not skip_existing:
+            clear_fragment_twist_done(frag_dir)
         runnable.append(
             {
                 "fragment_id": fragment.fragment_id,
@@ -1854,103 +1910,177 @@ def run_fragmented_dihed_twist_workflow(
             "no fragments had fittable torsions - nothing to merge"
         )
 
-    n_frag_workers, _n_wf_hint = _split_fragment_nproc(
-        nproc, len(runnable), prefer_depth=prefer_depth
-    )
+    already_done = []
+    if skip_existing:
+        # Migrate prior runs that finished before frag-twist.done existed:
+        # trust the last progress-board "done" status and write the sentinel.
+        prior_status_path = out_dir_path / ".frag_progress.json"
+        prior_done_ids: set[str] = set()
+        if prior_status_path.is_file():
+            try:
+                from ffpopt.runtime.progress_board import FragmentProgressStore
+
+                prior = FragmentProgressStore(prior_status_path).snapshot()
+                prior_done_ids = {
+                    fid
+                    for fid, entry in prior.items()
+                    if str((entry or {}).get("status") or "").lower() == "done"
+                }
+            except Exception:
+                prior_done_ids = set()
+        for job in runnable:
+            if (
+                job["fragment_id"] in prior_done_ids
+                and not is_fragment_twist_done(job["frag_dir"])
+            ):
+                mark_fragment_twist_done(job["frag_dir"])
+                log.info(
+                    "[frag-twist] %s: prior progress was done - wrote %s",
+                    job["fragment_id"],
+                    _FRAG_TWIST_DONE,
+                )
+
+        pending = []
+        for job in runnable:
+            if is_fragment_twist_done(job["frag_dir"]):
+                already_done.append(job)
+            else:
+                pending.append(job)
+        if already_done:
+            log.info(
+                "[frag-twist] %s fragment(s) already complete - not leasing CPUs: %s",
+                len(already_done),
+                ", ".join(j["fragment_id"] for j in already_done),
+            )
+        runnable = pending
+
     budget_path = out_dir_path / ".cpu_budget.json"
     from ffpopt.runtime.cpu_budget import CpuBudget
 
-    CpuBudget(budget_path, nproc)  # initialize shared lease table
-    for job in runnable:
-        job["budget_path"] = str(budget_path)
-        job["budget_total"] = int(nproc)
-        # Hint only; workers lease dynamically from the shared budget.
-        job["wf_nproc"] = max(1, int(nproc // max(1, n_frag_workers)))
+    # Drop stale leases from a prior killed / timed-out parent so finished
+    # owners cannot starve unfinished fragments on restart.
+    CpuBudget(budget_path, nproc, clear_leases=True)
 
     from ffpopt.runtime.progress_board import FragmentBoardWatcher, FragmentProgressStore
 
     status_path = out_dir_path / ".frag_progress.json"
     board_path = out_dir_path / "FRAG_STATUS.txt"
     store = FragmentProgressStore(status_path)
-    for job in runnable:
-        job["status_path"] = str(status_path)
+    for job in already_done:
         store.register(
             job["fragment_id"],
             bonds=len(job["bonds"]),
             frag_dir=job["frag_dir"],
             log_path=str(Path(job["frag_dir"]) / "frag-twist.log"),
         )
+        store.update(
+            job["fragment_id"],
+            status="done",
+            stage="finished",
+            detail="skipped (complete)",
+        )
 
-    log.info(
-        "[frag-twist] parallel plan: %s fragment(s), nproc=%s -> "
-        "%s concurrent fragment worker(s)%s; dynamic CPU leases via %s",
-        len(runnable),
-        nproc,
-        n_frag_workers,
-        " (prefer wf depth)" if prefer_depth else "",
-        budget_path,
-    )
-    log.info(
-        "[frag-twist] live status board: %s "
-        "(per-fragment detail: <frag>/frag-twist.log)",
-        board_path,
-    )
-    watcher = FragmentBoardWatcher(
-        store,
-        board_path=board_path,
-        logger=log,
-        interval_sec=5.0,
-        log_root_hint="<out_dir>/<fragment>/frag-twist.log",
-    )
-    watcher.start()
-    try:
-        if n_frag_workers == 1:
-            per_fragment_results = []
-            for i, job in enumerate(runnable, start=1):
-                result = _run_fragment_twist_job(job)
-                per_fragment_results.append(result)
-                log.info(
-                    "[frag-twist] fragment job finished (%s/%s): %s",
-                    i,
-                    len(runnable),
-                    result["fragment_id"],
-                )
-        else:
-            pool = make_nondaemon_spawn_pool(n_frag_workers)
-            try:
-                # Unordered so progress logs appear as each fragment finishes;
-                # restore runnable order afterward for stable merge input.
-                by_id: dict[str, dict] = {}
-                finished = 0
-                for result in pool.imap_unordered(
-                    _run_fragment_twist_job, runnable
-                ):
-                    finished += 1
-                    by_id[result["fragment_id"]] = result
+    per_fragment_results = [
+        {
+            "fragment_id": j["fragment_id"],
+            "dir": j["frag_dir"],
+            "bonds": j["bonds"],
+            "twist_result": None,
+            "skipped_complete": True,
+        }
+        for j in already_done
+    ]
+
+    if not runnable:
+        log.info(
+            "[frag-twist] all %s fragment(s) already complete - skipping twist pool",
+            len(already_done),
+        )
+    else:
+        n_frag_workers, _n_wf_hint = _split_fragment_nproc(
+            nproc, len(runnable), prefer_depth=prefer_depth
+        )
+        for job in runnable:
+            job["budget_path"] = str(budget_path)
+            job["budget_total"] = int(nproc)
+            # Hint only; workers lease dynamically from the shared budget.
+            job["wf_nproc"] = max(1, int(nproc // max(1, n_frag_workers)))
+            job["status_path"] = str(status_path)
+            store.register(
+                job["fragment_id"],
+                bonds=len(job["bonds"]),
+                frag_dir=job["frag_dir"],
+                log_path=str(Path(job["frag_dir"]) / "frag-twist.log"),
+            )
+
+        log.info(
+            "[frag-twist] parallel plan: %s unfinished fragment(s)%s, nproc=%s -> "
+            "%s concurrent fragment worker(s)%s; dynamic CPU leases via %s",
+            len(runnable),
+            f" (+{len(already_done)} complete)" if already_done else "",
+            nproc,
+            n_frag_workers,
+            " (prefer wf depth)" if prefer_depth else "",
+            budget_path,
+        )
+        log.info(
+            "[frag-twist] live status board: %s "
+            "(per-fragment detail: <frag>/frag-twist.log)",
+            board_path,
+        )
+        watcher = FragmentBoardWatcher(
+            store,
+            board_path=board_path,
+            logger=log,
+            interval_sec=5.0,
+            log_root_hint="<out_dir>/<fragment>/frag-twist.log",
+        )
+        watcher.start()
+        try:
+            if n_frag_workers == 1:
+                for i, job in enumerate(runnable, start=1):
+                    result = _run_fragment_twist_job(job)
+                    per_fragment_results.append(result)
                     log.info(
                         "[frag-twist] fragment job finished (%s/%s): %s",
-                        finished,
+                        i,
                         len(runnable),
                         result["fragment_id"],
                     )
-                missing = [
-                    j["fragment_id"]
-                    for j in runnable
-                    if j["fragment_id"] not in by_id
-                ]
-                if missing:
-                    raise RuntimeError(
-                        "fragment pool returned incomplete results; missing: "
-                        + ", ".join(missing)
+            else:
+                pool = make_nondaemon_spawn_pool(n_frag_workers)
+                try:
+                    by_id: dict[str, dict] = {}
+                    finished = 0
+                    for result in pool.imap_unordered(
+                        _run_fragment_twist_job, runnable
+                    ):
+                        finished += 1
+                        by_id[result["fragment_id"]] = result
+                        log.info(
+                            "[frag-twist] fragment job finished (%s/%s): %s",
+                            finished,
+                            len(runnable),
+                            result["fragment_id"],
+                        )
+                    missing = [
+                        j["fragment_id"]
+                        for j in runnable
+                        if j["fragment_id"] not in by_id
+                    ]
+                    if missing:
+                        raise RuntimeError(
+                            "fragment pool returned incomplete results; missing: "
+                            + ", ".join(missing)
+                        )
+                    per_fragment_results.extend(
+                        by_id[j["fragment_id"]] for j in runnable
                     )
-                per_fragment_results = [
-                    by_id[j["fragment_id"]] for j in runnable
-                ]
-            finally:
-                pool.close()
-                pool.join()
-    finally:
-        watcher.stop()
+                finally:
+                    pool.close()
+                    pool.join()
+        finally:
+            watcher.stop()
 
     log.info(
         "[frag-twist] all %s fragment twist job(s) finished",

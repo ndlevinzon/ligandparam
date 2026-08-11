@@ -78,7 +78,9 @@ policy (``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum``):
 | Hard, ``E >= min`` | No change | No |
 
 ``loose`` / ``*-loose`` recoveries are treated like soft for spawn. Soft-maxiter
-stays soft. ``--fast`` remains a wall-time trade (coarser Δ, looser converge).
+stays soft. Near-linear constrained torsions use a dedicated
+``linear-torsion`` ASE rescue (also soft for spawn). ``--fast`` remains a
+wall-time trade (coarser Δ, looser converge).
 
 ## Dihedral fit chi^2
 

@@ -49,6 +49,13 @@ def is_geomopt_not_converged(exc: BaseException) -> bool:
     return "failed to converge" in msg or "not converged" in msg
 
 
+def is_linear_torsion_error(exc: BaseException) -> bool:
+    """True for geomeTRIC ``LinearTorsionError`` (re-export for callers)."""
+    from ffpopt.linear_torsion import is_linear_torsion_error as _impl
+
+    return _impl(exc)
+
+
 def calc_cache_key(los, struct) -> tuple:
     """Stable key for reusing the base (unrestrained) calculator across opts.
 
@@ -369,6 +376,10 @@ def run_geometric_robust(
             last = read_last_optim_xyz(att_prefix)
             if last is not None and last.shape == work.get_positions().shape:
                 work.set_positions(last)
+            # Linear torsion is not cured by looser converge / coordsys — stop
+            # the ladder so GeomOpt can run the dedicated ASE rescue.
+            if is_linear_torsion_error(exc):
+                raise
             if i + 1 >= len(attempts):
                 break
             next_label = attempts[i + 1]["label"]

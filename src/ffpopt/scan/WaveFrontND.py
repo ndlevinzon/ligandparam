@@ -288,7 +288,13 @@ class WavefrontNode(object):
                 if self.reslist is not None:
                     rest = self.reslist.rests
 
-                self.opt_geom = GeomOpt(self.los, self.struct, constraints=cons, restraints=rest)
+                self.opt_geom = GeomOpt(
+                    self.los,
+                    self.struct,
+                    constraints=cons,
+                    restraints=rest,
+                    geom_prefix=str(Path(self.node_pkl).with_suffix("")) + "_geom",
+                )
                 # Opt energy already includes a final SCF; strip restraint
                 # penalties analytically (legacy path re-ran SinglePoint bare).
                 self.opt_recovery = opt_recovery_label(self.opt_geom)

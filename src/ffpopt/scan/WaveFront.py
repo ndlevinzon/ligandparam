@@ -195,7 +195,15 @@ class WavefrontNode:
                 self._mark_failed(precheck_err)
                 return
             try:
-                self.opt_geom = GeomOpt(self.los, self.struct, constraints=self.constraints)
+                # Stable geomeTRIC basename beside the node pickle so a killed
+                # mid-minimize can warm-start from ``*_optim.xyz`` on restart.
+                geom_prefix = str(Path(self.node_pkl).with_suffix("")) + "_geom"
+                self.opt_geom = GeomOpt(
+                    self.los,
+                    self.struct,
+                    constraints=self.constraints,
+                    geom_prefix=geom_prefix,
+                )
                 self.opt_recovery = opt_recovery_label(self.opt_geom)
                 self.soft_opt = is_soft_opt_recovery(self.opt_geom)
                 if self.soft_opt:

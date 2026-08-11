@@ -81,7 +81,9 @@ def fair_share_leases(
 class CpuBudget:
     """Process-shared CPU lease table backed by a JSON file."""
 
-    def __init__(self, path: PathLike, total: int) -> None:
+    def __init__(
+        self, path: PathLike, total: int, *, clear_leases: bool = False
+    ) -> None:
         self.path = Path(path)
         self.total = max(1, int(total))
         self.lock_dir = self.path.with_suffix(self.path.suffix + ".lock")
@@ -89,7 +91,11 @@ class CpuBudget:
         with _DirLock(self.lock_dir):
             data = self._read_unlocked()
             data["total"] = self.total
-            data.setdefault("leases", {})
+            if clear_leases:
+                data["leases"] = {}
+            else:
+                data.setdefault("leases", {})
+            data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
             _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
 
     def _read_unlocked(self) -> dict[str, Any]:
@@ -106,6 +112,15 @@ class CpuBudget:
             data["leases"] = {}
         data["total"] = int(data.get("total") or self.total)
         return data
+
+    def clear_leases(self) -> None:
+        """Drop every lease (parent restart after kill / walltime timeout)."""
+        with _DirLock(self.lock_dir):
+            data = self._read_unlocked()
+            data["leases"] = {}
+            data["total"] = self.total
+            data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
 
     def snapshot(self) -> dict[str, Any]:
         """Return ``{total, leases, used, free}``."""

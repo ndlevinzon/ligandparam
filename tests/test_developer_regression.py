@@ -764,6 +764,8 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
         self.assertTrue(is_soft_opt_recovery("loose"))
         self.assertFalse(is_soft_opt_recovery("primary"))
+        self.assertTrue(is_soft_opt_recovery("linear-torsion"))
+        self.assertTrue(is_soft_opt_recovery("linear-torsion-soft"))
         d = evaluate_wavefront_minimum(
             energy=1.0,
             soft=True,
@@ -773,6 +775,65 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             threshold_ev=0.1,
         )
         self.assertEqual(d["reason"], "soft_first_seed")
+
+    def test_linear_torsion_bend_detection_and_unkink(self):
+        """Near-180 deg bend in a constrained dihedral is detected and unkinked."""
+        try:
+            from ase import Atoms
+        except ImportError:
+            self.skipTest("ase required")
+        import numpy as np
+        from ffpopt.Constraints import Constraint
+        from ffpopt.linear_torsion import (
+            find_near_linear_bends,
+            has_near_linear_dihedral_bend,
+            is_linear_torsion_error,
+            log_linear_torsion,
+            unkink_near_linear_bends,
+        )
+
+        # A-B-C nearly linear, C-D off axis -> dihedral A-B-C-D ill-defined.
+        atoms = Atoms(
+            "CCCC",
+            positions=[
+                [0.0, 0.0, 0.0],
+                [1.5, 0.0, 0.0],
+                [3.0, 0.05, 0.0],
+                [3.5, 1.0, 0.0],
+            ],
+        )
+        # Make A-B-C almost linear explicitly.
+        atoms.set_angle(0, 1, 2, 178.8)
+        cons = [Constraint("dihed", [0, 1, 2, 3], value=60.0)]
+        self.assertTrue(has_near_linear_dihedral_bend(atoms, cons))
+        hits = find_near_linear_bends(atoms, cons)
+        self.assertTrue(hits)
+        self.assertGreaterEqual(hits[0]["angle_deg"], 175.0)
+        unkink_near_linear_bends(atoms, hits, target_deg=170.0)
+        self.assertAlmostEqual(atoms.get_angle(0, 1, 2), 170.0, places=1)
+        self.assertFalse(has_near_linear_dihedral_bend(atoms, cons))
+
+        # Log helper emits strict UTF-8 bytes (ASCII message body).
+        msg = "[ffpopt] linear-torsion unkink 1-2-3: 178.80 deg -> 170.00 deg"
+        data = (msg + "\n").encode("utf-8")
+        self.assertEqual(data.decode("utf-8"), msg + "\n")
+        log_linear_torsion(msg)
+
+        class _E(Exception):
+            pass
+
+        class LinearTorsionError(_E):
+            pass
+
+        self.assertTrue(
+            is_linear_torsion_error(
+                LinearTorsionError(
+                    "A constrained torsion has three consecutive atoms "
+                    "forming a nearly linear angle"
+                )
+            )
+        )
+        self.assertFalse(is_linear_torsion_error(ValueError("other")))
 
     def test_wavefront_policy_matrix(self):
         """Lock spawn / update decisions for soft and hard incumbents."""
@@ -869,6 +930,56 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         leases = fair_share_leases(8, ["a", "b", "c"])
         self.assertEqual(sum(leases.values()), 8)
         self.assertEqual(len(leases), 3)
+
+    def test_cpu_budget_clear_leases_on_init(self):
+        from ffpopt.runtime.cpu_budget import CpuBudget
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / ".cpu_budget.json"
+            b = CpuBudget(path, 8)
+            b.lease("fragment_1")
+            b.lease("fragment_2")
+            self.assertGreater(len(b.snapshot()["leases"]), 0)
+            CpuBudget(path, 8, clear_leases=True)
+            self.assertEqual(CpuBudget(path, 8).snapshot()["leases"], {})
+
+    def test_fragment_twist_done_sentinel(self):
+        from ffpopt.Workflows import (
+            clear_fragment_twist_done,
+            is_fragment_twist_done,
+            mark_fragment_twist_done,
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            frag = Path(td) / "fragment_1"
+            frag.mkdir()
+            self.assertFalse(is_fragment_twist_done(frag))
+            mark_fragment_twist_done(frag)
+            self.assertTrue(is_fragment_twist_done(frag))
+            clear_fragment_twist_done(frag)
+            self.assertFalse(is_fragment_twist_done(frag))
+
+    def test_read_last_optim_xyz_warm_start_helper(self):
+        """Interrupted geomopt leaves ``_optim.xyz``; helper reads last frame."""
+        import numpy as np
+        from ffpopt.geometric_inprocess import read_last_optim_xyz, write_plain_xyz
+
+        try:
+            import ase
+            from ase import Atoms
+        except ImportError:
+            self.skipTest("ase required")
+
+        with tempfile.TemporaryDirectory() as td:
+            prefix = Path(td) / "node_geom"
+            atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]])
+            write_plain_xyz(str(prefix) + ".xyz", atoms)
+            atoms2 = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.90]])
+            # geomeTRIC-style trajectory name
+            write_plain_xyz(str(prefix) + "_optim.xyz", atoms2)
+            last = read_last_optim_xyz(prefix)
+            self.assertIsNotNone(last)
+            np.testing.assert_allclose(last[1, 2], 0.90)
 
     def test_split_nproc_for_items(self):
         from ffpopt.runtime.fast_wavefront import split_nproc_for_items

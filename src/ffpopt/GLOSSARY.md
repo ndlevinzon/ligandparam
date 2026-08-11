@@ -140,7 +140,9 @@ Per-fragment merge accumulates DIHE from all `itXX.frcmod` files in order
 of recomputing them.
 
 **Detail.** Enables restart-friendly runs; set False for a fully fresh
-calculation.
+calculation. Fragmented twist also writes ``frag-twist.done`` per fragment so
+completed fragments are not re-queued (and do not take a CPU lease) on parent
+restart. Parent start clears stale entries in ``.cpu_budget.json``.
 
 **Authoritative source.** `src/ffpopt/Workflows.py`
 

@@ -38,9 +38,10 @@ def opt_recovery_label(struct) -> str | None:
 def is_soft_opt_recovery(struct_or_label) -> bool:
     """True for soft-accept / loose recoveries that should not drive hard spawn.
 
-    Soft tags: ``soft-maxiter`` (geomeTRIC) and ASE labels ending in ``-soft``.
-    Loose-but-converged attempts (``loose``, ``dlc-loose``, ``hdlc-loose``, …)
-    are also treated as soft for wavefront spawn policy.
+    Soft tags: ``soft-maxiter`` (geomeTRIC), ``linear-torsion*`` (near-collinear
+    dihedral rescue), and ASE labels ending in ``-soft``. Loose-but-converged
+    attempts (``loose``, ``dlc-loose``, ``hdlc-loose``, …) are also treated as
+    soft for wavefront spawn policy.
     """
     if struct_or_label is None:
         return False
@@ -54,6 +55,8 @@ def is_soft_opt_recovery(struct_or_label) -> bool:
     if low == "soft-maxiter" or low.endswith("-soft"):
         return True
     if low == "loose" or low.endswith("-loose"):
+        return True
+    if low.startswith("linear-torsion"):
         return True
     return False
 
@@ -458,13 +461,21 @@ def _run_geometric_with_watchdog(
         raise RuntimeError(wedge_reason)
 
 
-def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
+def GeomOpt_GEOMETRIC(
+    los, struct, constraints=None, restraints=None, *, geom_prefix=None
+):
     """ Perform a geometry optimization using the GEOMETRIC program.
 
     By default runs geomeTRIC **in-process** with a persistent ASE calculator
     cached on ``los`` (avoids spawning ``python -m ffpopt.geometric_compat``
     per call). Set ``FFPOPT_GEOMETRIC_SUBPROCESS=1`` to restore the legacy
     subprocess + watchdog path.
+
+    When ``geom_prefix`` is set (e.g. beside a wavefront node pickle), geomeTRIC
+    writes ``{prefix}_optim.xyz`` under that basename. An interrupted opt can
+    warm-start from the last trajectory frame on restart (same hook the
+    recovery ladder already uses). Random ``./tmpfiles/tmp.*`` prefixes cannot
+    be rediscovered after a kill.
 
     Parameters
     ----------
@@ -477,6 +488,8 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
         A list of constraints to apply during the optimization. Default is None (no constraints).
     restraints : list of Restraint, optional
         A list of restraints to apply during the optimization. Default is None (no constraints)
+    geom_prefix : path-like, optional
+        Stable basename for geomeTRIC outputs (enables warm restart).
 
     Returns
     -------
@@ -497,30 +510,16 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     from ffpopt.Struct import ListOfStruct
     from ffpopt.geometric_inprocess import (
         get_persistent_calc,
+        read_last_optim_xyz,
         run_geometric_robust,
         use_geometric_subprocess,
     )
+    from ffpopt.linear_torsion import has_near_linear_dihedral_bend
     from tempfile import mkstemp
     from pathlib import Path
 
-    tmpfile_loc = "./tmpfiles"
-    if not Path(tmpfile_loc).is_dir():
-        os.makedirs(tmpfile_loc, exist_ok=True)
-
-    fd,tmpxyz = mkstemp(dir=tmpfile_loc,prefix="tmp.",suffix=".xyz")
-    if not os.isatty(fd):  # Check if fd is still valid
-        os.close(fd)
-
-    tmpbase = str(Path(tmpxyz).with_suffix(""))
-    tmpopt  = tmpbase + "_optim.xyz"
-    tmplog  = tmpbase + ".log"
-    tmpcons = tmpbase + ".cons.inp"
-    tmpdir  = tmpbase + ".tmp"
-    tmpjson = tmpbase + ".json"
-
-    origatoms = struct.GetASEAtoms()
-    myatoms = copy.deepcopy(origatoms)
-
+    # Build constrained geometry first so we can divert to the linear-torsion
+    # rescue *before* allocating geomeTRIC temp files.
     reslist = None
     if struct.restraints is not None:
         if len(struct.restraints.rests) > 0:
@@ -556,15 +555,58 @@ def GeomOpt_GEOMETRIC(los,struct,constraints=None,restraints=None):
     if conslist is None and constraints is not None:
         conslist = ConstraintList( copy.deepcopy(constraints) )
 
+    origatoms = struct.GetASEAtoms()
+    myatoms = copy.deepcopy(origatoms)
+
+    stable_prefix = geom_prefix is not None and str(geom_prefix).strip()
+    if stable_prefix:
+        tmpbase_early = str(Path(geom_prefix))
+        last = read_last_optim_xyz(tmpbase_early)
+        if last is not None and last.shape == myatoms.get_positions().shape:
+            myatoms.set_positions(last)
+            print(f"[ffpopt] warm-start geomopt from {tmpbase_early}_optim.xyz")
+
     cons = None
     target_cons = None
     if conslist is not None:
-        # Target values for the scan step (do not mutate these for the constraint file).
         cons = conslist.FillConstraints(myatoms, force=False)
         target_cons = copy.deepcopy(cons)
-        # Current (pre-twist) values — used for reporting / ApplyConstraints bookkeeping.
         origcons = conslist.FillConstraints(myatoms, force=True)
         myatoms = ApplyConstraints(myatoms, cons, graph=struct.GetGraph())
+
+    if target_cons is not None and has_near_linear_dihedral_bend(myatoms, target_cons):
+        from ffpopt.linear_torsion import log_linear_torsion
+
+        log_linear_torsion(
+            "[ffpopt] near-linear bend in constrained torsion; "
+            "using linear-torsion geomopt"
+        )
+        return GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
+
+    if stable_prefix:
+        tmpbase = str(Path(geom_prefix))
+        Path(tmpbase).parent.mkdir(parents=True, exist_ok=True)
+        tmpxyz = tmpbase + ".xyz"
+        tmpopt = tmpbase + "_optim.xyz"
+        tmplog = tmpbase + ".log"
+        tmpcons = tmpbase + ".cons.inp"
+        tmpdir = tmpbase + ".tmp"
+        tmpjson = tmpbase + ".json"
+    else:
+        tmpfile_loc = "./tmpfiles"
+        if not Path(tmpfile_loc).is_dir():
+            os.makedirs(tmpfile_loc, exist_ok=True)
+
+        fd, tmpxyz = mkstemp(dir=tmpfile_loc, prefix="tmp.", suffix=".xyz")
+        if not os.isatty(fd):  # Check if fd is still valid
+            os.close(fd)
+
+        tmpbase = str(Path(tmpxyz).with_suffix(""))
+        tmpopt = tmpbase + "_optim.xyz"
+        tmplog = tmpbase + ".log"
+        tmpcons = tmpbase + ".cons.inp"
+        tmpdir = tmpbase + ".tmp"
+        tmpjson = tmpbase + ".json"
 
     if conslist is not None:
         with open(tmpcons, "w") as fh:
@@ -854,7 +896,130 @@ def GeomOpt_SinglePoint(los,struct,constraints=None,restraints=None):
 
 
 
-def GeomOpt(los,struct,constraints=None,restraints=None):
+def GeomOpt_LINEAR_TORSION(los, struct, constraints=None, restraints=None):
+    """Geometry opt for constrained dihedrals with near-linear valence bends.
+
+    geomeTRIC cannot define a torsion when A-B-C or B-C-D is ~180 deg. This path:
+
+    1. Detects near-linear bends in frozen dihedrals (>=175 deg).
+    2. Unkinks them to ~170 deg so the torsion is well-defined.
+    3. Re-applies the target dihedral(s).
+    4. Optimizes with ASE ``FixInternals`` holding both the dihedral(s) and the
+       unkinked bend angle(s).
+
+    Tagged ``linear-torsion`` / ``linear-torsion-soft`` (soft for wavefront
+    spawn policy — the geometry is slightly biased off-linear by construction).
+    """
+    import copy
+
+    from ffpopt.Constraints import ApplyConstraints, ConstraintList
+    from ffpopt.Restraints import RestraintList
+    from ffpopt.linear_torsion import (
+        find_near_linear_bends,
+        log_linear_torsion,
+        run_linear_torsion_ase_opt,
+        unkink_near_linear_bends,
+    )
+    from ffpopt.geometric_inprocess import get_persistent_calc
+
+    reslist = None
+    if struct.restraints is not None and len(struct.restraints.rests) > 0:
+        reslist = copy.deepcopy(struct.restraints)
+        if restraints is not None:
+            for b in restraints:
+                found = False
+                for a in reslist.rests:
+                    if a.is_same(b):
+                        a.value = b.value
+                        found = True
+                if not found:
+                    reslist.rests.append(b)
+    if reslist is None and restraints is not None:
+        reslist = RestraintList(copy.deepcopy(restraints))
+
+    conslist = None
+    if struct.constraints is not None and len(struct.constraints) > 0:
+        conslist = copy.deepcopy(struct.constraints)
+        if constraints is not None:
+            for b in constraints:
+                found = False
+                for a in conslist.cons:
+                    if a.is_same(b):
+                        a.value = b.value
+                        found = True
+                if not found:
+                    conslist.cons.append(b)
+    if conslist is None and constraints is not None:
+        conslist = ConstraintList(copy.deepcopy(constraints))
+
+    myatoms = struct.GetASEAtoms()
+    cons = None
+    if conslist is not None:
+        cons = conslist.FillConstraints(myatoms, force=False)
+        myatoms = ApplyConstraints(myatoms, cons, graph=struct.GetGraph())
+
+    bends = find_near_linear_bends(myatoms, cons)
+    if not bends and cons is not None:
+        # Caller may have already unkinked, or LinearTorsionError fired mid-opt
+        # after drifting linear — force-scan dihedral bends anyway at a lower
+        # threshold so we still attempt a rescue.
+        bends = find_near_linear_bends(myatoms, cons, threshold_deg=165.0)
+
+    angle_hold = []
+    if bends:
+        angle_hold = unkink_near_linear_bends(myatoms, bends)
+        # Re-apply dihedral targets after the bend nudge.
+        if cons is not None:
+            myatoms = ApplyConstraints(myatoms, cons, graph=struct.GetGraph())
+    else:
+        log_linear_torsion(
+            "[ffpopt] linear-torsion rescue: no near-linear bends found at "
+            "entry; still attempting ASE FixInternals on dihedrals"
+        )
+
+    dihed_cons = [c for c in (cons or []) if len(getattr(c, "idxs", ())) == 4]
+    if not dihed_cons:
+        raise RuntimeError("linear-torsion rescue invoked without dihedral constraints")
+
+    calc = get_persistent_calc(los, struct, reslist=reslist)
+    strict_tol = float(getattr(los.args, "ase_opt_tol", 0.01))
+    loose_tol = _ase_loose_fmax(strict_tol)
+    max_steps = int(getattr(los.args, "geometric_maxiter", 500) or 500)
+
+    opt_atoms, recovery = run_linear_torsion_ase_opt(
+        myatoms,
+        calc,
+        dihed_cons=dihed_cons,
+        angle_cons=angle_hold,
+        fmax=strict_tol,
+        loose_fmax=loose_tol,
+        max_steps=max_steps,
+    )
+
+    ene = opt_atoms.get_potential_energy()
+    crd = opt_atoms.get_positions()
+    frc = opt_atoms.get_forces()
+    clone = getattr(struct, "clone_geometry", None)
+    if callable(clone):
+        out = clone(coords=crd, ene=ene, frcs=frc)
+    else:
+        out = copy.deepcopy(struct)
+        out.Update(ene, crd, frc)
+    out.data["ase_opt_recovery"] = recovery
+    out.data["geometric_recovery"] = recovery
+    if cons is not None:
+        from ffpopt.Constraints import ConstraintList as _CL
+
+        out.constraints = _CL(cons)
+        out.data["constraints"] = out.constraints.to_list_of_dict()
+    if reslist is not None:
+        out.restraints = reslist
+        out.data["restraints"] = out.restraints.to_list_of_dict()
+    log_linear_torsion(f"[ffpopt] linear-torsion geomopt recovered ({recovery})")
+    return out
+
+
+def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None):
     """ Perform a geometry optimization or single point calculation based on stdargs.
     
     Parameters
@@ -868,12 +1033,15 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
         A list of constraints to apply during the optimization. Default is None (no constraints).
     restraints : list of Restraint, optional
         A list of restraints to apply during the optimization. Default is None (no constraints)
+    geom_prefix : path-like, optional
+        Stable geomeTRIC output basename (warm-restart after interrupt).
 
     Returns
     -------
     ffpopt.Struct.Struct
         The optimized geometry with updated positions, forces, and energy
     """
+    from ffpopt.linear_torsion import is_linear_torsion_error
 
     if los.args.no_opt:
         out = GeomOpt_SinglePoint(los,struct,constraints,restraints)
@@ -881,17 +1049,38 @@ def GeomOpt(los,struct,constraints=None,restraints=None):
         try:
             out = GeomOpt_ASE(los,struct,constraints,restraints)
         except Exception as e:
-            _geomopt_fallback_note("ASE", e, "geomeTRIC")
-            out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
+            if is_linear_torsion_error(e):
+                _geomopt_fallback_note("ASE", e, "linear-torsion")
+                out = GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
+            else:
+                _geomopt_fallback_note("ASE", e, "geomeTRIC")
+                out = GeomOpt_GEOMETRIC(
+                    los, struct, constraints, restraints, geom_prefix=geom_prefix
+                )
     else:
         try:
-            out = GeomOpt_GEOMETRIC(los,struct,constraints,restraints)
+            out = GeomOpt_GEOMETRIC(
+                los, struct, constraints, restraints, geom_prefix=geom_prefix
+            )
         except Exception as e:
-            # geomeTRIC sometimes cannot recover its IC system under frozen
-            # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
-            # watchdog, NotConverged, ...). Fall back to ASE BFGS/LBFGS/FIRE.
-            _geomopt_fallback_note("geomeTRIC", e, "ASE")
-            out = GeomOpt_ASE(los,struct,constraints,restraints)
+            if is_linear_torsion_error(e):
+                _geomopt_fallback_note("geomeTRIC", e, "linear-torsion")
+                out = GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
+            else:
+                # geomeTRIC sometimes cannot recover its IC system under frozen
+                # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
+                # watchdog, NotConverged, ...). Fall back to ASE BFGS/LBFGS/FIRE.
+                _geomopt_fallback_note("geomeTRIC", e, "ASE")
+                try:
+                    out = GeomOpt_ASE(los,struct,constraints,restraints)
+                except Exception as e2:
+                    if is_linear_torsion_error(e2):
+                        _geomopt_fallback_note("ASE", e2, "linear-torsion")
+                        out = GeomOpt_LINEAR_TORSION(
+                            los, struct, constraints, restraints
+                        )
+                    else:
+                        raise
     return out
 
 
