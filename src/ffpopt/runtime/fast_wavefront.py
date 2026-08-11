@@ -47,16 +47,22 @@ def fast_wavefront_enabled(explicit: Optional[bool] = None) -> bool:
 
 
 def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = None) -> bool:
-    """Prefer larger nested wavefront pools over more concurrent fragments.
+    """Prefer larger nested wavefront pools over more concurrent outer jobs.
 
-    Default on for XTB-like HL models when fast mode is on, or when
-    ``FFPOPT_PREF_WF_DEPTH=1``.
+    Default on for:
+
+    * ``FFPOPT_PREF_WF_DEPTH=1``
+    * XTB-like HL models when fast mode is on
+    * ``sander`` / Amber MM (LL orig/rescan): wavefront drain benefits more from
+      inner cores than from nesting a second bond-level spawn pool
     """
     if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
         return True
+    m = (model or "").strip().lower()
+    if m in {"sander", "amber", "mm"} or m.startswith("sander"):
+        return True
     if not fast_wavefront_enabled(fast):
         return False
-    m = (model or "").strip().lower()
     return m in {"xtb", "gfn2-xtb", "gfn2", "tblite"} or m.startswith("xtb")
 
 

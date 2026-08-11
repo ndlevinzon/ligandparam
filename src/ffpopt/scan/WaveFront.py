@@ -473,9 +473,20 @@ class Wavefront:
         dihedral_angles.sort()
         for angle in dihedral_angles[::stride]:
             print(angle)
+            old = self.min_structures[angle]
+            # Re-bind geometry onto the new ListOfStruct template so parm/topology
+            # match the updated theory (critical when seeding itNN from orig).
+            template = los.structs[0] if getattr(los, "structs", None) else self.struct
+            coords = np.asarray(old.data["positions"], dtype=float)
+            clone = getattr(template, "clone_geometry", None)
+            if callable(clone):
+                seeded = clone(coords=coords, ene=0.0, frcs=None)
+            else:
+                seeded = copy.deepcopy(template)
+                seeded.Update(0.0, coords, None)
             new_starting_level.add_node(
-                self.min_structures[angle],
                 los,
+                seeded,
                 self.con,
                 angle=angle,
                 workdir=self.workdir,
@@ -484,6 +495,8 @@ class Wavefront:
         self.min_structures = {}
         self.min_nodes = {}
         self.levels.append(new_starting_level)
+        self.los = los
+        clear_los_calc(los)
         print("Theory changed and new starting level added.")
 
 

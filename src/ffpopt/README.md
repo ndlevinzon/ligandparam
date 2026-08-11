@@ -79,7 +79,10 @@ policy (``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum``):
 
 ``loose`` / ``*-loose`` recoveries are treated like soft for spawn. Soft-maxiter
 stays soft. Near-linear constrained torsions use a dedicated
-``linear-torsion`` ASE rescue (also soft for spawn). ``--fast`` remains a
+``linear-torsion`` ASE rescue (also soft for spawn). Sander / Amber LL
+``orig`` and ``rescan/itNN`` stages default to **ASE-first** (no geomeTRIC
+ladder), prefer wavefront depth when splitting cores, and warm-start
+``itNN`` from the prior LL checkpoint when available. ``--fast`` remains a
 wall-time trade (coarser Δ, looser converge).
 
 ## Dihedral fit chi^2

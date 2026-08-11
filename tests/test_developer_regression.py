@@ -931,6 +931,20 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(sum(leases.values()), 8)
         self.assertEqual(len(leases), 3)
 
+    def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
+        from ffpopt.Workflows import _is_sander_ll_model, _wf_kwargs_for_scan_model
+        from ffpopt.runtime.fast_wavefront import prefer_wavefront_depth
+
+        self.assertTrue(_is_sander_ll_model("sander"))
+        self.assertFalse(_is_sander_ll_model("xtb"))
+        kw = _wf_kwargs_for_scan_model("sander", {"nproc": 4, "delta": 10})
+        self.assertIs(kw["geometric_opt"], False)
+        # Explicit override wins.
+        kw2 = _wf_kwargs_for_scan_model("sander", {"geometric_opt": True})
+        self.assertIs(kw2["geometric_opt"], True)
+        self.assertTrue(prefer_wavefront_depth(model="sander", fast=False))
+        self.assertFalse(prefer_wavefront_depth(model="qdpi2", fast=False))
+
     def test_cpu_budget_clear_leases_on_init(self):
         from ffpopt.runtime.cpu_budget import CpuBudget
 

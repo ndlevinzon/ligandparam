@@ -123,8 +123,15 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
 
     origatoms = struct.GetASEAtoms()
     myatoms = struct.GetASEAtoms()
-    myatoms.calc=los.BuildRestrainedCalc(struct,reslist=reslist)
-    calc = myatoms.calc
+    try:
+        from ffpopt.geometric_inprocess import get_persistent_calc
+
+        calc = get_persistent_calc(los, struct, reslist=reslist)
+    except Exception:
+        myatoms.calc = los.BuildRestrainedCalc(struct, reslist=reslist)
+        calc = myatoms.calc
+    else:
+        myatoms.calc = calc
 
     conslist = None
     if struct.constraints is not None:

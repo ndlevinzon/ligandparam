@@ -381,6 +381,42 @@ def _resolve_scans_and_params(mol, bonds, nprim: int, bytype: bool):
     return scans, params, s_template
 
 
+def _is_sander_ll_model(model: str | None) -> bool:
+    m = (model or "").strip().lower()
+    return m in {"sander", "amber", "mm"} or m.startswith("sander")
+
+
+def _wf_kwargs_for_scan_model(model: str, wf_kwargs: dict) -> dict:
+    """Specialize wavefront kwargs per energy model.
+
+    Sander / Amber MM wavefronts default to ASE-first constrained opts (skip the
+    geomeTRIC recovery ladder) — the dominant wall-time win for ``orig`` /
+    ``rescan/itNN`` stages. Explicit ``geometric_opt=True`` in ``wf_kwargs``
+    still wins.
+    """
+    out = dict(wf_kwargs)
+    if _is_sander_ll_model(model) and "geometric_opt" not in out:
+        out["geometric_opt"] = False
+    return out
+
+
+def _prior_ll_checkpoint_path(
+    *,
+    workdir: Optional[Path],
+    seed_prefix: str | None,
+    idx_str: str,
+) -> Optional[str]:
+    """Path to ``checkpoint_{seed_prefix}_{idx}.pkl`` when present (warm-start)."""
+    if not seed_prefix:
+        return None
+    prior_out = f"{seed_prefix}_{idx_str}.json"
+    prior_ckpt = f"checkpoint_{Path(prior_out).with_suffix('.pkl').name}"
+    path = Path(_in_workdir(workdir, prior_ckpt))
+    if path.is_file():
+        return str(path.resolve())
+    return None
+
+
 def _run_one_scan(
     *,
     inp: str,
@@ -438,12 +474,20 @@ def _run_one_scan(
         dihed_str,
         out_path,
     )
+    scan_kwargs = _wf_kwargs_for_scan_model(model, wf_kwargs)
+    seed_ckpt = scan_kwargs.pop("seed_checkpoint", None)
+    out_ckpt = Path(out_path).parent / f"checkpoint_{Path(out_path).with_suffix('.pkl').name}"
+    if seed_ckpt and not out_ckpt.is_file():
+        # Fresh rescan: warm-start geometries from the prior LL wavefront.
+        scan_kwargs["wf_alt_starting_checkpoint"] = str(seed_ckpt)
+        scan_kwargs["wf_change_theory"] = True
+        log.info("[twist] warm-start from prior LL checkpoint %s", seed_ckpt)
     return run_dihed_wavefront(
         inp=inp_path,
         out=out_path,
         dihed=dihed_str,
         model=model,
-        **wf_kwargs,
+        **scan_kwargs,
     )
 
 
@@ -485,27 +529,45 @@ def _run_scans_for_bonds(
     workdir: Optional[Path],
     logger: logging.Logger | None,
     wf_kwargs: dict,
-    prefer_wf_depth: bool = False,
+    prefer_wf_depth: bool | None = None,
+    seed_prefix: str | None = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Run one wavefront scan per bond, pooling when the core budget allows.
 
     Splits ``nproc`` as ``n_bond_workers × wf_nproc`` (same rule as fragment
     pooling) so concurrent bond scans do not oversubscribe cores.
+
+    When ``seed_prefix`` is set (e.g. ``\"orig\"`` before ``it01``), each bond
+    warm-starts from that prefix's wavefront checkpoint if present.
     """
     log = _resolve_logger(logger)
-    jobs = [
-        {
-            "prefix": prefix,
-            "inp": inp,
-            "model": model,
-            "dihed_idxs": list(scan.idxs),
-            "out": f"{prefix}_{scan.GetIdxStr()}.json",
-            "skip_existing": skip_existing,
-            "workdir": str(workdir) if workdir is not None else None,
-            "wf_kwargs": dict(wf_kwargs),
-        }
-        for scan in scans
-    ]
+    from ffpopt.runtime.fast_wavefront import prefer_wavefront_depth
+
+    if prefer_wf_depth is None:
+        prefer_wf_depth = prefer_wavefront_depth(model=model)
+
+    base_kwargs = _wf_kwargs_for_scan_model(model, wf_kwargs)
+    jobs = []
+    for scan in scans:
+        idx_str = scan.GetIdxStr()
+        job_kwargs = dict(base_kwargs)
+        seed = _prior_ll_checkpoint_path(
+            workdir=workdir, seed_prefix=seed_prefix, idx_str=idx_str
+        )
+        if seed:
+            job_kwargs["seed_checkpoint"] = seed
+        jobs.append(
+            {
+                "prefix": prefix,
+                "inp": inp,
+                "model": model,
+                "dihed_idxs": list(scan.idxs),
+                "out": f"{prefix}_{idx_str}.json",
+                "skip_existing": skip_existing,
+                "workdir": str(workdir) if workdir is not None else None,
+                "wf_kwargs": job_kwargs,
+            }
+        )
     if not jobs:
         return []
 
@@ -517,13 +579,14 @@ def _run_scans_for_bonds(
 
     log.info(
         "[twist] parallel bond scans: prefix=%s, %s bond(s), nproc=%s -> "
-        "%s bond worker(s) x wf_nproc=%s%s",
+        "%s bond worker(s) x wf_nproc=%s%s%s",
         prefix,
         len(jobs),
         nproc,
         n_bond_workers,
         n_wf,
         " (prefer wf depth)" if prefer_wf_depth else "",
+        " (ASE-first)" if base_kwargs.get("geometric_opt") is False else "",
     )
 
     if n_bond_workers == 1:
@@ -1113,7 +1176,6 @@ def run_dihed_twist_workflow(
             workdir=wd,
             logger=log,
             wf_kwargs=wf_kwargs,
-            prefer_wf_depth=False,
         )
     )
 
@@ -1216,7 +1278,7 @@ def run_dihed_twist_workflow(
                 workdir=wd,
                 logger=log,
                 wf_kwargs=wf_kwargs,
-                prefer_wf_depth=False,
+                seed_prefix=ll_prefix,
             )
         )
 
