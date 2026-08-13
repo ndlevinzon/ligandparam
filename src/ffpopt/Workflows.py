@@ -541,10 +541,14 @@ def _run_scans_for_bonds(
     warm-starts from that prefix's wavefront checkpoint if present.
     """
     log = _resolve_logger(logger)
-    from ffpopt.runtime.fast_wavefront import prefer_wavefront_depth
+    from ffpopt.runtime.fast_wavefront import prefer_bond_pool_depth
 
-    if prefer_wf_depth is None:
-        prefer_wf_depth = prefer_wavefront_depth(model=model)
+    prefer_wf_depth = prefer_bond_pool_depth(
+        model=model,
+        nproc=nproc,
+        n_bonds=len(scans),
+        prefer=prefer_wf_depth,
+    )
 
     base_kwargs = _wf_kwargs_for_scan_model(model, wf_kwargs)
     jobs = []
@@ -1054,6 +1058,26 @@ def run_dihed_twist_workflow(
         )
         return leased
 
+    def _release_lease(phase: str) -> None:
+        """Drop this fragment's lease during serial non-scan work so siblings grow."""
+        if budget_path is None or not budget_owner:
+            return
+        from ffpopt.runtime.cpu_budget import CpuBudget
+
+        try:
+            CpuBudget(budget_path, budget_tot).release(str(budget_owner))
+            log.info(
+                "[twist] %s released CPU lease (owner=%s)",
+                phase,
+                budget_owner,
+            )
+        except Exception:
+            log.exception(
+                "[twist] %s: failed to release CPU lease (owner=%s)",
+                phase,
+                budget_owner,
+            )
+
     import argparse
     from types import SimpleNamespace
     from ffpopt.Options import AddStandardOptions
@@ -1142,195 +1166,202 @@ def run_dihed_twist_workflow(
         "early_stopped_at": None,
     }
 
-    # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
-    phase_nproc = _lease_nproc("hl_scan")
-    wf_kwargs["nproc"] = phase_nproc
-    _prog("hl_scan", f"model={model} | {len(scans)} bond(s) | nproc={phase_nproc}")
-    results["scans"].extend(
-        _run_scans_for_bonds(
-            scans,
-            prefix=hlname,
-            model=model,
-            inp=args.inp,
-            nproc=phase_nproc,
-            skip_existing=skip_existing,
-            workdir=wd,
-            logger=log,
-            wf_kwargs=wf_kwargs,
-            prefer_wf_depth=prefer_depth,
-        )
-    )
-
-    # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
-    phase_nproc = _lease_nproc("orig_scan")
-    wf_kwargs["nproc"] = phase_nproc
-    _prog("orig_scan", f"sander reference | {len(scans)} bond(s) | nproc={phase_nproc}")
-    results["scans"].extend(
-        _run_scans_for_bonds(
-            scans,
-            prefix="orig",
-            model="sander",
-            inp=args.inp,
-            nproc=phase_nproc,
-            skip_existing=skip_existing,
-            workdir=wd,
-            logger=log,
-            wf_kwargs=wf_kwargs,
-        )
-    )
-
-    if plot_comparisons:
-        plot_dir = wd if wd is not None else Path(".")
-    else:
-        plot_dir = None
-
-    # ---- 2b. Drop dihedrals that already agree (initial convergence) -----
-    if skip_converged_initial:
-        _prog("compare", "initial HL vs LL")
-        initial = _compare_per_bond(
-            scans, hlname, "orig", compare_config,
-            plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
-        )
-        results["initial_comparisons"] = initial
-        kept_bonds = []
-        for bond, scan in zip(bonds_parsed, scans):
-            idx = scan.GetIdxStr()
-            r = initial[idx]
-            if r.is_close:
-                reason = "flat (HL barrier below threshold)" if r.is_flat \
-                    else "agrees with HL within thresholds"
-                log.info("[twist] %s: %s - dropping from iterative fit", idx, reason)
-            else:
-                kept_bonds.append(bond)
-                reasons = "; ".join(r.reasons) if r.reasons else "extrema disagree"
-                log.info("[twist] %s: refit needed (%s)", idx, reasons)
-        if not kept_bonds:
-            log.info("[twist] all dihedrals already agree - skipping Phase 3")
-            return results
-        if len(kept_bonds) < len(bonds_parsed):
-            scans, params, s_template = _resolve_scans_and_params(
-                mol, kept_bonds, nprim=nprim, bytype=bytype
-            )
-            log.info("[twist] fitting %s of %s dihedrals", len(scans), len(bonds_parsed))
-
-    # ---- 3. Iterative refinement -----------------------------------------
-    for it in range(args.maxiter):
-        pitname = "it%02i" % (it)
-        citname = "it%02i" % (it + 1)
-        parm = origparm if it == 0 else f"{pitname}.parm7"
-        ll_prefix = "orig" if it == 0 else pitname
-
-        # 3a. Write the fit.json input.
-        fit_json = _write_fit_json(
-            citname=citname,
-            scans=scans,
-            params=params,
-            s_template=s_template,
-            hl_prefix=hlname,
-            ll_prefix=ll_prefix,
-            parm=parm,
-            workdir=wd,
-        )
-        results["fit_jsons"].append(fit_json)
-
-        # 3b. GenDihedFit -> itNN.py. FUTURE: replace subprocess with API call.
-        _prog(f"fit/{citname}", "GenDihedFit")
-        _run_gendihedfit(
-            citname,
-            nlmaxiter=args.nlmaxiter,
-            skip_existing=skip_existing,
-            logger=log,
-            workdir=wd,
-        )
-
-        # 3c. Apply fit + PrepareInput. FUTURE: replace subprocess with API calls.
-        _prog(f"apply/{citname}", "apply fit + PrepareInput")
-        _apply_fit_and_prepare(
-            citname=citname,
-            origparm=origparm,
-            inp=args.inp,
-            skip_existing=skip_existing,
-            logger=log,
-            workdir=wd,
-        )
-        results["iterations"].append(
-            {
-                "parm": str(_in_workdir(wd, f"{citname}.parm7")),
-                "json": str(_in_workdir(wd, f"{citname}.json")),
-            }
-        )
-
-        # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
-        phase_nproc = _lease_nproc(f"rescan/{citname}")
+    try:
+        # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
+        phase_nproc = _lease_nproc("hl_scan")
         wf_kwargs["nproc"] = phase_nproc
-        _prog(
-            f"rescan/{citname}",
-            f"sander | {len(scans)} bond(s) | nproc={phase_nproc}",
-        )
+        _prog("hl_scan", f"model={model} | {len(scans)} bond(s) | nproc={phase_nproc}")
         results["scans"].extend(
             _run_scans_for_bonds(
                 scans,
-                prefix=citname,
-                model="sander",
-                inp=str(_in_workdir(wd, f"{citname}.json")),
+                prefix=hlname,
+                model=model,
+                inp=args.inp,
                 nproc=phase_nproc,
                 skip_existing=skip_existing,
                 workdir=wd,
                 logger=log,
                 wf_kwargs=wf_kwargs,
-                seed_prefix=ll_prefix,
+                prefer_wf_depth=prefer_depth,
             )
         )
 
-        # 3e. Per-iteration convergence: compare HL vs itNN per bond.
-        if convergence_mode != "off":
-            iter_cmp = _compare_per_bond(
-                scans, hlname, citname, compare_config,
+        # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
+        phase_nproc = _lease_nproc("orig_scan")
+        wf_kwargs["nproc"] = phase_nproc
+        _prog("orig_scan", f"sander reference | {len(scans)} bond(s) | nproc={phase_nproc}")
+        results["scans"].extend(
+            _run_scans_for_bonds(
+                scans,
+                prefix="orig",
+                model="sander",
+                inp=args.inp,
+                nproc=phase_nproc,
+                skip_existing=skip_existing,
+                workdir=wd,
+                logger=log,
+                wf_kwargs=wf_kwargs,
+            )
+        )
+
+        # Serial compare/fit/apply: free cores so sibling fragments can grow.
+        _release_lease("post_orig_scan")
+
+        if plot_comparisons:
+            plot_dir = wd if wd is not None else Path(".")
+        else:
+            plot_dir = None
+
+        # ---- 2b. Drop dihedrals that already agree (initial convergence) -----
+        if skip_converged_initial:
+            _prog("compare", "initial HL vs LL")
+            initial = _compare_per_bond(
+                scans, hlname, "orig", compare_config,
                 plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
             )
-            results["iteration_comparisons"].append(
-                {"citname": citname, "comparisons": iter_cmp}
-            )
-            converged_idxs = [idx for idx, r in iter_cmp.items() if r.is_close]
-            still_off_idxs = [idx for idx, r in iter_cmp.items() if not r.is_close]
-
-            if not still_off_idxs:
-                # All bonds converged this iteration - break in both modes.
-                log.info("[twist] all dihedrals converged at %s - stopping early", citname)
-                results["early_stopped_at"] = citname
-                break
-
-            if convergence_mode == "drop" and converged_idxs:
-                # Rebuild scans/params/s_template from just the survivors so
-                # the next iteration's fit no longer sees the converged ones.
-                kept_bonds = [
-                    (s.idxs[1], s.idxs[2])
-                    for s in scans
-                    if s.GetIdxStr() in still_off_idxs
-                ]
+            results["initial_comparisons"] = initial
+            kept_bonds = []
+            for bond, scan in zip(bonds_parsed, scans):
+                idx = scan.GetIdxStr()
+                r = initial[idx]
+                if r.is_close:
+                    reason = "flat (HL barrier below threshold)" if r.is_flat \
+                        else "agrees with HL within thresholds"
+                    log.info("[twist] %s: %s - dropping from iterative fit", idx, reason)
+                else:
+                    kept_bonds.append(bond)
+                    reasons = "; ".join(r.reasons) if r.reasons else "extrema disagree"
+                    log.info("[twist] %s: refit needed (%s)", idx, reasons)
+            if not kept_bonds:
+                log.info("[twist] all dihedrals already agree - skipping Phase 3")
+                return results
+            if len(kept_bonds) < len(bonds_parsed):
                 scans, params, s_template = _resolve_scans_and_params(
                     mol, kept_bonds, nprim=nprim, bytype=bytype
                 )
-                log.info(
-                    "[twist] %s: dropping converged (%s); continuing with "
-                    "%s dihedral(s): %s",
-                    citname,
-                    ", ".join(converged_idxs),
-                    len(scans),
-                    ", ".join(still_off_idxs),
-                )
-            else:
-                # all_or_nothing mode (or drop mode with nothing converged) -
-                # just log and continue with the same set.
-                log.info(
-                    "[twist] %s: %s dihedral(s) still need refit: %s",
-                    citname,
-                    len(still_off_idxs),
-                    ", ".join(still_off_idxs),
-                )
+                log.info("[twist] fitting %s of %s dihedrals", len(scans), len(bonds_parsed))
 
-    _prog("finished", "twist workflow complete")
-    return results
+        # ---- 3. Iterative refinement -----------------------------------------
+        for it in range(args.maxiter):
+            pitname = "it%02i" % (it)
+            citname = "it%02i" % (it + 1)
+            parm = origparm if it == 0 else f"{pitname}.parm7"
+            ll_prefix = "orig" if it == 0 else pitname
+
+            # 3a. Write the fit.json input.
+            fit_json = _write_fit_json(
+                citname=citname,
+                scans=scans,
+                params=params,
+                s_template=s_template,
+                hl_prefix=hlname,
+                ll_prefix=ll_prefix,
+                parm=parm,
+                workdir=wd,
+            )
+            results["fit_jsons"].append(fit_json)
+
+            # 3b. GenDihedFit -> itNN.py. FUTURE: replace subprocess with API call.
+            _prog(f"fit/{citname}", "GenDihedFit")
+            _run_gendihedfit(
+                citname,
+                nlmaxiter=args.nlmaxiter,
+                skip_existing=skip_existing,
+                logger=log,
+                workdir=wd,
+            )
+
+            # 3c. Apply fit + PrepareInput. FUTURE: replace subprocess with API calls.
+            _prog(f"apply/{citname}", "apply fit + PrepareInput")
+            _apply_fit_and_prepare(
+                citname=citname,
+                origparm=origparm,
+                inp=args.inp,
+                skip_existing=skip_existing,
+                logger=log,
+                workdir=wd,
+            )
+            results["iterations"].append(
+                {
+                    "parm": str(_in_workdir(wd, f"{citname}.parm7")),
+                    "json": str(_in_workdir(wd, f"{citname}.json")),
+                }
+            )
+
+            # 3d. Sander scans on the updated parm (one per bond, "itNN" prefix).
+            phase_nproc = _lease_nproc(f"rescan/{citname}")
+            wf_kwargs["nproc"] = phase_nproc
+            _prog(
+                f"rescan/{citname}",
+                f"sander | {len(scans)} bond(s) | nproc={phase_nproc}",
+            )
+            results["scans"].extend(
+                _run_scans_for_bonds(
+                    scans,
+                    prefix=citname,
+                    model="sander",
+                    inp=str(_in_workdir(wd, f"{citname}.json")),
+                    nproc=phase_nproc,
+                    skip_existing=skip_existing,
+                    workdir=wd,
+                    logger=log,
+                    wf_kwargs=wf_kwargs,
+                    seed_prefix=ll_prefix,
+                )
+            )
+            _release_lease(f"post_rescan/{citname}")
+
+            # 3e. Per-iteration convergence: compare HL vs itNN per bond.
+            if convergence_mode != "off":
+                iter_cmp = _compare_per_bond(
+                    scans, hlname, citname, compare_config,
+                    plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
+                )
+                results["iteration_comparisons"].append(
+                    {"citname": citname, "comparisons": iter_cmp}
+                )
+                converged_idxs = [idx for idx, r in iter_cmp.items() if r.is_close]
+                still_off_idxs = [idx for idx, r in iter_cmp.items() if not r.is_close]
+
+                if not still_off_idxs:
+                    # All bonds converged this iteration - break in both modes.
+                    log.info("[twist] all dihedrals converged at %s - stopping early", citname)
+                    results["early_stopped_at"] = citname
+                    break
+
+                if convergence_mode == "drop" and converged_idxs:
+                    # Rebuild scans/params/s_template from just the survivors so
+                    # the next iteration's fit no longer sees the converged ones.
+                    kept_bonds = [
+                        (s.idxs[1], s.idxs[2])
+                        for s in scans
+                        if s.GetIdxStr() in still_off_idxs
+                    ]
+                    scans, params, s_template = _resolve_scans_and_params(
+                        mol, kept_bonds, nprim=nprim, bytype=bytype
+                    )
+                    log.info(
+                        "[twist] %s: dropping converged (%s); continuing with "
+                        "%s dihedral(s): %s",
+                        citname,
+                        ", ".join(converged_idxs),
+                        len(scans),
+                        ", ".join(still_off_idxs),
+                    )
+                else:
+                    # all_or_nothing mode (or drop mode with nothing converged) -
+                    # just log and continue with the same set.
+                    log.info(
+                        "[twist] %s: %s dihedral(s) still need refit: %s",
+                        citname,
+                        len(still_off_idxs),
+                        ", ".join(still_off_idxs),
+                    )
+
+        _prog("finished", "twist workflow complete")
+        return results
+    finally:
+        _release_lease("finished")
 
 
 def _load_existing_fragments(out_dir: Path):
@@ -1618,26 +1649,27 @@ def _run_fragment_twist_job(job: dict) -> dict:
     budget = None
     budget_path = job.get("budget_path")
     budget_total = int(job.get("budget_total") or job.get("wf_nproc") or 1)
+    # Do not lease through PrepareInput: that is serial and would park cores
+    # while other fragments could be scanning. Twist re-leases per scan phase.
+    leased_hint = max(1, int(job.get("wf_nproc") or 1))
     if budget_path:
         budget = CpuBudget(budget_path, budget_total)
-        leased = max(1, int(budget.lease(fragment_id)))
-    else:
-        leased = max(1, int(job.get("wf_nproc") or 1))
 
     _set(
         status="running",
         stage="prepare",
-        detail=f"{len(bonds)} bond(s) | nproc={leased}",
+        detail=f"{len(bonds)} bond(s) | nproc~{leased_hint}",
         bonds=len(bonds),
         log_path=str(frag_log_path),
     )
     frag_log.info(
-        "[frag-twist] %s: %s bond(s) %s -> running twist in %s (leased %s/%s cores)",
+        "[frag-twist] %s: %s bond(s) %s -> prepare then twist in %s "
+        "(CPU leases during scans only; hint %s/%s)",
         fragment_id,
         len(bonds),
         bonds,
         frag_dir,
-        leased,
+        leased_hint,
         budget_total,
     )
 
@@ -1650,7 +1682,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
                 workdir=frag_dir,
             )
             twist_kwargs = dict(job["twist_kwargs"])
-            twist_kwargs["nproc"] = int(leased)
+            twist_kwargs["nproc"] = int(leased_hint)
             twist_kwargs.pop("logger", None)
             twist_kwargs.pop("progress", None)
             twist_kwargs.pop("cpu_budget_path", None)
@@ -1785,8 +1817,9 @@ def run_fragmented_dihed_twist_workflow(
         Total CPU budget for the fragmented workflow. Caps concurrent
         fragment workers at ``min(nproc, n_runnable_fragments)``. Per-fragment
         wavefront ``nproc`` is leased dynamically from a shared
-        ``.cpu_budget.json`` (fair share at job start and again before each
-        scan phase) so finished fragments free cores for remaining work.
+        ``.cpu_budget.json`` (fair share re-leased before each scan phase;
+        released during prepare / GenDihedFit / compare so siblings can grow)
+        so finished fragments free cores for remaining work.
         Default is 1.
     wf_starting_nodes : int, optional
         Wavefront starting nodes. Default is 4.
@@ -1856,6 +1889,10 @@ def run_fragmented_dihed_twist_workflow(
     # Scission screen + per-fragment Amber writes share the workflow core budget.
     config = _dc_replace(config, nproc=max(1, int(nproc)))
     log = _resolve_logger(logger)
+    # Nested spawn pools + ASE/sander: keep BLAS/OMP at 1 unless the user
+    # already set it (avoids oversubscribe when many workers share a node).
+    if "OMP_NUM_THREADS" not in os.environ:
+        os.environ["OMP_NUM_THREADS"] = "1"
     mol2_path, lib_path, parent_frcmod = _parent_paths_from_args(
         mol2=mol2, lib=lib, frcmod=frcmod, bundle=bundle
     )
@@ -1896,7 +1933,6 @@ def run_fragmented_dihed_twist_workflow(
     from ffpopt.runtime.fast_wavefront import (
         apply_fast_wavefront_presets,
         fast_wavefront_enabled,
-        prefer_wavefront_depth,
     )
 
     if fast_wavefront is True:
@@ -1922,7 +1958,6 @@ def run_fragmented_dihed_twist_workflow(
         for key in ("geometric_maxiter", "geometric_converge", "ase_opt_tol"):
             if key in applied:
                 standard_kwargs[key] = fast_knobs[key]
-    prefer_depth = prefer_wavefront_depth(model=str(model), fast=fast_on)
 
     twist_kwargs = dict(
         delta=delta,
@@ -2059,6 +2094,14 @@ def run_fragmented_dihed_twist_workflow(
             len(already_done),
         )
     else:
+        from ffpopt.runtime.fast_wavefront import prefer_fragment_pool_depth
+
+        prefer_depth = prefer_fragment_pool_depth(
+            model=str(model),
+            nproc=nproc,
+            n_fragments=len(runnable),
+            fast=fast_on,
+        )
         n_frag_workers, _n_wf_hint = _split_fragment_nproc(
             nproc, len(runnable), prefer_depth=prefer_depth
         )

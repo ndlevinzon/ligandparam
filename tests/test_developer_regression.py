@@ -933,7 +933,11 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
         from ffpopt.Workflows import _is_sander_ll_model, _wf_kwargs_for_scan_model
-        from ffpopt.runtime.fast_wavefront import prefer_wavefront_depth
+        from ffpopt.runtime.fast_wavefront import (
+            prefer_bond_pool_depth,
+            prefer_fragment_pool_depth,
+            prefer_wavefront_depth,
+        )
 
         self.assertTrue(_is_sander_ll_model("sander"))
         self.assertFalse(_is_sander_ll_model("xtb"))
@@ -942,8 +946,25 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         # Explicit override wins.
         kw2 = _wf_kwargs_for_scan_model("sander", {"geometric_opt": True})
         self.assertIs(kw2["geometric_opt"], True)
-        self.assertTrue(prefer_wavefront_depth(model="sander", fast=False))
+        # Sander no longer always prefers depth at the model level.
+        self.assertFalse(prefer_wavefront_depth(model="sander", fast=False))
         self.assertFalse(prefer_wavefront_depth(model="qdpi2", fast=False))
+        # Tiny lease + multi-bond → bond breadth (concurrent bonds).
+        self.assertFalse(
+            prefer_bond_pool_depth(model="sander", nproc=3, n_bonds=3)
+        )
+        # Large lease can keep depth when the caller asks for it.
+        self.assertTrue(
+            prefer_bond_pool_depth(
+                model="sander", nproc=12, n_bonds=3, prefer=True
+            )
+        )
+        # Many fragments on a modest node → fragment breadth.
+        self.assertFalse(
+            prefer_fragment_pool_depth(
+                model="xtb", nproc=8, n_fragments=6, fast=True
+            )
+        )
 
     def test_cpu_budget_clear_leases_on_init(self):
         from ffpopt.runtime.cpu_budget import CpuBudget

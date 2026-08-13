@@ -142,7 +142,12 @@ of recomputing them.
 **Detail.** Enables restart-friendly runs; set False for a fully fresh
 calculation. Fragmented twist also writes ``frag-twist.done`` per fragment so
 completed fragments are not re-queued (and do not take a CPU lease) on parent
-restart. Parent start clears stale entries in ``.cpu_budget.json``.
+restart. Parent start clears stale entries in ``.cpu_budget.json``. Leases
+are held only during wavefront scan phases; prepare / fit / compare release
+cores so siblings can grow. With many fragments and a modest ``nproc``,
+pools prefer fragment/bond breadth over depth (see
+``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
+``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override).
 
 **Authoritative source.** `src/ffpopt/Workflows.py`
 

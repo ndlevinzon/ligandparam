@@ -2,8 +2,10 @@
 
 Enable with ``FFPOPT_FAST_WAVEFRONT=1`` or ``--fast`` on ``lig-dihed-correct``.
 Presets favor wall-time over ultra-tight converge: looser geomeTRIC criteria,
-fewer maxiters, slightly coarser angle steps, and (for XTB-like models)
-preferring wavefront depth over fragment breadth when splitting ``nproc``.
+fewer maxiters, slightly coarser angle steps. Depth vs breadth when splitting
+``nproc`` is decided by :func:`prefer_wavefront_depth`,
+:func:`prefer_bond_pool_depth`, and :func:`prefer_fragment_pool_depth`
+(small fair-share leases prefer concurrent outer jobs).
 """
 
 from __future__ import annotations
@@ -53,17 +55,77 @@ def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = N
 
     * ``FFPOPT_PREF_WF_DEPTH=1``
     * XTB-like HL models when fast mode is on
-    * ``sander`` / Amber MM (LL orig/rescan): wavefront drain benefits more from
-      inner cores than from nesting a second bond-level spawn pool
+
+    Sander / Amber MM used to always prefer depth; that is now decided by
+    :func:`prefer_bond_pool_depth` so small fair-share leases can run bonds
+    concurrently instead of a single 1–2-wide wavefront.
     """
     if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
         return True
-    m = (model or "").strip().lower()
-    if m in {"sander", "amber", "mm"} or m.startswith("sander"):
-        return True
+    if _env_truthy("FFPOPT_PREF_WF_BREADTH", False):
+        return False
     if not fast_wavefront_enabled(fast):
         return False
+    m = (model or "").strip().lower()
     return m in {"xtb", "gfn2-xtb", "gfn2", "tblite"} or m.startswith("xtb")
+
+
+def prefer_bond_pool_depth(
+    *,
+    model: str | None,
+    nproc: int,
+    n_bonds: int,
+    prefer: Optional[bool] = None,
+) -> bool:
+    """Choose bond-pool depth vs breadth for one scan phase.
+
+    With tiny fair-share leases (common when many fragments share ``nproc``),
+    depth collapses to ``1 × nproc`` and serializes independent bonds. Prefer
+    breadth whenever depth would not keep at least ``n_bonds`` outer workers.
+    Explicit ``prefer`` is a model/fast hint only; small-lease breadth and
+    ``FFPOPT_PREF_WF_*`` env overrides still win.
+    """
+    if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
+        return True
+    if _env_truthy("FFPOPT_PREF_WF_BREADTH", False):
+        return False
+    nproc = max(1, int(nproc))
+    n_bonds = max(1, int(n_bonds))
+    if n_bonds >= 2:
+        try:
+            min_inner = max(1, int(os.environ.get("FFPOPT_MIN_WF_NPROC", "2")))
+        except ValueError:
+            min_inner = 2
+        # Depth would force n_outer < n_bonds → run bonds concurrently instead.
+        if (nproc // min_inner) < n_bonds:
+            return False
+    if prefer is not None:
+        return bool(prefer)
+    return prefer_wavefront_depth(model=model)
+
+
+def prefer_fragment_pool_depth(
+    *,
+    model: str | None,
+    nproc: int,
+    n_fragments: int,
+    fast: Optional[bool] = None,
+) -> bool:
+    """Fragment-pool depth vs breadth for the parent fragmented workflow.
+
+    When many fragments share a modest core budget, prefer breadth so more
+    fragments run at once (each with a small wavefront) instead of parking
+    half the fragments behind a deep-but-narrow pool.
+    """
+    if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
+        return True
+    if _env_truthy("FFPOPT_PREF_WF_BREADTH", False):
+        return False
+    nproc = max(1, int(nproc))
+    n_fragments = max(1, int(n_fragments))
+    if n_fragments >= 4 and (nproc // n_fragments) <= 2:
+        return False
+    return prefer_wavefront_depth(model=model, fast=fast)
 
 
 def apply_fast_wavefront_presets(

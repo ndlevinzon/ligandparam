@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Fragment CPU saturation** — CPU leases are held only during wavefront scan phases (released for PrepareInput / GenDihedFit / compare); small fair-share leases prefer bond/fragment breadth over a single narrow wavefront; ``OMP_NUM_THREADS=1`` when unset on fragmented entry. Env overrides: ``FFPOPT_PREF_WF_DEPTH``, ``FFPOPT_PREF_WF_BREADTH``.
+
 ---
 
 ## [1.5.0] — 2026-08-10
