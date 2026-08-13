@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import importlib
 import io
+import json
 import logging
 import os
 import tempfile
@@ -744,6 +745,67 @@ class TestScissionFunctions(unittest.TestCase):
             (frag_dir / "it02.frcmod").write_text(_frcmod([]))
             update = _load_fragment_update(frag_dir)
             self.assertIn(("c3", "c3", "c3", "c3"), update["dihe_groups"])
+
+    def test_merge_two_fragments_same_scanned_bytype_key(self):
+        """bytype collisions: keep first scanned fragment, do not abort."""
+        import warnings
+
+        from scission.merge import MergeWarning, merge_fragment_frcmods
+
+        def _frcmod(lines):
+            return (
+                "Remark line goes here\nMASS\n\nBOND\n\nANGLE\n\nDIHE\n"
+                + "".join(f"{ln}\n" for ln in lines)
+                + "\nIMPROPER\n\nNONB\n\n"
+            )
+
+        def _fit_json(param: str):
+            return json.dumps(
+                {
+                    "params": {param: {"nprim": 1}},
+                    "systems": [
+                        {
+                            "params": {param: {"nprim": 1}},
+                            "profiles": [{"plots": [param]}],
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            parent = root / "parent.frcmod"
+            parent.write_text(_frcmod(["c3-c3-n4-c3 1 0.50 0.0 1."]))
+            out = root / "merged.frcmod"
+            frag6 = root / "fragment_6"
+            frag8 = root / "fragment_8"
+            for frag, pk in ((frag6, "1.10"), (frag8, "2.20")):
+                frag.mkdir()
+                (frag / "it01.frcmod").write_text(
+                    _frcmod([f"c3-c3-n4-c3 1 {pk} 0.0 1."])
+                )
+                (frag / "it01.fit.json").write_text(
+                    _fit_json("LIG_c3-c3-n4-c3")
+                )
+                (frag / "fit_torsions.json").write_text("[]")
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                report = merge_fragment_frcmods(
+                    parent_frcmod_path=parent,
+                    output_frcmod_path=out,
+                    fragment_dirs=[frag6, frag8],
+                )
+            self.assertTrue(out.is_file())
+            self.assertTrue(
+                any(issubclass(w.category, MergeWarning) for w in caught)
+            )
+            self.assertEqual(len(report["conflicts"]), 1)
+            self.assertEqual(
+                report["conflicts"][0]["resolution"], "first_scanned_wins"
+            )
+            self.assertIn("1.10", out.read_text())
+            self.assertNotIn("2.20", out.read_text())
 
 
 # ---------------------------------------------------------------------------

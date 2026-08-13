@@ -6,7 +6,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from .frcmod import FrcmodFile, _normalize_param_name_to_key
+from .frcmod import FrcmodFile, _normalize_param_name_to_key, normalize_dihe_line
 
 _ITERATION_FRCMOD_RE = re.compile(r"it(\d+)\.frcmod$")
 _FRAGMENT_SUFFIX_RE = re.compile(r"(\d+)$")
@@ -339,6 +339,16 @@ def _load_fragment_update(fragment_dir: Path) -> dict[str, Any]:
     }
 
 
+def _dihe_body_fingerprint(lines: list[str]) -> tuple[str, ...]:
+    """Stable fingerprint of DIHE lines ignoring trailing source annotations."""
+    bodies: list[str] = []
+    for line in lines:
+        # Source tags are appended as ``  fragment=N`` (see annotate helper).
+        body = line.split("  fragment=", 1)[0].rstrip()
+        bodies.append(normalize_dihe_line(body) if body.strip() else body)
+    return tuple(bodies)
+
+
 def _safe_load_fragment_update(
     fragment_dir: Path,
 ) -> tuple[Path, dict[str, Any] | None, str | None]:
@@ -380,9 +390,14 @@ def merge_fragment_frcmods(
     Returns:
         A JSON-serializable report describing the merge.
 
-    Raises:
-        ValueError: If two fragments both directly scanned the same DIHE key,
-            leaving no principled way to choose between their fits.
+    Notes
+    -----
+    With ``bytype`` fits, distinct rotors often share one DIHE atom-type key
+    (e.g. ``c3-c3-n4-c3``). When two fragments both directly scanned that
+    family, the merge keeps the first scanned contributor in ``fragment_dirs``
+    order (or the identical parameter set if both agree) and records the
+    collision under ``conflicts`` with a :class:`MergeWarning` — it does not
+    abort the run.
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -441,18 +456,41 @@ def merge_fragment_frcmods(
             scanned = key in scanned_param_keys
             previous = replacement_sources.get(key)
             if previous is not None:
+                winner_is_new = False
+                resolution = "first_fit_wins"
                 if previous["scanned"] and scanned:
-                    raise ValueError(
-                        "Two fragments directly scanned the same DIHE family "
-                        f"{'-'.join(key)}: {fragment_dir} and "
-                        f"{previous['fragment_dir']}"
+                    # bytype: two fragments scanned different instances of the
+                    # same atom-type family. Keep the first scanned contributor
+                    # unless the Fourier terms already agree.
+                    same = _dihe_body_fingerprint(
+                        previous.get("raw_lines") or []
+                    ) == _dihe_body_fingerprint(lines)
+                    resolution = (
+                        "identical_scanned" if same else "first_scanned_wins"
                     )
-                # A fragment that scanned this torsion owns it; otherwise the
-                # first fragment to fit it wins, deterministically.
-                winner_is_new = scanned and not previous["scanned"]
+                    warnings.warn(
+                        "Two fragments directly scanned the same DIHE family "
+                        f"{'-'.join(key)}: keeping {previous['fragment_dir']} "
+                        f"({resolution}), dropping {fragment_dir}. This is "
+                        "common with bytype fits when distinct rotors share "
+                        "atom types.",
+                        MergeWarning,
+                        stacklevel=2,
+                    )
+                    winner_is_new = False
+                else:
+                    # A fragment that scanned this torsion owns it; otherwise the
+                    # first fragment to fit it wins, deterministically.
+                    winner_is_new = scanned and not previous["scanned"]
+                    resolution = (
+                        "scanned_over_fitted"
+                        if winner_is_new
+                        else "first_fit_wins"
+                    )
                 conflicts.append(
                     {
                         "dihedral_key": "-".join(key),
+                        "resolution": resolution,
                         "kept": (
                             str(fragment_dir)
                             if winner_is_new
@@ -477,6 +515,7 @@ def merge_fragment_frcmods(
                 "iteration_frcmod": str(update["iteration_frcmod"]),
                 "fit_torsions": fit_torsions,
                 "scanned": scanned,
+                "raw_lines": list(lines),
             }
 
     if not replacements:

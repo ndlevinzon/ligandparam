@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Tighter MM E/F** — ``SanderCalculator`` / restrained MM path calls ``sander.set_positions`` + ``energy_forces`` directly when possible.
 - **Conservative multi-bond batching** — fragments with more than ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2) fit torsions pack into sequential batches by covalent proximity (``FFPOPT_BOND_COUPLE_RADIUS``, default 2); MM is updated between batches; no bytype scan dedupe. Disable with ``FFPOPT_BOND_BATCH=0``.
 - **Faster fragment frcmod merge** — locate ``itXX.frcmod`` via targeted probes (avoid listing wavefront-heavy fragment dirs on VAST/Lustre); load fragment updates concurrently.
+- **bytype scan collisions** — two fragments scanning the same DIHE atom-type family no longer abort merge; first scanned contributor wins (identical terms keep first), recorded under ``conflicts`` with a warning.
 
 ---
 
