@@ -391,11 +391,20 @@ def _wf_kwargs_for_scan_model(model: str, wf_kwargs: dict) -> dict:
 
     Sander / Amber MM wavefronts default to ASE-first constrained opts (skip the
     geomeTRIC recovery ladder) — the dominant wall-time win for ``orig`` /
-    ``rescan/itNN`` stages. Explicit ``geometric_opt=True`` in ``wf_kwargs``
+    ``rescan/itNN`` stages. Under ``--fast``, XTB-like and QDpi2 HL scans also
+    default to ASE-first. Explicit ``geometric_opt=True`` in ``wf_kwargs``
     still wins.
     """
+    from ffpopt.runtime.fast_wavefront import (
+        fast_wavefront_enabled,
+        prefer_ase_first_model,
+    )
+
     out = dict(wf_kwargs)
-    if _is_sander_ll_model(model) and "geometric_opt" not in out:
+    fast = out.get("fast_wavefront")
+    if fast is None:
+        fast = fast_wavefront_enabled(None)
+    if "geometric_opt" not in out and prefer_ase_first_model(model, fast=bool(fast)):
         out["geometric_opt"] = False
     return out
 
@@ -475,6 +484,7 @@ def _run_one_scan(
         out_path,
     )
     scan_kwargs = _wf_kwargs_for_scan_model(model, wf_kwargs)
+    scan_kwargs.pop("fast_wavefront", None)
     seed_ckpt = scan_kwargs.pop("seed_checkpoint", None)
     out_ckpt = Path(out_path).parent / f"checkpoint_{Path(out_path).with_suffix('.pkl').name}"
     if seed_ckpt and not out_ckpt.is_file():
@@ -518,38 +528,18 @@ def _run_bond_scan_job(job: dict) -> dict:
     }
 
 
-def _run_scans_for_bonds(
+def _build_bond_scan_jobs(
     scans,
     *,
     prefix: str,
     model: str,
     inp: str,
-    nproc: int,
     skip_existing: bool,
     workdir: Optional[Path],
-    logger: logging.Logger | None,
     wf_kwargs: dict,
-    prefer_wf_depth: bool | None = None,
     seed_prefix: str | None = None,
-) -> list[tuple[str, tuple, Optional[dict]]]:
-    """Run one wavefront scan per bond, pooling when the core budget allows.
-
-    Splits ``nproc`` as ``n_bond_workers × wf_nproc`` (same rule as fragment
-    pooling) so concurrent bond scans do not oversubscribe cores.
-
-    When ``seed_prefix`` is set (e.g. ``\"orig\"`` before ``it01``), each bond
-    warm-starts from that prefix's wavefront checkpoint if present.
-    """
-    log = _resolve_logger(logger)
-    from ffpopt.runtime.fast_wavefront import prefer_bond_pool_depth
-
-    prefer_wf_depth = prefer_bond_pool_depth(
-        model=model,
-        nproc=nproc,
-        n_bonds=len(scans),
-        prefer=prefer_wf_depth,
-    )
-
+) -> list[dict]:
+    """Build picklable bond-scan job dicts for one (prefix, model) phase."""
     base_kwargs = _wf_kwargs_for_scan_model(model, wf_kwargs)
     jobs = []
     for scan in scans:
@@ -572,41 +562,161 @@ def _run_scans_for_bonds(
                 "wf_kwargs": job_kwargs,
             }
         )
+    return jobs
+
+
+def _execute_bond_scan_jobs(
+    jobs: list[dict],
+    *,
+    nproc: int,
+    prefer_wf_depth: bool | None,
+    logger: logging.Logger | None,
+    label: str = "scans",
+) -> list[tuple[str, tuple, Optional[dict]]]:
+    """Run bond-scan jobs with a flattened spawn split (no bond×wavefront nest)."""
+    log = _resolve_logger(logger)
     if not jobs:
         return []
 
+    from ffpopt.runtime.fast_wavefront import prefer_bond_pool_depth
+    from ffpopt.runtime.nondaemon_pool import in_spawn_worker
+    from ffpopt.scan.WaveFront import close_reused_wavefront_pool
+
+    models = {str(j.get("model") or "") for j in jobs}
+    model_hint = next(iter(models)) if len(models) == 1 else None
+    prefer = prefer_bond_pool_depth(
+        model=model_hint,
+        nproc=nproc,
+        n_bonds=len(jobs),
+        prefer=prefer_wf_depth,
+    )
+    # Already inside a fragment spawn worker: prefer wavefront depth, no bond pool.
+    if in_spawn_worker() and prefer is not True:
+        prefer = True
+
     n_bond_workers, n_wf = _split_fragment_nproc(
-        nproc, len(jobs), prefer_depth=prefer_wf_depth
+        nproc, len(jobs), prefer_depth=prefer
     )
     for job in jobs:
+        job["wf_kwargs"] = dict(job["wf_kwargs"])
         job["wf_kwargs"]["nproc"] = int(n_wf)
 
+    ase_first = any(j["wf_kwargs"].get("geometric_opt") is False for j in jobs)
     log.info(
-        "[twist] parallel bond scans: prefix=%s, %s bond(s), nproc=%s -> "
+        "[twist] parallel bond scans: %s, %s job(s), nproc=%s -> "
         "%s bond worker(s) x wf_nproc=%s%s%s",
-        prefix,
+        label,
         len(jobs),
         nproc,
         n_bond_workers,
         n_wf,
-        " (prefer wf depth)" if prefer_wf_depth else "",
-        " (ASE-first)" if base_kwargs.get("geometric_opt") is False else "",
+        " (prefer wf depth)" if prefer else " (flat; no nested spawn)",
+        " (ASE-first)" if ase_first else "",
     )
 
-    if n_bond_workers == 1:
-        raw = [_run_bond_scan_job(job) for job in jobs]
-    else:
-        pool = make_nondaemon_spawn_pool(n_bond_workers)
-        try:
-            raw = pool.map(_run_bond_scan_job, jobs)
-        finally:
-            pool.close()
-            pool.join()
+    try:
+        if n_bond_workers == 1:
+            raw = [_run_bond_scan_job(job) for job in jobs]
+        else:
+            pool = make_nondaemon_spawn_pool(n_bond_workers)
+            try:
+                raw = pool.map(_run_bond_scan_job, jobs)
+            finally:
+                pool.close()
+                pool.join()
+    finally:
+        close_reused_wavefront_pool()
 
     return [
         (item["prefix"], tuple(item["dihed_idxs"]), item["result"])
         for item in raw
     ]
+
+
+def _run_scans_for_bonds(
+    scans,
+    *,
+    prefix: str,
+    model: str,
+    inp: str,
+    nproc: int,
+    skip_existing: bool,
+    workdir: Optional[Path],
+    logger: logging.Logger | None,
+    wf_kwargs: dict,
+    prefer_wf_depth: bool | None = None,
+    seed_prefix: str | None = None,
+) -> list[tuple[str, tuple, Optional[dict]]]:
+    """Run one wavefront scan per bond, pooling when the core budget allows.
+
+    Splits ``nproc`` as ``n_bond_workers × wf_nproc`` (flattened so both are
+    never >1 — nested spawn pools are too expensive). When ``seed_prefix`` is
+    set (e.g. ``\"orig\"`` before ``it01``), each bond warm-starts from that
+    prefix's wavefront checkpoint if present.
+    """
+    jobs = _build_bond_scan_jobs(
+        scans,
+        prefix=prefix,
+        model=model,
+        inp=inp,
+        skip_existing=skip_existing,
+        workdir=workdir,
+        wf_kwargs=wf_kwargs,
+        seed_prefix=seed_prefix,
+    )
+    return _execute_bond_scan_jobs(
+        jobs,
+        nproc=nproc,
+        prefer_wf_depth=prefer_wf_depth,
+        logger=logger,
+        label=f"prefix={prefix}",
+    )
+
+
+def _run_hl_and_orig_scans(
+    scans,
+    *,
+    hl_prefix: str,
+    hl_model: str,
+    inp: str,
+    nproc: int,
+    skip_existing: bool,
+    workdir: Optional[Path],
+    logger: logging.Logger | None,
+    wf_kwargs: dict,
+    prefer_wf_depth: bool | None = None,
+) -> list[tuple[str, tuple, Optional[dict]]]:
+    """Pipeline independent HL and reference-sander scans in one job queue."""
+    jobs = []
+    jobs.extend(
+        _build_bond_scan_jobs(
+            scans,
+            prefix=hl_prefix,
+            model=hl_model,
+            inp=inp,
+            skip_existing=skip_existing,
+            workdir=workdir,
+            wf_kwargs=wf_kwargs,
+        )
+    )
+    jobs.extend(
+        _build_bond_scan_jobs(
+            scans,
+            prefix="orig",
+            model="sander",
+            inp=inp,
+            skip_existing=skip_existing,
+            workdir=workdir,
+            wf_kwargs=wf_kwargs,
+        )
+    )
+    return _execute_bond_scan_jobs(
+        jobs,
+        nproc=nproc,
+        prefer_wf_depth=prefer_wf_depth,
+        logger=logger,
+        label=f"HL({hl_model})||orig",
+    )
 
 
 def _write_fit_json(
@@ -1153,6 +1263,7 @@ def run_dihed_twist_workflow(
         wf_max_levels=wf_max_levels,
         wf_num_conformers=wf_num_conformers,
         wf_convergence_threshold=wf_convergence_threshold,
+        fast_wavefront=fast_on,
         **{k: v for k, v in standard_kwargs.items() if k != "model"},
     )
 
@@ -1167,15 +1278,18 @@ def run_dihed_twist_workflow(
     }
 
     try:
-        # ---- 1. High-level scans (one per bond; pooled when nproc allows) ----
-        phase_nproc = _lease_nproc("hl_scan")
+        # ---- 1+2. HL and reference sander scans (pipelined) -----------------
+        phase_nproc = _lease_nproc("hl_orig_scan")
         wf_kwargs["nproc"] = phase_nproc
-        _prog("hl_scan", f"model={model} | {len(scans)} bond(s) | nproc={phase_nproc}")
+        _prog(
+            "hl_orig_scan",
+            f"HL={model} || orig=sander | {len(scans)} bond(s) | nproc={phase_nproc}",
+        )
         results["scans"].extend(
-            _run_scans_for_bonds(
+            _run_hl_and_orig_scans(
                 scans,
-                prefix=hlname,
-                model=model,
+                hl_prefix=hlname,
+                hl_model=model,
                 inp=args.inp,
                 nproc=phase_nproc,
                 skip_existing=skip_existing,
@@ -1183,24 +1297,6 @@ def run_dihed_twist_workflow(
                 logger=log,
                 wf_kwargs=wf_kwargs,
                 prefer_wf_depth=prefer_depth,
-            )
-        )
-
-        # ---- 2. Reference sander scans (one per bond, "orig" prefix) ---------
-        phase_nproc = _lease_nproc("orig_scan")
-        wf_kwargs["nproc"] = phase_nproc
-        _prog("orig_scan", f"sander reference | {len(scans)} bond(s) | nproc={phase_nproc}")
-        results["scans"].extend(
-            _run_scans_for_bonds(
-                scans,
-                prefix="orig",
-                model="sander",
-                inp=args.inp,
-                nproc=phase_nproc,
-                skip_existing=skip_existing,
-                workdir=wd,
-                logger=log,
-                wf_kwargs=wf_kwargs,
             )
         )
 

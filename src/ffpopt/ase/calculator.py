@@ -42,14 +42,51 @@ from collections import defaultdict as ddict
 from ffpopt.AmberParm import CopyParm
 
 
+def _sander_energy_forces_direct(positions):
+    """Call the active pysander session without ASE Atoms rebuilds.
+
+    Returns ``(energy_eV, forces_eV_per_Ang)`` or ``None`` if sander is not
+    set up / the call fails (caller should fall back to ASE).
+    """
+    try:
+        import numpy as np
+        import sander
+        from ase import units
+    except Exception:
+        return None
+    try:
+        crd = np.reshape(np.asarray(positions, dtype=float), (1, -1, 3))
+        sander.set_positions(crd)
+        e, f = sander.energy_forces()
+        energy = float(e.tot) * units.kcal / units.mol
+        forces = (
+            np.reshape(np.asarray(f, dtype=float), (-1, 3)) * units.kcal / units.mol
+        )
+        return energy, forces
+    except Exception:
+        return None
+
+
 def _scratch_atoms_energy_forces(calc_wrapper, underlying_calc):
-    """Reuse one ASE Atoms shell for SANDER-style calculators (avoid rebuilds)."""
+    """Reuse one ASE Atoms shell for SANDER-style calculators (avoid rebuilds).
+
+    Prefer a direct ``sander.set_positions`` / ``energy_forces`` path when the
+    ASE Amber SANDER calculator already owns the global pysander session.
+    """
     import ase
 
     atoms = calc_wrapper.atoms
-    scratch = getattr(calc_wrapper, "_scratch_atoms", None)
     positions = atoms.get_positions()
+    # Tight path: skip ASE Calculator protocol for MM steps.
+    if getattr(underlying_calc, "name", "").lower() == "sander" or type(
+        underlying_calc
+    ).__name__ == "SANDER":
+        direct = _sander_energy_forces_direct(positions)
+        if direct is not None:
+            return direct
+
     charges = atoms.get_initial_charges()
+    scratch = getattr(calc_wrapper, "_scratch_atoms", None)
     if scratch is None or len(scratch) != len(atoms):
         eles = atoms.get_chemical_symbols()
         atlist = "".join(["%s1" % (ele,) for ele in eles])
@@ -518,12 +555,13 @@ class QDpi2Calculator(Calculator):
     implemented_properties = ['energy','forces','free_energy']
     nolabel=True
     
-    def __init__(self,dpmodel,charge,**kwargs):
+    def __init__(self,dpmodel,charge,force_components="both",**kwargs):
         from .tblite_scf import make_tblite_calculator
 
         self.dpmodel = dpmodel
         self.charge = charge
-        #self.xtbcalc = XTBCalculator(charge=charge,method="GFN2-xTB")
+        # both | xtb | dp — xtb-only / dp-only used for cheap opts under --fast.
+        self.force_components = str(force_components or "both").strip().lower()
         self.xtbcalc = make_tblite_calculator(charge=self.charge)
         Calculator.__init__(self,**kwargs)
         
@@ -539,22 +577,29 @@ class QDpi2Calculator(Calculator):
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
         natoms = len(self.atoms)
-        positions = self.atoms.positions
         forces = np.zeros((natoms, 3))
-        energy = 0
+        energy = 0.0
 
         eles = self.atoms.get_chemical_symbols()
         crds = self.atoms.get_positions()
         qs = self.atoms.get_initial_charges()
-        
-        e,f = self.dpmodel.CalcEne(eles,crds)
-        
-        atlist = "".join( ["%s1"%(ele) for ele in eles ] )
-        atoms = ase.Atoms(atlist,positions=crds,charges=qs)
-        e2, f2, self.xtbcalc = run_tblite_with_scf_retries(atoms, self.xtbcalc)
+        mode = (self.force_components or "both").lower()
+        if mode in {"full", "all"}:
+            mode = "both"
 
-        energy = e + e2
-        forces = f + f2
+        if mode in {"both", "dp", "deepmd", "deeppot", "ml"}:
+            e, f = self.dpmodel.CalcEne(eles, crds)
+            energy += e
+            forces = forces + f
+
+        if mode in {"both", "xtb", "gfn2", "tblite"}:
+            atlist = "".join(["%s1" % (ele,) for ele in eles])
+            xtb_atoms = ase.Atoms(atlist, positions=crds, charges=qs)
+            e2, f2, self.xtbcalc = run_tblite_with_scf_retries(
+                xtb_atoms, self.xtbcalc
+            )
+            energy += e2
+            forces = forces + f2
 
         self.results['energy'] = energy
         self.results['free_energy'] = energy
@@ -603,7 +648,12 @@ class SanderCalculator(Calculator):
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
 
-        energy, forces = _scratch_atoms_energy_forces(self, self.calc)
+        # Prefer direct pysander; fall back to ASE SANDER wrapper.
+        direct = _sander_energy_forces_direct(self.atoms.get_positions())
+        if direct is not None:
+            energy, forces = direct
+        else:
+            energy, forces = _scratch_atoms_energy_forces(self, self.calc)
         self.results['energy'] = energy
         self.results['free_energy'] = energy
         self.results['forces'] = forces
@@ -710,7 +760,13 @@ class RestrainedCalculator(Calculator):
         Calculator.calculate(self, atoms, properties, system_changes)
 
         crds = self.atoms.get_positions()
-        energy, forces = _scratch_atoms_energy_forces(self, self.calc)
+        # Unwrap GenCalculator → SanderCalculator when possible for the
+        # direct pysander path; otherwise evaluate through the base calc.
+        inner = getattr(self.calc, "calc", self.calc)
+        if isinstance(inner, SanderCalculator):
+            energy, forces = _scratch_atoms_energy_forces(self, inner.calc)
+        else:
+            energy, forces = _scratch_atoms_energy_forces(self, self.calc)
 
         for rst in self.restraints:
             e2, f2 = rst.GetValueAndGradients(crds)
@@ -721,7 +777,6 @@ class RestrainedCalculator(Calculator):
         self.results['free_energy'] = energy
         self.results['forces'] = forces
         
-
 
 class PM6MLCalculator(Calculator):
     implemented_properties = ['energy', 'forces']

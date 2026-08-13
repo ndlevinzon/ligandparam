@@ -70,7 +70,18 @@ def calc_cache_key(los, struct) -> tuple:
         model = str(getattr(args, "model", "sander")).upper()
     charge = struct.GetCharge()
     parm = struct.data.get("parm")
-    return (model, charge, parm)
+    qdpi_opt = None
+    try:
+        from ffpopt.runtime.fast_wavefront import (
+            is_qdpi2_model,
+            qdpi2_opt_components,
+        )
+
+        if is_qdpi2_model(model):
+            qdpi_opt = qdpi2_opt_components()
+    except Exception:
+        qdpi_opt = None
+    return (model, charge, parm, qdpi_opt)
 
 
 def _wrap_restrained(base, reslist):
@@ -86,6 +97,10 @@ def get_persistent_calc(los, struct, reslist=None):
     Rebuilds the base calc when model / charge / parm change. When
     ``reslist`` is given, wraps a fresh :class:`RestrainedCalculator` around
     the cached base (same pattern as :meth:`ListOfStruct.BuildRestrainedCalc`).
+
+    For QDpi2 under ``--fast``, the cached base may use XTB-only forces during
+    optimization (see ``FFPOPT_QDPI2_OPT``); call
+    :func:`refine_qdpi2_energy` afterward for a full HL single-point.
     """
     key = calc_cache_key(los, struct)
     cache = getattr(los, "_ffpopt_calc_cache", None)
@@ -93,10 +108,83 @@ def get_persistent_calc(los, struct, reslist=None):
         base = cache[1]
     else:
         base = los.BuildCalc(struct)
+        try:
+            from ffpopt.runtime.fast_wavefront import (
+                is_qdpi2_model,
+                qdpi2_opt_components,
+            )
+
+            args = getattr(los, "args", None)
+            model = (
+                args.get("model")
+                if isinstance(args, Mapping)
+                else getattr(args, "model", None)
+            )
+            if is_qdpi2_model(model):
+                components = qdpi2_opt_components()
+                inner = getattr(base, "calc", base)
+                if hasattr(inner, "force_components"):
+                    inner.force_components = components
+        except Exception:
+            pass
         los._ffpopt_calc_cache = (key, base)
     if reslist is not None:
         return _wrap_restrained(base, reslist)
     return base
+
+
+def get_full_qdpi2_calc(los, struct, reslist=None):
+    """Calculator forced to full QDpi2 (DeepPot + XTB), bypassing cheap opt mode."""
+    key = ("QDPI2_FULL", struct.GetCharge(), struct.data.get("parm"))
+    cache = getattr(los, "_ffpopt_qdpi2_full_cache", None)
+    if cache is not None and cache[0] == key:
+        base = cache[1]
+    else:
+        base = los.BuildCalc(struct)
+        inner = getattr(base, "calc", base)
+        if hasattr(inner, "force_components"):
+            inner.force_components = "both"
+        los._ffpopt_qdpi2_full_cache = (key, base)
+    if reslist is not None:
+        return _wrap_restrained(base, reslist)
+    return base
+
+
+def refine_qdpi2_energy(los, struct):
+    """Re-score an optimized geometry with full QDpi2 (eV bare potential).
+
+    Returns ``None`` when refinement is disabled or the model is not QDpi2.
+    """
+    from ffpopt.runtime.fast_wavefront import (
+        is_qdpi2_model,
+        qdpi2_refine_energy_after_opt,
+    )
+
+    args = getattr(los, "args", None)
+    model = (
+        args.get("model")
+        if isinstance(args, Mapping)
+        else getattr(args, "model", None)
+    )
+    if not is_qdpi2_model(model) or not qdpi2_refine_energy_after_opt():
+        return None
+
+    atoms = struct.GetASEAtoms()
+    calc = get_full_qdpi2_calc(los, struct)
+    atoms.calc = calc
+    try:
+        calc.reset()
+    except Exception:
+        pass
+    ene = float(atoms.get_potential_energy())
+    # Strip restraint penalties if present (matching bare_potential_energy).
+    rests = getattr(struct, "restraints", None)
+    if rests is not None and len(rests) > 0:
+        crds = np.asarray(struct.data["positions"], dtype=float)
+        for rst in rests:
+            e2, _ = rst.GetValueAndGradients(crds)
+            ene -= float(e2)
+    return ene
 
 
 def _normalize_converge(converge) -> Optional[list]:

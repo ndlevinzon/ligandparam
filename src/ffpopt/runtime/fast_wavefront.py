@@ -158,12 +158,17 @@ def split_nproc_for_items(
     *,
     prefer_depth: bool = False,
     min_inner: int | None = None,
+    flatten_nested: bool = True,
 ) -> tuple[int, int]:
     """Split ``nproc`` into ``(n_outer_workers, n_inner_per_worker)``.
 
     When ``prefer_depth`` is True, keep at least ``min_inner`` cores per outer
     worker (default from ``FFPOPT_MIN_WF_NPROC`` or 2) so HL wavefronts are not
     forced to 1-wide when many fragments share a modest allocation.
+
+    When ``flatten_nested`` is True (default), never return both outer and
+    inner greater than 1. Nested ``spawn`` pools (bond workers that each open
+    a wavefront pool) dominate bootstrap cost; pick one axis of parallelism.
     """
     nproc = max(1, int(nproc))
     n_items = max(1, int(n_items))
@@ -172,15 +177,19 @@ def split_nproc_for_items(
     if not prefer_depth:
         n_outer = min(nproc, n_items)
         n_inner = max(1, nproc // n_outer)
-        return n_outer, n_inner
-    if min_inner is None:
-        try:
-            min_inner = max(1, int(os.environ.get("FFPOPT_MIN_WF_NPROC", "2")))
-        except ValueError:
-            min_inner = 2
-    min_inner = max(1, int(min_inner))
-    n_outer = min(n_items, max(1, nproc // min_inner))
-    n_inner = max(1, nproc // n_outer)
+    else:
+        if min_inner is None:
+            try:
+                min_inner = max(1, int(os.environ.get("FFPOPT_MIN_WF_NPROC", "2")))
+            except ValueError:
+                min_inner = 2
+        min_inner = max(1, int(min_inner))
+        n_outer = min(n_items, max(1, nproc // min_inner))
+        n_inner = max(1, nproc // n_outer)
+    if flatten_nested and n_outer > 1 and n_inner > 1:
+        if prefer_depth:
+            return 1, nproc
+        return min(nproc, n_items), 1
     return n_outer, n_inner
 
 
@@ -191,6 +200,67 @@ def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
     Prefer this name from ESP / Gaussian pool callers.
     """
     return split_nproc_for_items(total_cores, n_jobs, prefer_depth=False)
+
+
+def is_xtb_like_model(model: str | None) -> bool:
+    m = (model or "").strip().lower()
+    return m in {"xtb", "gfn2-xtb", "gfn2", "tblite"} or m.startswith("xtb")
+
+
+def is_qdpi2_model(model: str | None) -> bool:
+    m = (model or "").strip().lower()
+    return m in {"qdpi2", "qdpi"} or m.startswith("qdpi")
+
+
+def prefer_ase_first_model(model: str | None, *, fast: Optional[bool] = None) -> bool:
+    """True when wavefront should default to ASE-first (skip geomeTRIC ladder).
+
+    Always for sander/MM. Under fast mode also for XTB-like and QDpi2 HL.
+    Override with ``FFPOPT_ASE_FIRST=0|1``.
+    """
+    raw = os.environ.get("FFPOPT_ASE_FIRST")
+    if raw is not None and str(raw).strip():
+        return _env_truthy("FFPOPT_ASE_FIRST", True)
+    m = (model or "").strip().lower()
+    if m in {"sander", "amber", "mm"} or m.startswith("sander"):
+        return True
+    if not fast_wavefront_enabled(fast):
+        return False
+    return is_xtb_like_model(m) or is_qdpi2_model(m)
+
+
+def qdpi2_opt_components(*, fast: Optional[bool] = None) -> str:
+    """Which QDpi2 force terms to use during geometry optimization.
+
+    ``both`` (default): DeepPot + GFN2-xTB every step.
+    ``xtb``: XTB-only opt (much cheaper); pair with a full QDpi2 single-point
+    on the accepted frame for wavefront ranking.
+    ``dp``: DeepPot-only opt.
+
+    Under ``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` defaults to ``xtb``.
+    Override with ``FFPOPT_QDPI2_OPT=both|xtb|dp``.
+    """
+    raw = os.environ.get("FFPOPT_QDPI2_OPT")
+    if raw is not None and str(raw).strip():
+        mode = raw.strip().lower()
+        if mode in {"both", "full", "all"}:
+            return "both"
+        if mode in {"xtb", "gfn2", "tblite"}:
+            return "xtb"
+        if mode in {"dp", "deepmd", "deeppot", "ml"}:
+            return "dp"
+        return "both"
+    if fast_wavefront_enabled(fast):
+        return "xtb"
+    return "both"
+
+
+def qdpi2_refine_energy_after_opt(*, fast: Optional[bool] = None) -> bool:
+    """Re-score XTB/DP-only QDpi2 opts with a full QDpi2 single-point."""
+    raw = os.environ.get("FFPOPT_QDPI2_REFINE")
+    if raw is not None and str(raw).strip():
+        return _env_truthy("FFPOPT_QDPI2_REFINE", True)
+    return qdpi2_opt_components(fast=fast) != "both"
 
 
 def wf_checkpoint_every(nproc: int, *, fast: Optional[bool] = None) -> int:

@@ -86,8 +86,11 @@ ladder). With small per-fragment CPU leases, bond pools prefer **breadth**
 ``FFPOPT_PREF_WF_DEPTH=1`` or ``FFPOPT_PREF_WF_BREADTH=1``. Fragmented runs
 lease cores only during scan phases (not PrepareInput / GenDihedFit /
 compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start ``itNN`` from
-the prior LL checkpoint when available. ``--fast`` remains a wall-time
-trade (coarser Δ, looser converge).
+the prior LL checkpoint when available. Spawn splits are flattened (never
+bond×wavefront nested); HL and ``orig`` scans pipeline in one queue. Under
+``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
+(``FFPOPT_QDPI2_OPT``), and XTB/QDpi2 use ASE-first. ``--fast`` remains a
+wall-time trade (coarser Δ, looser converge).
 
 ## Dihedral fit chi^2
 

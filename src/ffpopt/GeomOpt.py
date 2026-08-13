@@ -62,9 +62,15 @@ def is_soft_opt_recovery(struct_or_label) -> bool:
 
 
 def _ase_optimizer_classes():
-    """Ordered ASE optimizers for difficult constrained cases."""
-    from ase.optimize import BFGS, FIRE, LBFGS
+    """Ordered ASE optimizers for difficult constrained cases.
 
+    Under fast wavefront mode, try LBFGS only (skip BFGS→FIRE ladder).
+    """
+    from ase.optimize import BFGS, FIRE, LBFGS
+    from ffpopt.runtime.fast_wavefront import fast_wavefront_enabled
+
+    if fast_wavefront_enabled(None):
+        return (("LBFGS", LBFGS),)
     return (("BFGS", BFGS), ("LBFGS", LBFGS), ("FIRE", FIRE))
 
 
@@ -1060,10 +1066,23 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
                 _geomopt_fallback_note("ASE", e, "linear-torsion")
                 out = GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
             else:
-                _geomopt_fallback_note("ASE", e, "geomeTRIC")
-                out = GeomOpt_GEOMETRIC(
-                    los, struct, constraints, restraints, geom_prefix=geom_prefix
-                )
+                from ffpopt.runtime.fast_wavefront import fast_wavefront_enabled
+
+                # Under --fast, skip the expensive geomeTRIC ladder after ASE
+                # failure; try linear-torsion rescue then re-raise.
+                if fast_wavefront_enabled(None):
+                    try:
+                        _geomopt_fallback_note("ASE", e, "linear-torsion")
+                        out = GeomOpt_LINEAR_TORSION(
+                            los, struct, constraints, restraints
+                        )
+                    except Exception:
+                        raise e from e
+                else:
+                    _geomopt_fallback_note("ASE", e, "geomeTRIC")
+                    out = GeomOpt_GEOMETRIC(
+                        los, struct, constraints, restraints, geom_prefix=geom_prefix
+                    )
     else:
         try:
             out = GeomOpt_GEOMETRIC(

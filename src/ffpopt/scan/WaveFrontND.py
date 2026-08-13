@@ -305,6 +305,16 @@ class WavefrontNode(object):
                         f"(recovery={self.opt_recovery}); will not spawn neighbors"
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
+                try:
+                    from ffpopt.geometric_inprocess import refine_qdpi2_energy
+
+                    refined = refine_qdpi2_energy(self.los, self.opt_geom)
+                    if refined is not None:
+                        self.energy = np.round(float(refined), 6)
+                        self.opt_geom.data["energy"] = float(refined)
+                        self.opt_geom.data["qdpi2_refined"] = True
+                except Exception:
+                    pass
                 self.forces = self.opt_geom.data.get("forces", self.forces)
                 maybe_write_success_checkpoint(self)
                 self.complete = True
@@ -771,22 +781,28 @@ class Wavefront(object):
         self.save_checkpoint()
 
         pool = None
+        owns_pool = False
+        external = getattr(self, "_external_mp_pool", None)
         if self.nproc > 1:
-            ctx = multiprocessing.get_context("spawn")
-            template = self.los.structs[0] if getattr(self.los, "structs", None) else None
-            if template is None:
-                # Fall back: any completed node's struct, else first pending seed.
-                for level in self.levels:
-                    for n in level.nodes:
-                        template = n.struct
-                        break
-                    if template is not None:
-                        break
-            pool = ctx.Pool(
-                processes=self.nproc,
-                initializer=_init_worker,
-                initargs=(self.los, self.conlist, self.reslist, template),
-            )
+            if external is not None:
+                pool = external
+            else:
+                from ffpopt.runtime.nondaemon_pool import make_wavefront_spawn_pool
+
+                template = self.los.structs[0] if getattr(self.los, "structs", None) else None
+                if template is None:
+                    for level in self.levels:
+                        for n in level.nodes:
+                            template = n.struct
+                            break
+                        if template is not None:
+                            break
+                pool = make_wavefront_spawn_pool(
+                    self.nproc,
+                    initializer=_init_worker,
+                    initargs=(self.los, self.conlist, self.reslist, template),
+                )
+                owns_pool = True
 
         from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
         checkpoint_every = wf_checkpoint_every(self.nproc)
@@ -801,6 +817,7 @@ class Wavefront(object):
             cleanup_completed=self._cleanup_completed,
             print_progress=self._print_progress,
             checkpoint_every=checkpoint_every,
+            terminate_pool=owns_pool,
         )
 
         self._resume_queue = []

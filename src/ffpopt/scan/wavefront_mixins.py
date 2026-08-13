@@ -353,11 +353,13 @@ def run_mp_spawn_drain_loop(
     cleanup_completed,
     print_progress,
     checkpoint_every: int,
+    terminate_pool: bool = True,
 ) -> None:
     """Shared multiprocessing drain loop for 1-D and N-D wavefront scans.
 
     ``pool`` may be ``None`` for serial execution. Callers create the pool and
-    own finish bookkeeping after this returns.
+    own finish bookkeeping after this returns. When ``terminate_pool`` is
+    False, the pool is left open for reuse across sequential scans.
     """
     import time
 
@@ -391,7 +393,7 @@ def run_mp_spawn_drain_loop(
                         since_checkpoint += 1
                         progressed = True
                 if not progressed:
-                    time.sleep(0.1)
+                    time.sleep(0.05)
 
             if since_checkpoint >= checkpoint_every:
                 set_resume_queue(list(pending) + list(in_flight.values()))
@@ -400,7 +402,7 @@ def run_mp_spawn_drain_loop(
                 print_progress(len(pending), len(in_flight))
                 since_checkpoint = 0
     finally:
-        if pool is not None:
+        if pool is not None and terminate_pool:
             pool.terminate()
             pool.join()
 

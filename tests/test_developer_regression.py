@@ -934,9 +934,12 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
         from ffpopt.Workflows import _is_sander_ll_model, _wf_kwargs_for_scan_model
         from ffpopt.runtime.fast_wavefront import (
+            prefer_ase_first_model,
             prefer_bond_pool_depth,
             prefer_fragment_pool_depth,
             prefer_wavefront_depth,
+            qdpi2_opt_components,
+            split_nproc_for_items,
         )
 
         self.assertTrue(_is_sander_ll_model("sander"))
@@ -965,6 +968,17 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 model="xtb", nproc=8, n_fragments=6, fast=True
             )
         )
+        # Flatten nested spawn: never both outer and inner > 1.
+        n_outer, n_inner = split_nproc_for_items(8, 4, prefer_depth=False)
+        self.assertTrue(n_outer == 1 or n_inner == 1)
+        n_outer_d, n_inner_d = split_nproc_for_items(8, 4, prefer_depth=True)
+        self.assertTrue(n_outer_d == 1 or n_inner_d == 1)
+        self.assertTrue(prefer_ase_first_model("xtb", fast=True))
+        self.assertFalse(prefer_ase_first_model("xtb", fast=False))
+        with patch.dict(os.environ, {"FFPOPT_FAST_WAVEFRONT": "1"}):
+            self.assertEqual(qdpi2_opt_components(), "xtb")
+        with patch.dict(os.environ, {"FFPOPT_QDPI2_OPT": "both"}):
+            self.assertEqual(qdpi2_opt_components(), "both")
 
     def test_cpu_budget_clear_leases_on_init(self):
         from ffpopt.runtime.cpu_budget import CpuBudget
@@ -1020,7 +1034,13 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         from ffpopt.runtime.fast_wavefront import split_nproc_for_items
 
         n_outer, n_inner = split_nproc_for_items(8, 4)
-        self.assertEqual(n_outer * n_inner, 8)
+        # Flattened: never nest both axes; product may be < nproc.
+        self.assertTrue(n_outer == 1 or n_inner == 1)
+        self.assertLessEqual(n_outer * n_inner, 8)
+        n_outer2, n_inner2 = split_nproc_for_items(
+            8, 4, flatten_nested=False
+        )
+        self.assertEqual(n_outer2 * n_inner2, 8)
 
     def test_pickle_compat_alias(self):
         import ffpopt.WaveFront as legacy

@@ -36,6 +36,48 @@ from .wavefront_mixins import (
 # Per-process worker state (set once via Pool initializer / MPI bcast).
 _WORKER: dict = {}
 
+# Reuse wavefront spawn workers across sequential bond scans in this process
+# (same model/parm). Constraint indices travel with each job.
+_REUSED_POOL: dict = {"pool": None, "key": None}
+
+
+def close_reused_wavefront_pool() -> None:
+    """Terminate a process-local reused wavefront pool, if any."""
+    pool = _REUSED_POOL.get("pool")
+    if pool is not None:
+        try:
+            pool.terminate()
+            pool.join()
+        except Exception:
+            pass
+    _REUSED_POOL["pool"] = None
+    _REUSED_POOL["key"] = None
+
+
+def _pool_reuse_key(los: ListOfStruct, struct: Struct, nproc: int):
+    from ffpopt.geometric_inprocess import calc_cache_key
+
+    return (int(nproc),) + tuple(calc_cache_key(los, struct))
+
+
+def _acquire_wavefront_pool(nproc: int, los, con, struct):
+    """Return ``(pool, owns_pool)``; reuse workers when model/parm match."""
+    from ffpopt.runtime.nondaemon_pool import make_wavefront_spawn_pool
+
+    key = _pool_reuse_key(los, struct, nproc)
+    if _REUSED_POOL["pool"] is not None and _REUSED_POOL["key"] == key:
+        return _REUSED_POOL["pool"], False
+    close_reused_wavefront_pool()
+    pool = make_wavefront_spawn_pool(
+        nproc,
+        initializer=_init_worker,
+        initargs=(los, con, struct),
+    )
+    _REUSED_POOL["pool"] = pool
+    _REUSED_POOL["key"] = key
+    # Drain must not terminate; close_reused_wavefront_pool() owns teardown.
+    return pool, False
+
 
 
 def _init_worker(los: ListOfStruct, con: Constraint, template_struct: Struct) -> None:
@@ -55,7 +97,13 @@ def _struct_from_coords(coords) -> Struct:
 
 def _run_node_job(job: dict) -> dict:
     """Worker entry: slim angle/coords job in -> slim result out (no ``los``)."""
-    node = WavefrontNode.from_job(job, _WORKER["los"], _WORKER["con"])
+    if "con" in job and job["con"] is not None:
+        from ffpopt.Constraints import Constraint
+
+        con = Constraint.from_dict(job["con"])
+    else:
+        con = _WORKER["con"]
+    node = WavefrontNode.from_job(job, _WORKER["los"], con)
     node.calculate()
     return node.to_result()
 
@@ -160,6 +208,7 @@ class WavefrontNode:
     def to_job(self) -> dict:
         """Slim payload for spawn workers: angle + coords (not ``los``)."""
         coords = np.asarray(self.struct.data["positions"], dtype=float)
+        con0 = self.constraints[0] if self.constraints else None
         return {
             "angle": self.angle,
             "coords": coords,
@@ -167,6 +216,7 @@ class WavefrontNode:
             "node_id": self.node_id,
             "node_pkl": self.node_pkl,
             "complete": self.complete,
+            "con": con0.to_dict() if con0 is not None else None,
         }
 
     def to_result(self) -> dict:
@@ -212,6 +262,16 @@ class WavefrontNode:
                         f"(recovery={self.opt_recovery}); will not spawn neighbors"
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
+                try:
+                    from ffpopt.geometric_inprocess import refine_qdpi2_energy
+
+                    refined = refine_qdpi2_energy(self.los, self.opt_geom)
+                    if refined is not None:
+                        self.energy = np.round(float(refined), 6)
+                        self.opt_geom.data["energy"] = float(refined)
+                        self.opt_geom.data["qdpi2_refined"] = True
+                except Exception:
+                    pass
                 self.forces = self.opt_geom.data.get("forces", self.forces)
                 maybe_write_success_checkpoint(self)
                 self.complete = True
@@ -748,14 +808,15 @@ class Wavefront:
         self.save_checkpoint()
 
         pool = None
+        owns_pool = False
+        external = getattr(self, "_external_mp_pool", None)
         if self.nproc > 1:
-            ctx = multiprocessing.get_context("spawn")
-            # Share los/con/template once per worker; jobs carry only angle/coords.
-            pool = ctx.Pool(
-                processes=self.nproc,
-                initializer=_init_worker,
-                initargs=(self.los, self.con, self.struct),
-            )
+            if external is not None:
+                pool = external
+            else:
+                pool, owns_pool = _acquire_wavefront_pool(
+                    self.nproc, self.los, self.con, self.struct
+                )
 
         from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
         checkpoint_every = wf_checkpoint_every(self.nproc)
@@ -770,6 +831,7 @@ class Wavefront:
             cleanup_completed=self._cleanup_completed,
             print_progress=self._print_progress,
             checkpoint_every=checkpoint_every,
+            terminate_pool=owns_pool,
         )
 
         self._resume_queue = []

@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Fragment CPU saturation** — CPU leases are held only during wavefront scan phases (released for PrepareInput / GenDihedFit / compare); small fair-share leases prefer bond/fragment breadth over a single narrow wavefront; ``OMP_NUM_THREADS=1`` when unset on fragmented entry. Env overrides: ``FFPOPT_PREF_WF_DEPTH``, ``FFPOPT_PREF_WF_BREADTH``.
+- **Flattened spawn parallelism** — bond×wavefront splits never nest both axes (``split_nproc_for_items(..., flatten_nested=True)``); fragment workers skip bond pools; wavefront worker pools are reused across sequential bonds in-process.
+- **Pipelined HL ‖ orig scans** — independent high-level and reference-sander scans share one job queue.
+- **Cheaper HL opts under ``--fast``** — QDpi2 optimizes with XTB-only forces then full QDpi2 single-point (``FFPOPT_QDPI2_OPT``, ``FFPOPT_QDPI2_REFINE``); ASE-first for XTB/QDpi2; shorter ASE optimizer ladder; skip geomeTRIC fallback after ASE failure.
+- **Tighter MM E/F** — ``SanderCalculator`` / restrained MM path calls ``sander.set_positions`` + ``energy_forces`` directly when possible.
 
 ---
 
