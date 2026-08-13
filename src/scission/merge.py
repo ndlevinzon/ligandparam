@@ -60,13 +60,53 @@ def find_latest_iteration_frcmod(fragment_dir: Path) -> Path:
 
 
 def list_iteration_frcmods(fragment_dir: Path) -> list[Path]:
-    """Return all ``itX.frcmod`` files in ascending iteration order."""
+    """Return all ``itX.frcmod`` files in ascending iteration order.
 
-    candidates = [
-        path
-        for path in fragment_dir.iterdir()
-        if path.is_file() and _ITERATION_FRCMOD_RE.fullmatch(path.name)
-    ]
+    Prefer targeted ``stat`` probes (``it01.frcmod``, ``it02.frcmod``, …)
+    over a full directory listing. Fragment run dirs often contain thousands
+    of wavefront / geomopt artifacts; listing them on shared filesystems
+    (VAST / Lustre) dominates merge wall time.
+    """
+
+    found: list[Path] = []
+    seen: set[str] = set()
+    consecutive_misses = 0
+    # Generous upper bound: bond-batched fragments can promote many itXX files.
+    for i in range(1, 256):
+        hit = None
+        for name in (f"it{i:02d}.frcmod", f"it{i}.frcmod"):
+            path = fragment_dir / name
+            try:
+                if path.is_file():
+                    hit = path
+                    break
+            except OSError:
+                continue
+        if hit is not None:
+            key = hit.name.lower()
+            if key not in seen:
+                seen.add(key)
+                found.append(hit)
+            consecutive_misses = 0
+            continue
+        consecutive_misses += 1
+        # Stop after a short gap once we have seen at least one file, or
+        # after a few misses when the directory has no itXX at all.
+        if consecutive_misses >= 3:
+            break
+
+    if found:
+        return sorted(found, key=_fragment_sort_key)
+
+    # Fallback for unusual names (still cheaper than listing when empty).
+    try:
+        candidates = [
+            path
+            for path in fragment_dir.glob("it*.frcmod")
+            if path.is_file() and _ITERATION_FRCMOD_RE.fullmatch(path.name)
+        ]
+    except OSError:
+        candidates = []
     return sorted(candidates, key=_fragment_sort_key)
 
 
@@ -80,10 +120,7 @@ def _has_iteration_frcmod(directory: Path) -> bool:
         True if at least one direct child is an ``itX.frcmod`` file.
     """
 
-    return any(
-        path.is_file() and _ITERATION_FRCMOD_RE.fullmatch(path.name)
-        for path in directory.iterdir()
-    )
+    return bool(list_iteration_frcmods(directory))
 
 
 def discover_fragment_dirs(root: Path) -> list[Path]:
@@ -302,6 +339,23 @@ def _load_fragment_update(fragment_dir: Path) -> dict[str, Any]:
     }
 
 
+def _safe_load_fragment_update(
+    fragment_dir: Path,
+) -> tuple[Path, dict[str, Any] | None, str | None]:
+    """Load one fragment update; return ``(dir, update|None, skip_reason|None)``."""
+    try:
+        update = _load_fragment_update(fragment_dir)
+    except FileNotFoundError:
+        return fragment_dir, None, "no itXX.frcmod in the fragment directory"
+    if not update["dihe_groups"]:
+        return (
+            fragment_dir,
+            None,
+            f"{update['iteration_frcmod'].name} defines no fitted DIHE terms",
+        )
+    return fragment_dir, update, None
+
+
 def merge_fragment_frcmods(
     parent_frcmod_path: Path,
     output_frcmod_path: Path,
@@ -330,6 +384,7 @@ def merge_fragment_frcmods(
         ValueError: If two fragments both directly scanned the same DIHE key,
             leaving no principled way to choose between their fits.
     """
+    from concurrent.futures import ThreadPoolExecutor
 
     parent = FrcmodFile.read(parent_frcmod_path)
     replacements: dict[tuple[str, str, str, str], list[str]] = {}
@@ -338,35 +393,31 @@ def merge_fragment_frcmods(
     conflicts: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
 
-    for fragment_dir in fragment_dirs:
-        try:
-            update = _load_fragment_update(fragment_dir)
-        except FileNotFoundError:
-            reason = "no itXX.frcmod in the fragment directory"
+    dirs = [Path(p) for p in fragment_dirs]
+    # Parallelize per-fragment I/O (frcmod + fit.json reads). Merge logic below
+    # stays single-threaded so conflict resolution remains deterministic.
+    n_workers = min(8, max(1, len(dirs)))
+    if len(dirs) <= 1:
+        loaded = [_safe_load_fragment_update(d) for d in dirs]
+    else:
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            loaded = list(pool.map(_safe_load_fragment_update, dirs))
+
+    for fragment_dir, update, skip_reason in loaded:
+        if skip_reason is not None:
             warnings.warn(
-                f"Skipping fragment {fragment_dir}: {reason}. This is expected "
+                f"Skipping fragment {fragment_dir}: {skip_reason}. This is expected "
                 "when the fragment needed no refit (already-good parameters or "
                 "a flat high-level profile); the parent keeps its existing "
                 "terms for it.",
                 MergeWarning,
                 stacklevel=2,
             )
-            skipped.append({"fragment_dir": str(fragment_dir), "reason": reason})
+            skipped.append({"fragment_dir": str(fragment_dir), "reason": skip_reason})
             continue
+        assert update is not None
 
         dihe_groups = update["dihe_groups"]
-        if not dihe_groups:
-            reason = f"{update['iteration_frcmod'].name} defines no fitted DIHE terms"
-            warnings.warn(
-                f"Skipping fragment {fragment_dir}: {reason}. This is expected "
-                "when the fit converged without changing any torsion; the "
-                "parent keeps its existing terms for it.",
-                MergeWarning,
-                stacklevel=2,
-            )
-            skipped.append({"fragment_dir": str(fragment_dir), "reason": reason})
-            continue
-
         fit_torsions = update["fit_torsions"]
         scanned_param_keys = update["scanned_param_keys"]
         source_label = _format_fragment_source_label(fragment_dir)
