@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Pipelined HL ‖ orig scans** — independent high-level and reference-sander scans share one job queue.
 - **Cheaper HL opts under ``--fast``** — QDpi2 optimizes with XTB-only forces then full QDpi2 single-point (``FFPOPT_QDPI2_OPT``, ``FFPOPT_QDPI2_REFINE``); ASE-first for XTB/QDpi2; shorter ASE optimizer ladder; skip geomeTRIC fallback after ASE failure.
 - **Tighter MM E/F** — ``SanderCalculator`` / restrained MM path calls ``sander.set_positions`` + ``energy_forces`` directly when possible.
+- **Conservative multi-bond batching** — fragments with more than ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2) fit torsions pack into sequential batches by covalent proximity (``FFPOPT_BOND_COUPLE_RADIUS``, default 2); MM is updated between batches; no bytype scan dedupe. Disable with ``FFPOPT_BOND_BATCH=0``.
 
 ---
 

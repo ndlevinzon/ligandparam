@@ -147,7 +147,10 @@ are held only during wavefront scan phases; prepare / fit / compare release
 cores so siblings can grow. With many fragments and a modest ``nproc``,
 pools prefer fragment/bond breadth over depth (see
 ``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
-``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override).
+``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override). Fragments
+with more than two fit bonds are split into sequential proximity batches
+(``ffpopt.bond_batches``; ``FFPOPT_MAX_BONDS_PER_TWIST``,
+``FFPOPT_BOND_COUPLE_RADIUS``) with MM updates between batches.
 
 **Authoritative source.** `src/ffpopt/Workflows.py`
 

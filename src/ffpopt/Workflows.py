@@ -27,6 +27,9 @@ Requirements and caveats
   may also pool over bonds (``n_bond_workers × wf_nproc``); the fragmented
   workflow pools over fragments the same way. ``nproc`` is always a total
   core budget so worker counts times nested wavefront size stay within it.
+  Fragments (or single-molecule jobs) with many fit bonds are split into
+  sequential proximity batches (default ≤2 bonds/joint fit) with MM updates
+  between batches — see ``ffpopt.bond_batches``.
 * Fragmented mode requires the integrated ``scission`` package
   (``src/scission``) and AmberTools (``tleap``) on ``PATH``.
 * High-level ``model`` values (e.g. ``qdpi2``, ``mace``) need the matching
@@ -973,6 +976,193 @@ def _apply_fit_and_prepare(
     log.info("[twist] wrote %s and %s", parm_out.resolve(), json_out.resolve())
 
 
+def _list_iteration_frcmods(directory: Path) -> list[Path]:
+    """Return ``itXX.frcmod`` paths in ascending iteration order."""
+    import re
+
+    rx = re.compile(r"^it(\d+)\.frcmod$", re.IGNORECASE)
+    found: list[tuple[int, Path]] = []
+    if not directory.is_dir():
+        return []
+    for path in directory.iterdir():
+        m = rx.match(path.name)
+        if m:
+            found.append((int(m.group(1)), path))
+    found.sort(key=lambda t: t[0])
+    return [p for _, p in found]
+
+
+def _promote_batch_iteration_outputs(
+    batch_dirs: list[Path],
+    dest_dir: Path,
+    *,
+    logger: logging.Logger | None = None,
+) -> list[Path]:
+    """Copy batch ``itXX.frcmod`` (+ fit.json) into ``dest_dir`` with global numbering."""
+    import shutil
+
+    log = _resolve_logger(logger)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    promoted: list[Path] = []
+    global_it = 1
+    for batch_dir in batch_dirs:
+        for frcmod in _list_iteration_frcmods(batch_dir):
+            dest_frcmod = dest_dir / f"it{global_it:02d}.frcmod"
+            shutil.copy2(frcmod, dest_frcmod)
+            fit_src = batch_dir / f"{frcmod.stem}.fit.json"
+            if fit_src.is_file():
+                shutil.copy2(fit_src, dest_dir / f"it{global_it:02d}.fit.json")
+            # Also keep parm/json aliases when present (restart / inspect).
+            for suffix in (".parm7", ".json", ".py"):
+                src = batch_dir / f"{frcmod.stem}{suffix}"
+                if src.is_file():
+                    shutil.copy2(src, dest_dir / f"it{global_it:02d}{suffix}")
+            promoted.append(dest_frcmod)
+            log.info(
+                "[twist] promoted %s -> %s",
+                frcmod,
+                dest_frcmod.name,
+            )
+            global_it += 1
+    return promoted
+
+
+def run_batched_dihed_twist_workflow(
+    *,
+    inp: str,
+    bond,
+    workdir: PathLike | None = None,
+    logger: logging.Logger | None = None,
+    progress: Callable[[str, str], None] | None = None,
+    **twist_kwargs,
+) -> dict:
+    """Run twist in sequential bond batches (coupled together, then apply).
+
+    Conservative packing (:mod:`ffpopt.bond_batches`): keep covalently nearby
+    rotors in the same joint fit when possible; split oversized clusters into
+    contiguous chunks of ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2) and update
+    the MM between chunks so later batches see prior fits.
+    """
+    import shutil
+
+    from ffpopt.bond_batches import (
+        adjacency_from_parmed,
+        pack_rotatable_bond_batches,
+    )
+    from ffpopt.Struct import ListOfStruct
+
+    log = _resolve_logger(logger)
+    bonds0 = normalize_bond_pairs0(bond)
+    wd = _as_path(workdir).resolve() if workdir is not None else Path(".").resolve()
+    wd.mkdir(parents=True, exist_ok=True)
+
+    inp_path = Path(_in_workdir(wd, inp)).resolve()
+    los = ListOfStruct.from_file(str(inp_path))
+    mol = los.structs[0].ReadAmberParm()
+    adj = adjacency_from_parmed(mol)
+    batches = pack_rotatable_bond_batches(bonds0, adj)
+    if len(batches) <= 1:
+        return run_dihed_twist_workflow(
+            inp=str(inp_path),
+            bond=bonds0,
+            workdir=wd,
+            logger=log,
+            progress=progress,
+            bond_batching=False,
+            **twist_kwargs,
+        )
+
+    log.info(
+        "[twist] bond batching: %s bond(s) -> %s sequential batch(es) %s",
+        len(bonds0),
+        len(batches),
+        batches,
+    )
+
+    merged = {
+        "scans": [],
+        "fit_jsons": [],
+        "iterations": [],
+        "initial_comparisons": {},
+        "iteration_comparisons": [],
+        "early_stopped_at": None,
+        "bond_batches": [list(b) for b in batches],
+    }
+    current_inp = str(inp_path)
+    batch_dirs: list[Path] = []
+
+    for bi, batch_bonds in enumerate(batches):
+        batch_dir = wd / f"torsion_batch_{bi:02d}"
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        batch_dirs.append(batch_dir)
+        # Seed each batch dir with the current topology JSON (absolute parm paths).
+        batch_inp = batch_dir / "start.json"
+        if Path(current_inp).resolve() != batch_inp.resolve():
+            shutil.copy2(current_inp, batch_inp)
+
+        def _batch_progress(stage: str, detail: str = "", _bi=bi, _n=len(batches)):
+            if progress is not None:
+                try:
+                    progress(
+                        f"batch{_bi + 1}/{_n}/{stage}",
+                        detail or f"{len(batch_bonds)} bond(s)",
+                    )
+                except Exception:
+                    pass
+
+        log.info(
+            "[twist] batch %s/%s: %s bond(s) %s (workdir=%s)",
+            bi + 1,
+            len(batches),
+            len(batch_bonds),
+            batch_bonds,
+            batch_dir,
+        )
+        _batch_progress("start", f"bonds={batch_bonds}")
+        batch_result = run_dihed_twist_workflow(
+            inp=str(batch_inp),
+            bond=batch_bonds,
+            workdir=batch_dir,
+            logger=log,
+            progress=_batch_progress,
+            bond_batching=False,
+            **twist_kwargs,
+        )
+        merged["scans"].extend(batch_result.get("scans") or [])
+        merged["fit_jsons"].extend(batch_result.get("fit_jsons") or [])
+        merged["iterations"].extend(batch_result.get("iterations") or [])
+        init_cmp = batch_result.get("initial_comparisons") or {}
+        merged["initial_comparisons"].update(init_cmp)
+        merged["iteration_comparisons"].extend(
+            batch_result.get("iteration_comparisons") or []
+        )
+        if batch_result.get("early_stopped_at"):
+            merged["early_stopped_at"] = (
+                f"batch{bi:02d}:{batch_result['early_stopped_at']}"
+            )
+
+        # Next batch starts from the latest fitted parm/json when available.
+        iters = batch_result.get("iterations") or []
+        if iters:
+            current_inp = str(iters[-1]["json"])
+        else:
+            current_inp = str(batch_inp)
+
+    promoted = _promote_batch_iteration_outputs(batch_dirs, wd, logger=log)
+    merged["promoted_frcmods"] = [str(p) for p in promoted]
+    log.info(
+        "[twist] bond batching finished: %s batch(es), %s promoted itXX.frcmod",
+        len(batches),
+        len(promoted),
+    )
+    if progress is not None:
+        try:
+            progress("finished", f"{len(batches)} bond batch(es)")
+        except Exception:
+            pass
+    return merged
+
+
 def run_dihed_twist_workflow(
     *,
     inp: str,
@@ -1000,6 +1190,7 @@ def run_dihed_twist_workflow(
     budget_owner: str | None = None,
     budget_total: int | None = None,
     fast_wavefront: bool | None = None,
+    bond_batching: bool | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -1014,109 +1205,46 @@ def run_dihed_twist_workflow(
     per-iteration convergence check. See the ``Workflows`` RST page for the
     full phase narrative.
 
-    Parameters
-    ----------
-    inp : str
-        Input JSON file (``ListOfStruct``). Only the first structure is used.
-    bond
-        Central bonds to scan. Preferred form: sequence of **0-based**
-        ``(i, j)`` pairs. CLI-style ``"i,j"`` strings are also accepted
-        (still 0-based). Each pair is the central bond of a proper dihedral.
-    delta : int, optional
-        Wavefront angle step (degrees). Default is 10.
-    nprim : int, optional
-        Number of primary cosine terms per parameter family in the fit.
-        Default is 3.
-    maxiter : int, optional
-        Maximum number of fit-then-rescan iterations. Default is 2.
-    bytype : bool, optional
-        If True, fit-input masks are by atom *type* rather than by
-        explicit atom-name instances. Default is False.
-    nlmaxiter : int, optional
-        Forwarded as ``--nlmaxiter`` to ``ffpopt-GenDihedFit.py``.
-        Default is 300.
-    nproc : int, optional
-        Total core budget for bond scans and nested wavefront workers.
-        Split as ``n_bond_workers × wf_nproc`` across concurrent bonds.
-        Default is 1.
-    wf_starting_nodes : int, optional
-        Wavefront starting nodes. Default is 4.
-    wf_num_conformers : int, optional
-        Wavefront number of conformers. Default is 0 (auto).
-    wf_max_levels : int, optional
-        Wavefront max levels. Default is -1 (unlimited).
-    wf_convergence_threshold : float, optional
-        Wavefront convergence threshold (kcal/mol). Default is 0.01.
-    skip_existing : bool, optional
-        If True, skip any output (.json, .parm7, .py) that already exists.
-        Mimics the ``if [ ! -e ... ]`` guards in the bash workflow, making
-        the function re-runnable. Default is True.
-    compare_config : ffpopt.ScanAnalysis.ScanCompareConfig, optional
-        Thresholds for the HL-vs-LL comparison heuristic. Used by both the
-        initial convergence check (Phase 2b) and the per-iteration check
-        (Phase 3e). Default is None (uses the
-        :class:`~ffpopt.ScanAnalysis.ScanCompareConfig` defaults).
-    skip_converged_initial : bool, optional
-        If True, Phase 2b drops bonds whose HL and reference sander scans
-        already agree (no torsion correction needed). Default is True.
-    convergence_mode : {"drop", "all_or_nothing", "off"}, optional
-        How Phase 3e behaves. ``"drop"``: when some bonds converge but
-        others don't, drop the converged ones from later iterations and
-        break the loop when none are left to refit. ``"all_or_nothing"``:
-        never drop mid-loop; break only when every surviving bond agrees
-        with HL in the same iteration. ``"off"``: skip the per-iteration
-        comparison entirely. Default is "drop".
-    plot_comparisons : bool, optional
-        If True, save a PNG plot per bond per comparison alongside the
-        ``.dat`` files (filenames like
-        ``compare_{hl}_vs_{ll}_{idxs}.png``). Useful for eyeballing why a
-        dihedral was kept or dropped. Default is False.
-    structure_images : dict, optional
-        Map of ``frozenset({a, b})`` (0-based central-bond atom indices)
-        to a 2D structure image path (PNG or SVG). When provided alongside
-        ``plot_comparisons=True``, the matching image is rendered as a top
-        panel on each comparison plot. Used by
-        :func:`run_fragmented_dihed_twist_workflow` to surface scission's
-        per-torsion drawings. Default is None.
-    workdir : path-like, optional
-        Directory for relative inputs/outputs and subprocess ``cwd``. When
-        set, this workflow never calls ``os.chdir`` - paths are resolved
-        under ``workdir`` and shell-outs use ``subprocess(..., cwd=workdir)``.
-        Default is None (use the process cwd / relative paths as given).
-    logger : logging.Logger, optional
-        Logger for workflow progress messages. Default is the module logger.
-    progress : callable, optional
-        ``progress(stage, detail)`` hook used by the fragmented parent to
-        update a live status board. Stages include ``hl_scan``, ``orig_scan``,
-        ``compare``, ``fit/...``, ``apply/...``, ``rescan/...``, ``finished``.
-        Default is None.
-    cpu_budget_path : path-like, optional
-        Shared :class:`~ffpopt.cpu_budget.CpuBudget` JSON path. When set, each
-        scan phase re-leases cores so finished sibling fragments free capacity
-        for remaining work. Default is None (fixed ``nproc``).
-    budget_owner : str, optional
-        Lease owner id (typically the fragment id). Required with
-        ``cpu_budget_path``.
-    budget_total : int, optional
-        Total cores in the shared budget (defaults to ``nproc``).
-    **standard_kwargs
-        Forwarded to the wavefront. Accepts anything declared by
-        :func:`ffpopt.Options.AddStandardOptions` (``model``, ``mfile``,
-        ``geometric_opt``, ``ase_opt_tol``, ``cpu``, ...). Unknown standard
-        kwargs raise ``TypeError``.
-
-    Returns
-    -------
-    dict
-        A dictionary with keys ``scans`` (list of
-        ``(prefix, bond_idxs, scan_result)``), ``fit_jsons`` (list of fit
-        JSON paths), ``iterations`` (list of
-        ``{'parm': ..., 'json': ...}``), ``initial_comparisons`` (map of
-        bond-idx string to :class:`~ffpopt.ScanAnalysis.ScanComparison` from
-        Phase 2b), ``iteration_comparisons`` (per-iteration map), and
-        ``early_stopped_at`` (the ``citname`` at which the loop broke, or
-        ``None`` if it ran to ``maxiter``).
+    When more than ``FFPOPT_MAX_BONDS_PER_TWIST`` bonds are requested (default
+    2), covalently nearby rotors are packed into sequential batches via
+    :func:`run_batched_dihed_twist_workflow` unless ``bond_batching=False``.
     """
+    from ffpopt.bond_batches import should_batch_bonds
+
+    bonds_early = normalize_bond_pairs0(bond)
+    do_batch = bond_batching
+    if do_batch is None:
+        do_batch = should_batch_bonds(len(bonds_early))
+    if do_batch and should_batch_bonds(len(bonds_early)):
+        return run_batched_dihed_twist_workflow(
+            inp=inp,
+            bond=bonds_early,
+            delta=delta,
+            nprim=nprim,
+            maxiter=maxiter,
+            bytype=bytype,
+            nlmaxiter=nlmaxiter,
+            nproc=nproc,
+            wf_starting_nodes=wf_starting_nodes,
+            wf_num_conformers=wf_num_conformers,
+            wf_max_levels=wf_max_levels,
+            wf_convergence_threshold=wf_convergence_threshold,
+            skip_existing=skip_existing,
+            compare_config=compare_config,
+            skip_converged_initial=skip_converged_initial,
+            convergence_mode=convergence_mode,
+            plot_comparisons=plot_comparisons,
+            structure_images=structure_images,
+            workdir=workdir,
+            logger=logger,
+            progress=progress,
+            cpu_budget_path=cpu_budget_path,
+            budget_owner=budget_owner,
+            budget_total=budget_total,
+            fast_wavefront=fast_wavefront,
+            **standard_kwargs,
+        )
+
     # ---- 0. Resolve & validate kwargs ------------------------------------
     valid_modes = {"drop", "all_or_nothing", "off"}
     if convergence_mode not in valid_modes:

@@ -1030,6 +1030,34 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertIsNotNone(last)
             np.testing.assert_allclose(last[1, 2], 0.90)
 
+    def test_pack_rotatable_bond_batches_conservative(self):
+        from ffpopt.bond_batches import (
+            adjacency_from_topology_bonds,
+            pack_rotatable_bond_batches,
+            should_batch_bonds,
+        )
+
+        # Linear chain 0-1-2-3-4-5-6-7: rotatable centrals (0,1),(2,3),(4,5),(6,7)
+        topo = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)]
+        adj = adjacency_from_topology_bonds(topo)
+        bonds = [(0, 1), (2, 3), (4, 5), (6, 7)]
+        self.assertTrue(should_batch_bonds(len(bonds), max_batch=2))
+        batches = pack_rotatable_bond_batches(
+            bonds, adj, max_batch=2, couple_radius=2
+        )
+        # All bonds land in some batch; no empty batches; size capped at 2.
+        flat = [b for batch in batches for b in batch]
+        self.assertEqual(len(flat), 4)
+        self.assertTrue(all(len(batch) <= 2 for batch in batches))
+        # Nearby (0,1) and (2,3) should prefer the same or adjacent batches.
+        self.assertGreaterEqual(len(batches), 2)
+
+        # Two distant bonds → can be separate components but still ≤ max_batch each.
+        far = pack_rotatable_bond_batches(
+            [(0, 1), (6, 7)], adj, max_batch=2, couple_radius=1
+        )
+        self.assertEqual(sum(len(b) for b in far), 2)
+
     def test_split_nproc_for_items(self):
         from ffpopt.runtime.fast_wavefront import split_nproc_for_items
 
