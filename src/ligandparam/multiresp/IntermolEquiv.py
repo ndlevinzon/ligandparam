@@ -1,6 +1,7 @@
 from collections import defaultdict as ddict
 
-from ligandparam.multiresp import respfunctions, parmhelper
+from ligandparam.multiresp import ParmHelper as parmhelper
+from ligandparam.multiresp import RespFunctions as respfunctions
 
 class IntermolEquiv(object):
     """ Class to handle the equivalent atoms between molecules """

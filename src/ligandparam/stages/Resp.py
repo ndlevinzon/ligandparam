@@ -6,7 +6,7 @@ from ligandparam.stages.AbstractStage import AbstractStage
 from ligandparam.Interfaces import Antechamber
 from ligandparam.io.GaussianIo import GaussianReader
 
-from ligandparam.multiresp import parmhelper
+from ligandparam.multiresp import ParmHelper as parmhelper
 from ligandparam.multiresp.ResidueResp import ResidueResp
 
 

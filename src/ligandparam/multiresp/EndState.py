@@ -6,7 +6,10 @@ from collections import defaultdict as ddict
 from io import StringIO as StringIO
 
 
-from ligandparam.multiresp import parmhelper, mdinutils, respfunctions, functions
+from ligandparam.multiresp import Functions as functions
+from ligandparam.multiresp import MdinUtils as mdinutils
+from ligandparam.multiresp import ParmHelper as parmhelper
+from ligandparam.multiresp import RespFunctions as respfunctions
 from ligandparam.multiresp.IntermolEquiv import IntermolEquiv
 
 class EndState(object):

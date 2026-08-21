@@ -1558,6 +1558,45 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+class TestGitTrackedModuleCase(unittest.TestCase):
+    """Catch Windows case-only renames that Linux checkouts still see as snake_case."""
+
+    _REQUIRED = (
+        "src/ligandparam/Log.py",
+        "src/ligandparam/Driver.py",
+        "src/ligandparam/Interfaces.py",
+        "src/ligandparam/Parametrization.py",
+        "src/ligandparam/Utils.py",
+        "src/ligandparam/cli/LigDihedCorrect.py",
+        "src/ffpopt/Scripts.py",
+        "src/ffpopt/runtime/Console.py",
+        "src/ffpopt/geom/Geometric.py",
+        "src/ffpopt/ase/Calculator.py",
+        "src/scission/Cli.py",
+        "src/scission/Models.py",
+    )
+
+    def test_pascalcase_modules_are_tracked_exactly(self):
+        import shutil
+        import subprocess
+
+        root = Path(__file__).resolve().parents[1]
+        if shutil.which("git") is None or not (root / ".git").exists():
+            self.skipTest("git checkout required")
+        tracked = set(
+            subprocess.check_output(
+                ["git", "ls-files", "src"], cwd=root, text=True
+            ).splitlines()
+        )
+        missing = [path for path in self._REQUIRED if path not in tracked]
+        self.assertEqual(
+            missing,
+            [],
+            "git index still has lowercase names; Linux imports will fail. "
+            "Use two-step git mv (file.py -> tmp -> File.py).",
+        )
+
+
 class TestRecipeDefaultsIsolation(unittest.TestCase):
     def test_fresh_defaults_not_shared(self):
         from ligandparam.Parametrization import fresh_recipe_defaults

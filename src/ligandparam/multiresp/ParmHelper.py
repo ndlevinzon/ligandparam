@@ -3,8 +3,8 @@ import math
 from collections import defaultdict as ddict
 import random
 
-from ligandparam.multiresp import mdinutils
-from ligandparam.multiresp import functions
+from ligandparam.multiresp import Functions as functions
+from ligandparam.multiresp import MdinUtils as mdinutils
 
 class Computer(object):
     """ Base class for computer objects """
