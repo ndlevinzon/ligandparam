@@ -1526,7 +1526,9 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_split_nproc_for_items(self):
         from ffpopt.runtime.FastWavefront import split_nproc_for_items
+        from ffpopt.workflows.TwistHelpers import _split_fragment_nproc
 
+        self.assertEqual(_split_fragment_nproc(8, 4), split_nproc_for_items(8, 4))
         n_outer, n_inner = split_nproc_for_items(8, 4)
         # Flattened: never nest both axes; product may be < nproc.
         self.assertTrue(n_outer == 1 or n_inner == 1)

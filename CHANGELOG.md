@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Env defaults JSON** — all user ``FFPOPT_*`` knobs live in ``ffpopt/pkgdata/files/env_defaults.json`` (commented JSONC; this is the store the code reads). Overlay with ``FFPOPT_DEFAULTS=/path.json``; per-key ``export FFPOPT_*=`` still wins.
 - **Multi-centroid HL pooling** — centroid-0 HL and ``orig`` share one job queue; extra ConfSearch starts run only for jagged torsions (Fourier RMSE vs ``FFPOPT_CENTROID_FOURIER_MAX``, default 0.5 kcal) and those centroid×bond jobs share one pool.
 
+### Fixed
+
+- **``_split_fragment_nproc``** — bond-scan pooling in ``TwistHelpers`` called a helper that stayed behind in ``FragmentedTwist`` after the workflow split (``NameError`` on ``lig-dihed-correct --whole-ligand``).
+
 ---
 
 ## [1.5.1] — 2026-08-21

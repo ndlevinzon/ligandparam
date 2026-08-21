@@ -548,6 +548,33 @@ def _interleave_job_groups(*groups: list[dict]) -> list[dict]:
     return out
 
 
+def _split_fragment_nproc(
+    nproc: int,
+    n_fragments: int,
+    *,
+    prefer_depth: bool = False,
+) -> tuple[int, int]:
+    """Split ``nproc`` across outer workers and nested wavefront size.
+
+    Used for both fragment-level pooling and per-bond scan pooling inside
+    :func:`run_dihed_twist_workflow`.
+
+    Returns
+    -------
+    tuple of int
+        ``(n_workers, n_wavefront_per_worker)`` such that
+        ``n_workers * n_wavefront_per_worker <= nproc`` (when
+        ``n_items > 1``). By default prefers as many outer workers as
+        possible; with ``prefer_depth=True`` keeps a minimum inner width
+        (see :func:`ffpopt.runtime.FastWavefront.split_nproc_for_items`).
+    """
+    from ffpopt.runtime.FastWavefront import split_nproc_for_items
+
+    return split_nproc_for_items(
+        nproc, n_fragments, prefer_depth=prefer_depth
+    )
+
+
 def _execute_bond_scan_jobs(
     jobs: list[dict],
     *,
