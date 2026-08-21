@@ -141,11 +141,22 @@ def boltzmann_average_mol2_charges(
     template = Path(ref_mol2) if ref_mol2 is not None else paths[0]
     out = write_mol2_charges(template, out_mol2, avg)
     w = boltzmann_weights(energies_kcal, T=T)
+    first = np.asarray(rows[0], dtype=float)
+    dq = avg - first
+    e = np.asarray(energies_kcal, dtype=float)
+    equal_weights = e.size <= 1 or float(np.max(e) - np.min(e)) < 1e-12
     return {
         "out_mol2": str(out),
         "weights": w.tolist(),
         "charges": avg.tolist(),
         "T": float(T),
+        "n_atom": int(n_atoms),
+        "n_conf": int(len(paths)),
+        "mol2_paths": [str(p) for p in paths],
+        "energies_kcal": [float(x) for x in e.tolist()],
+        "equal_weights": bool(equal_weights),
+        "rms_vs_first": float(np.sqrt(np.mean(dq * dq))),
+        "max_abs_dq": float(np.max(np.abs(dq))),
     }
 
 

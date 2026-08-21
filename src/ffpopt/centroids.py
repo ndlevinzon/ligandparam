@@ -15,6 +15,7 @@ def generate_centroid_start_jsons(
     nconf: int = 50,
     rmstol: float = 0.5,
     workdir=None,
+    logger=None,
 ) -> list:
     """Write ``start.cent{i}.json`` clones seeded by ConfSearch centroids.
 
@@ -30,8 +31,15 @@ def generate_centroid_start_jsons(
     """
     from copy import deepcopy
 
+    from ffpopt.affdo_log import log_affdo, print_affdo
     from ffpopt.Struct import ListOfStruct
-    from ffpopt.confsearch.ConfSearch import ConformerSearch, GetConformers, ReadMolecule
+    from ffpopt.confsearch.ConfSearch import ConformerSearch
+
+    def _say(msg: str) -> None:
+        if logger is not None:
+            log_affdo(logger, "%s", msg)
+        else:
+            print_affdo(msg)
 
     start_json = Path(start_json)
     wd = Path(workdir) if workdir is not None else start_json.parent
@@ -41,11 +49,16 @@ def generate_centroid_start_jsons(
     paths = []
 
     if mol2_path is not None and Path(mol2_path).is_file():
+        nconf_eff = max(int(nconf), int(nkeep))
         out_base = str(wd / "centroids.json")
+        _say(
+            f"ConfSearch {mol2_path} -> {out_base} "
+            f"(nconf={nconf_eff} nkeep={int(nkeep)} rmstol={float(rmstol):g} mmff94)"
+        )
         ConformerSearch(
             str(mol2_path),
             out_base,
-            nconf=max(int(nconf), int(nkeep)),
+            nconf=nconf_eff,
             nkeep=int(nkeep),
             mmff94=True,
             maxiter=250,
@@ -54,6 +67,8 @@ def generate_centroid_start_jsons(
         )
         # ConformerSearch writes a multi-struct JSON at out_base
         clus = ListOfStruct.from_file(out_base)
+        n_found = len(clus.structs)
+        _say(f"ConfSearch retained {n_found} clustered centroid(s)")
         for i, st in enumerate(clus.structs[: int(nkeep)]):
             clone = deepcopy(los0)
             clone.structs = [clone.structs[0]]
@@ -64,8 +79,17 @@ def generate_centroid_start_jsons(
             out = wd / f"start.cent{i}.json"
             clone.save(str(out))
             paths.append(out)
+        _say(
+            "wrote "
+            + ", ".join(p.name for p in paths)
+            + " (JSON starts; no per-centroid mol2 charge files)"
+        )
     else:
         # Fallback: single starting geometry only.
+        _say(
+            "no mol2 for ConfSearch; using the primary start geometry as the "
+            "only centroid"
+        )
         out = wd / "start.cent0.json"
         if not out.is_file():
             out.write_bytes(start_json.read_bytes())

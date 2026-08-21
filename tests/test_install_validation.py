@@ -204,6 +204,10 @@ class TestPublicAPISurface(unittest.TestCase):
             "ffpopt.runtime.progress_board",
             "ffpopt.scan.wavefront_mixins",
             "ffpopt.scan.ScanAnalysis",
+            "ffpopt.affdo_log",
+            "ffpopt.profile_select",
+            "ffpopt.boltzmann_charges",
+            "ffpopt.dihed_fit_ext",
         )
         for mod in runtime:
             importlib.import_module(mod)

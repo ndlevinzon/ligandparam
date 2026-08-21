@@ -82,6 +82,16 @@ if __name__ == "__main__":
     AddStandardOptions(parser)
     args = parser.parse_args()
     args.model="sander"
+
+    from ffpopt.affdo_log import print_affdo
+    from ffpopt.dihed_fit_ext import apply_fit_flags_to_args
+
+    apply_fit_flags_to_args(args)
+    print_affdo(
+        f"GenDihedFit flags: mode={args.fit_mode} backend={args.fit_backend} "
+        f"opt_phase={args.opt_phase} opt_periods={args.opt_periods} "
+        f"opt_scee_scnb={args.opt_scee_scnb} scee={args.scee:g} scnb={args.scnb:g}"
+    )
     
     finp = FitInputType.from_file(args,args.inp)
     

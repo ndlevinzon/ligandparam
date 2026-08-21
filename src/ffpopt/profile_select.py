@@ -98,6 +98,33 @@ def load_profile_angles_energies(path) -> Tuple[np.ndarray, np.ndarray]:
 
 
 
+def score_profile_details(path, *, max_order: int = 3) -> dict:
+    """Score one scan file; never raises (``error`` is set on failure)."""
+    p = Path(path)
+    row = {
+        "path": p,
+        "score": float("inf"),
+        "fourier": float("inf"),
+        "roughness": float("inf"),
+        "npts": 0,
+        "error": None,
+    }
+    if not p.is_file():
+        row["error"] = "missing"
+        return row
+    try:
+        ang, ene = load_profile_angles_energies(p)
+        row["npts"] = int(np.asarray(ang).size)
+        f = fourier_residual_score(ang, ene, max_order=max_order)
+        r = roughness_score(ang, ene)
+        row["fourier"] = float(f)
+        row["roughness"] = float(r)
+        row["score"] = composite_smoothness_score(ang, ene, max_order=max_order)
+    except Exception as exc:
+        row["error"] = f"{type(exc).__name__}: {exc}"
+    return row
+
+
 def pick_smoothest_profile(
     candidates: Iterable,
     *,
@@ -113,23 +140,21 @@ def pick_smoothest_profile(
     Returns
     -------
     best_path, best_score, score_rows
-        ``score_rows`` is a list of ``(path, score)`` sorted ascending.
+        ``score_rows`` is a list of detail dicts sorted by ``score``
+        (keys: ``path``, ``score``, ``fourier``, ``roughness``, ``npts``,
+        ``error``).
     """
-    rows = []
-    for path in candidates:
-        p = Path(path)
-        if not p.is_file():
-            continue
-        try:
-            ang, ene = load_profile_angles_energies(p)
-            score = composite_smoothness_score(ang, ene, max_order=max_order)
-        except Exception:
-            score = float("inf")
-        rows.append((p, score))
+    rows = [score_profile_details(path, max_order=max_order) for path in candidates]
     if not rows:
         return None, float("inf"), []
-    rows.sort(key=lambda t: t[1])
-    return rows[0][0], float(rows[0][1]), rows
+    rows.sort(key=lambda t: t["score"])
+    finite = [
+        r for r in rows if r.get("error") is None and np.isfinite(r["score"])
+    ]
+    if not finite:
+        return None, float("inf"), rows
+    finite.sort(key=lambda t: t["score"])
+    return finite[0]["path"], float(finite[0]["score"]), rows
 
 
 def promote_profile_files(src_stem: Path, dst_stem: Path) -> None:

@@ -706,14 +706,19 @@ def _run_hl_and_orig_scans(
         from ffpopt.centroids import generate_centroid_start_jsons
         from ffpopt.profile_select import pick_smoothest_profile, promote_profile_files
 
+        from ffpopt.affdo_log import log_affdo
+
         cent_starts = generate_centroid_start_jsons(
             inp,
             mol2_path=centroid_mol2,
             nkeep=n_cent,
             workdir=workdir,
+            logger=log,
         )
-        log.info(
-            "[twist] multi-centroid HL: %s starts -> pick smoothest per torsion",
+        log_affdo(
+            log,
+            "multi-centroid HL: %s start geometry(ies) -> pick smoothest "
+            "profile per torsion (Fourier residual + roughness)",
             len(cent_starts),
         )
         for ci, cent_inp in enumerate(cent_starts):
@@ -742,15 +747,43 @@ def _run_hl_and_orig_scans(
             ]
             best, score, rows = pick_smoothest_profile(cands)
             if best is None:
-                log.warning("[twist] %s: no centroid HL profiles to score", idx)
+                log.warning("[affdo] %s: no centroid HL profiles to score", idx)
                 continue
+            for row in rows:
+                err = row.get("error")
+                if err:
+                    log_affdo(
+                        log,
+                        "%s skip %s (%s)",
+                        idx,
+                        Path(row["path"]).name,
+                        err,
+                    )
+                    continue
+                fourier = row["fourier"]
+                rough = row["roughness"]
+                sc = row["score"]
+                marker = " <- selected" if Path(row["path"]) == Path(best) else ""
+                log_affdo(
+                    log,
+                    "%s %s: score=%.4g fourier=%.4g roughness=%.4g npts=%s%s",
+                    idx,
+                    Path(row["path"]).name,
+                    sc,
+                    fourier,
+                    rough,
+                    row["npts"],
+                    marker,
+                )
             src_stem = Path(best).with_suffix("")
             dst_stem = _in_workdir(workdir, f"{hl_prefix}_{idx}")
             promote_profile_files(src_stem, dst_stem)
-            log.info(
-                "[twist] %s: selected %s (score=%.4g) among %s centroids",
+            log_affdo(
+                log,
+                "%s: promoted %s -> %s.* (score=%.4g, %s centroid(s))",
                 idx,
                 best.name,
+                dst_stem.name,
                 score,
                 len(rows),
             )
@@ -913,6 +946,10 @@ def _run_gendihedfit(
         return
     log.info("[twist] GenDihedFit -> %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
     extra = list(fit_cli_args or [])
+    if extra:
+        from ffpopt.affdo_log import log_affdo
+
+        log_affdo(log, "GenDihedFit extra flags: %s", " ".join(str(x) for x in extra))
     _run_ffpopt_bin(
         "ffpopt-GenDihedFit.py",
         f"--nlmaxiter={nlmaxiter}",
@@ -1433,6 +1470,22 @@ def run_dihed_twist_workflow(
                 std[key] = fast_knobs[key]
                 standard_kwargs[key] = fast_knobs[key]
     prefer_depth = prefer_wavefront_depth(model=model, fast=fast_on)
+
+    from ffpopt.affdo_log import describe_affdo_extras, log_affdo
+
+    affdo_line = describe_affdo_extras(
+        multi_centroid=multi_centroid,
+        soft_dihed_restraint=bool(std.get("soft_dihed_restraint")),
+        soft_dihed_k=std.get("soft_dihed_k"),
+        soft_dihed_tol=std.get("soft_dihed_tol"),
+        fit_cli_args=fit_cli_args,
+    )
+    if (
+        int(multi_centroid or 0) >= 2
+        or bool(std.get("soft_dihed_restraint"))
+        or bool(fit_cli_args)
+    ):
+        log_affdo(log, "twist extras: %s", affdo_line)
 
     # SimpleNamespace mirroring the CLI's args - needed by los.SetArgs.
     bonds0 = normalize_bond_pairs0(bond)
@@ -2295,6 +2348,25 @@ def run_fragmented_dihed_twist_workflow(
         **standard_kwargs,
     )
 
+    from ffpopt.affdo_log import describe_affdo_extras, log_affdo
+
+    if (
+        int(multi_centroid or 0) >= 2
+        or bool(standard_kwargs.get("soft_dihed_restraint"))
+        or bool(fit_cli_args)
+    ):
+        log_affdo(
+            log,
+            "fragment extras: %s",
+            describe_affdo_extras(
+                multi_centroid=multi_centroid,
+                soft_dihed_restraint=bool(standard_kwargs.get("soft_dihed_restraint")),
+                soft_dihed_k=standard_kwargs.get("soft_dihed_k"),
+                soft_dihed_tol=standard_kwargs.get("soft_dihed_tol"),
+                fit_cli_args=fit_cli_args,
+            ),
+        )
+
     runnable = []
     for fragment in fragments_iter:
         if not fragment.fit_torsions:
@@ -2578,14 +2650,42 @@ def run_whole_ligand_dihed_twist_workflow(
         else out_dir_path / f"{mol2_p.stem}.dihed.frcmod"
     )
 
+    from ffpopt.affdo_log import describe_affdo_extras, format_boltzmann_summary, log_affdo
+
+    log_affdo(
+        log,
+        "whole-ligand twist starting: mol2=%s lib=%s frcmod=%s out_dir=%s",
+        mol2_p,
+        lib_p,
+        frcmod_p,
+        out_dir_path,
+    )
+    log_affdo(
+        log,
+        "extras: %s",
+        describe_affdo_extras(
+            whole_ligand=True,
+            multi_centroid=multi_centroid,
+            boltzmann_charges=boltzmann_charges,
+            soft_dihed_restraint=bool(standard_kwargs.get("soft_dihed_restraint")),
+            soft_dihed_k=standard_kwargs.get("soft_dihed_k"),
+            soft_dihed_tol=standard_kwargs.get("soft_dihed_tol"),
+            fit_cli_args=fit_cli_args,
+        ),
+    )
+
     # Materialize parm7/rst7 beside the work dir via leap when needed.
     parm7 = out_dir_path / "ligand.parm7"
     rst7 = out_dir_path / "ligand.rst7"
-    if not (skip_existing and parm7.is_file() and rst7.is_file()):
+    if skip_existing and parm7.is_file() and rst7.is_file():
+        log.info("[whole-twist] reusing existing %s and %s", parm7, rst7)
+    else:
         _write_parent_parm_rst7(mol2_p, lib_p, frcmod_p, parm7, rst7, logger=log)
 
     start_json = out_dir_path / "start.json"
-    if not (skip_existing and start_json.is_file()):
+    if skip_existing and start_json.is_file():
+        log.info("[whole-twist] %s exists - skipping PrepareInput", start_json)
+    else:
         log.info("[whole-twist] PrepareInput -> %s", start_json)
         _run_ffpopt_bin(
             "ffpopt-PrepareInput.py",
@@ -2613,19 +2713,30 @@ def run_whole_ligand_dihed_twist_workflow(
     log.info("[whole-twist] %s rotatable bond(s): %s", len(bonds), bonds)
 
     boltz_info = None
-    if boltzmann_charges and multi_centroid >= 2:
+    if boltzmann_charges and int(multi_centroid or 0) < 2:
+        log_affdo(
+            log,
+            "--boltzmann-charges needs --multi-centroid >= 2; skipping charge rewrite",
+        )
+    elif boltzmann_charges:
         from ffpopt.boltzmann_charges import (
             boltzmann_average_mol2_charges,
             update_lib_charges_from_mol2,
         )
         from ffpopt.centroids import generate_centroid_start_jsons
 
+        log_affdo(
+            log,
+            "Boltzmann charge average requested (T=298.15 K); generating centroids",
+        )
         cents = generate_centroid_start_jsons(
             start_json,
             mol2_path=mol2_p,
             nkeep=int(multi_centroid),
             workdir=out_dir_path,
+            logger=log,
         )
+        log_affdo(log, "centroid start JSONs: %s", [p.name for p in cents])
         # Without per-centroid charge mol2s, average is a no-op on the parent;
         # write a marker and keep parent charges unless ConfSearch also dumped mol2.
         cent_mol2s = sorted(out_dir_path.glob("centroids_*.mol2"))
@@ -2633,17 +2744,33 @@ def run_whole_ligand_dihed_twist_workflow(
             # Energies: equal weights if unknown.
             energies = [0.0] * len(cent_mol2s)
             avg_mol2 = out_dir_path / f"{mol2_p.stem}.boltz.mol2"
+            log_affdo(
+                log,
+                "averaging charges from %s centroid mol2(s) (equal weights; "
+                "no per-centroid energies on disk)",
+                len(cent_mol2s),
+            )
             boltz_info = boltzmann_average_mol2_charges(
                 cent_mol2s, energies, avg_mol2, ref_mol2=mol2_p
             )
             out_lib = out_dir_path / f"{mol2_p.stem}.boltz.lib"
             update_lib_charges_from_mol2(lib_p, avg_mol2, out_lib)
             boltz_info["out_lib"] = str(out_lib)
-            log.info("[whole-twist] Boltzmann-averaged charges -> %s", avg_mol2)
+            for line in format_boltzmann_summary(boltz_info):
+                log_affdo(log, "%s", line)
         else:
-            log.info(
-                "[whole-twist] boltzmann_charges requested but no per-centroid "
-                "mol2 charge files; skipping charge rewrite"
+            json_hint = out_dir_path / "centroids.json"
+            extra = (
+                f"; ConfSearch wrote {json_hint.name}"
+                if json_hint.is_file()
+                else ""
+            )
+            log_affdo(
+                log,
+                "no centroids_*.mol2 charge files under %s%s; "
+                "keeping parent mol2/lib charges",
+                out_dir_path,
+                extra,
             )
 
     twist = run_dihed_twist_workflow(
@@ -2674,6 +2801,8 @@ def run_whole_ligand_dihed_twist_workflow(
         # No refit needed — copy parent.
         shutil.copy2(frcmod_p, out_frcmod_path)
         log.info("[whole-twist] no itXX.frcmod; copied parent frcmod")
+
+    log_affdo(log, "whole-ligand twist finished: out_frcmod=%s", out_frcmod_path)
 
     return {
         "out_frcmod": str(out_frcmod_path),

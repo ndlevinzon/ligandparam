@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - ``--fit-full`` / ``--fit-mode`` / ``--fit-backend {lsq,lbfgsb,jax}`` — phase, period, scee/scnb (or barrier-only)
   - ``--boltzmann-charges`` — Boltzmann-average charges over centroid mol2s
   - Optional extra: ``pip install 'ligandparam[jax]'``
+  - Tagged stdout ``[affdo]`` lines for extras, centroid ConfSearch, profile scores, Boltzmann weights, soft-restraint fallbacks, and extended-fit chi^2 / parameters
 
 ---
 

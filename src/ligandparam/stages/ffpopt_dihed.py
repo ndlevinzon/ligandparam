@@ -134,6 +134,21 @@ class StageDihedTwistCorrection(AbstractStage):
             self.out_frcmod,
             self.model,
         )
+        from ffpopt.affdo_log import describe_affdo_extras, log_affdo
+
+        log_affdo(
+            self.logger,
+            "extras: %s",
+            describe_affdo_extras(
+                whole_ligand=self.whole_ligand,
+                multi_centroid=self.multi_centroid,
+                boltzmann_charges=self.boltzmann_charges,
+                soft_dihed_restraint=self.soft_dihed_restraint,
+                soft_dihed_k=self.soft_dihed_k,
+                soft_dihed_tol=self.soft_dihed_tol,
+                fit_cli_args=self.fit_cli_args,
+            ),
+        )
         if dry_run:
             which = (
                 "run_whole_ligand_dihed_twist_workflow"
@@ -206,6 +221,13 @@ class StageDihedTwistCorrection(AbstractStage):
                 result.get("out_frcmod"),
                 result.get("bonds"),
             )
+            if result.get("boltzmann_charges"):
+                log_affdo(
+                    self.logger,
+                    "Boltzmann charge rewrite: mol2=%s lib=%s",
+                    (result["boltzmann_charges"] or {}).get("out_mol2"),
+                    (result["boltzmann_charges"] or {}).get("out_lib"),
+                )
             return result
 
         result = run_fragmented_dihed_twist_workflow(

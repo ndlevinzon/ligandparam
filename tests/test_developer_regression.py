@@ -455,6 +455,14 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertIn("hello", line)
         self.assertTrue(line.endswith("\n"))
 
+    def test_affdo_scope_peels_on_console(self):
+        from ffpopt.runtime.console import format_console_line
+
+        line = format_console_line("[affdo] extras: whole_ligand=True", tag="ffpopt")
+        self.assertIn("[ffpopt]", line)
+        self.assertIn("[affdo]", line)
+        self.assertIn("extras: whole_ligand=True", line)
+
     def test_attach_console_handlers_idempotent(self):
         from ffpopt.runtime.console import attach_console_handlers
 
@@ -483,6 +491,154 @@ class TestLoggingContracts(unittest.TestCase):
         console_mod.attach_console_handlers(logger, tag="x")
         self.assertFalse(console_mod._BANNER_PRINTED)
         logger.handlers.clear()
+
+
+# ---------------------------------------------------------------------------
+# AFFDO-style extras — logging helpers + pure scoring
+# ---------------------------------------------------------------------------
+
+
+class TestAffdoLogging(unittest.TestCase):
+    def test_describe_affdo_extras_default_and_full(self):
+        from ffpopt.affdo_log import describe_affdo_extras
+
+        default = describe_affdo_extras()
+        self.assertIn("whole_ligand=False", default)
+        self.assertIn("multi_centroid=0", default)
+        self.assertIn("fit_flags=(barrier / default)", default)
+        self.assertNotIn("k=", default)
+
+        full = describe_affdo_extras(
+            whole_ligand=True,
+            multi_centroid=5,
+            boltzmann_charges=True,
+            soft_dihed_restraint=True,
+            soft_dihed_k=400.0,
+            soft_dihed_tol=0.25,
+            fit_cli_args=["--fit-full", "--fit-backend", "jax"],
+        )
+        self.assertIn("whole_ligand=True", full)
+        self.assertIn("multi_centroid=5", full)
+        self.assertIn("boltzmann_charges=True", full)
+        self.assertIn("k=400", full)
+        self.assertIn("tol=0.25 deg", full)
+        self.assertIn("--fit-full", full)
+        self.assertIn("jax", full)
+
+    def test_format_boltzmann_summary(self):
+        from ffpopt.affdo_log import format_boltzmann_summary
+
+        lines = format_boltzmann_summary(
+            {
+                "out_mol2": "lig.boltz.mol2",
+                "out_lib": "lig.boltz.lib",
+                "weights": [0.7, 0.3],
+                "T": 298.15,
+                "n_atom": 12,
+                "equal_weights": False,
+                "rms_vs_first": 0.01234,
+                "max_abs_dq": 0.05,
+            }
+        )
+        text = "\n".join(lines)
+        self.assertIn("12 atom charges", text)
+        self.assertIn("0.7000 0.3000", text)
+        self.assertIn("lig.boltz.mol2", text)
+        self.assertIn("lig.boltz.lib", text)
+        self.assertNotIn("equal weights", text)
+
+        eq = "\n".join(format_boltzmann_summary({"weights": [0.5, 0.5], "equal_weights": True}))
+        self.assertIn("equal weights", eq)
+
+    def test_print_affdo_stdout(self):
+        from ffpopt.affdo_log import print_affdo
+
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            print_affdo("soft restraint on")
+        self.assertEqual(buf.getvalue(), "[affdo] soft restraint on\n")
+
+    def test_pick_smoothest_profile_logs_details(self):
+        from ffpopt.profile_select import pick_smoothest_profile, score_profile_details
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            smooth = root / "c0.dat"
+            jagged = root / "c1.dat"
+            missing = root / "c2.dat"
+            # Smooth cosine-like scan.
+            smooth.write_text(
+                "\n".join(f"{a} {0.5 * (1.0 - __import__('math').cos(__import__('math').radians(a)))} 0"
+                          for a in range(-180, 181, 30)),
+                encoding="utf-8",
+            )
+            jagged.write_text(
+                "\n".join(
+                    f"{a} {(0.0 if i % 2 == 0 else 8.0)} 0"
+                    for i, a in enumerate(range(-180, 181, 30))
+                ),
+                encoding="utf-8",
+            )
+            best, score, rows = pick_smoothest_profile([smooth, jagged, missing])
+            self.assertEqual(Path(best), smooth)
+            self.assertTrue(score < rows[1]["score"] or Path(rows[0]["path"]) == smooth)
+            names = {Path(r["path"]).name: r for r in rows}
+            self.assertEqual(names["c2.dat"]["error"], "missing")
+            self.assertIsNone(names["c0.dat"]["error"])
+            d0 = score_profile_details(smooth)
+            self.assertGreater(d0["npts"], 3)
+            self.assertTrue(__import__("math").isfinite(d0["fourier"]))
+
+    def test_boltzmann_average_summary_fields(self):
+        from ffpopt.boltzmann_charges import boltzmann_average_mol2_charges
+
+        def _mol2(charges):
+            lines = [
+                "@<TRIPOS>MOLECULE\n",
+                "LIG\n",
+                "@<TRIPOS>ATOM\n",
+            ]
+            for i, q in enumerate(charges, start=1):
+                name = f"C{i}"
+                lines.append(
+                    f"{i:7d} {name:<8s} {0.0:10.4f} {0.0:10.4f} {0.0:10.4f} "
+                    f"{'C.3':<6s} {'1':>4s} {'LIG':<6s} {q:10.6f}\n"
+                )
+            lines.append("@<TRIPOS>BOND\n")
+            return "".join(lines)
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            a = root / "c0.mol2"
+            b = root / "c1.mol2"
+            a.write_text(_mol2([0.1, -0.1]), encoding="utf-8")
+            b.write_text(_mol2([0.3, -0.3]), encoding="utf-8")
+            out = root / "avg.mol2"
+            info = boltzmann_average_mol2_charges([a, b], [0.0, 0.0], out)
+            self.assertTrue(info["equal_weights"])
+            self.assertEqual(info["n_atom"], 2)
+            self.assertEqual(info["n_conf"], 2)
+            self.assertAlmostEqual(info["charges"][0], 0.2, places=6)
+            self.assertGreater(info["rms_vs_first"], 0.0)
+
+    def test_format_extended_params(self):
+        from ffpopt.dihed_fit_ext import format_extended_params
+
+        prim = SimpleNamespace(fc=1.25, phase=180.0, per=2)
+        finp = SimpleNamespace(
+            ptypedict={"ca-c3-c-o": SimpleNamespace(dfcns=SimpleNamespace(prims=[prim]))},
+            opt_phase=True,
+            opt_periods=True,
+            opt_scee_scnb=True,
+            scee=1.2,
+            scnb=2.0,
+        )
+        text = "\n".join(format_extended_params(finp))
+        self.assertIn("ca-c3-c-o", text)
+        self.assertIn("FC=[1.2500]", text)
+        self.assertIn("phase_deg=[180.00]", text)
+        self.assertIn("period=[2]", text)
+        self.assertIn("scee=1.2000", text)
 
 
 # ---------------------------------------------------------------------------

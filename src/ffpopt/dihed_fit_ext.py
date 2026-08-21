@@ -411,22 +411,71 @@ def _jax_objective_factory(finp, caches):
     return obj, jax.grad(obj)
 
 
+def format_extended_params(finp) -> list[str]:
+    """ASCII lines describing the current extended parameter vector."""
+    lines: list[str] = []
+    for pname in finp.ptypedict:
+        dfcns = finp.ptypedict[pname].dfcns
+        fcs = [f"{float(p.fc):.4f}" for p in dfcns.prims]
+        bits = [f"FC=[{', '.join(fcs)}]"]
+        if getattr(finp, "opt_phase", False):
+            ph = [f"{float(p.phase):.2f}" for p in dfcns.prims]
+            bits.append(f"phase_deg=[{', '.join(ph)}]")
+        if getattr(finp, "opt_periods", False):
+            pe = [str(int(p.per)) for p in dfcns.prims]
+            bits.append(f"period=[{', '.join(pe)}]")
+        lines.append(f"  {pname}: " + " ".join(bits))
+    if getattr(finp, "opt_scee_scnb", False):
+        lines.append(
+            f"  scee={float(getattr(finp, 'scee', 1.2)):.4f} "
+            f"scnb={float(getattr(finp, 'scnb', 2.0)):.4f}"
+        )
+    return lines
+
+
 def solve_extended_lbfgsb(args, finp, caches):
     """Run SciPy (or JAX-jac) L-BFGS-B on the extended objective."""
     from scipy.optimize import minimize
     import numpy as np
 
+    from ffpopt.affdo_log import print_affdo
+
     x0 = get_extended_params(finp)
     bounds = extended_bounds(finp, x0)
     backend = str(getattr(finp, "fit_backend", "lbfgsb"))
+    nparam = int(x0.size)
+    chi0 = float(objective_extended(x0, finp, caches))
+    print_affdo(
+        f"extended fit start: mode={getattr(finp, 'fit_mode', '?')} "
+        f"backend={backend} nparam={nparam} "
+        f"opt_phase={bool(getattr(finp, 'opt_phase', False))} "
+        f"opt_periods={bool(getattr(finp, 'opt_periods', False))} "
+        f"opt_scee_scnb={bool(getattr(finp, 'opt_scee_scnb', False))} "
+        f"chi^2={chi0:.6e} ftol={getattr(args, 'nltol', 0.01)} "
+        f"maxiter={getattr(args, 'nlmaxiter', 300)}"
+    )
+    for line in format_extended_params(finp):
+        print_affdo("x0 " + line.lstrip())
+
+    eval_state = {"n": 0}
+
+    def _maybe_log_eval(val: float) -> None:
+        eval_state["n"] += 1
+        n = eval_state["n"]
+        if n == 1 or n % 10 == 0:
+            print_affdo(f"L-BFGS-B eval {n}: chi^2={val:.6e}")
 
     if backend == "jax":
+        print_affdo("building JAX objective + autodiff Jacobian (first call may be slow)")
         obj_jax, grad_jax = _jax_objective_factory(finp, caches)
+        print_affdo("JAX objective ready")
 
         def fun(x):
             import jax.numpy as jnp
 
-            return float(obj_jax(jnp.asarray(x, dtype=jnp.float64)))
+            val = float(obj_jax(jnp.asarray(x, dtype=jnp.float64)))
+            _maybe_log_eval(val)
+            return val
 
         def jac(x):
             import jax.numpy as jnp
@@ -443,12 +492,14 @@ def solve_extended_lbfgsb(args, finp, caches):
             options={
                 "ftol": getattr(args, "nltol", 0.01),
                 "maxiter": getattr(args, "nlmaxiter", 300),
-                "disp": True,
+                "disp": False,
             },
         )
     else:
         def fun(x):
-            return objective_extended(x, finp, caches)
+            val = objective_extended(x, finp, caches)
+            _maybe_log_eval(float(val))
+            return val
 
         res = minimize(
             fun,
@@ -458,13 +509,21 @@ def solve_extended_lbfgsb(args, finp, caches):
             options={
                 "ftol": getattr(args, "nltol", 0.01),
                 "maxiter": getattr(args, "nlmaxiter", 300),
-                "disp": True,
+                "disp": False,
             },
         )
 
+    set_extended_params(finp, res.x)
+    chi1 = float(res.fun)
+    print_affdo(
+        f"extended L-BFGS-B ({backend}): success={bool(res.success)} "
+        f"nit={getattr(res, 'nit', '?')} nfev={getattr(res, 'nfev', eval_state['n'])} "
+        f"chi^2={chi1:.6e} (start {chi0:.6e}) msg={res.message}"
+    )
+    for line in format_extended_params(finp):
+        print_affdo("x* " + line.lstrip())
     print(
         f"[ffpopt] extended L-BFGS-B ({backend}): success={bool(res.success)} "
-        f"nit={getattr(res, 'nit', '?')} fun={float(res.fun):.6e} msg={res.message}"
+        f"nit={getattr(res, 'nit', '?')} fun={chi1:.6e} msg={res.message}"
     )
-    set_extended_params(finp, res.x)
     return res

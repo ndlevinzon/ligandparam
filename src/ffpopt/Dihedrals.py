@@ -1860,6 +1860,7 @@ def NonlinearSolve(args,finp):
     import numpy as np
     from ffpopt.dihed_fit_ext import (
         configure_fit_input,
+        count_extended_params,
         enrich_cache_with_14,
         get_extended_params,
         set_extended_params,
@@ -1879,6 +1880,13 @@ def NonlinearSolve(args,finp):
             build_fixed_geometry_ll_cache(s, args) for s in finp.systems
         ]
         if getattr(finp, "opt_scee_scnb", False):
+            from ffpopt.affdo_log import print_affdo
+
+            print_affdo(
+                "stripping scaled 1-4 elec/vdw from LL cache; "
+                f"refitting scee/scnb (start scee={float(getattr(finp, 'scee', 1.2)):g} "
+                f"scnb={float(getattr(finp, 'scnb', 2.0)):g})"
+            )
             for isys, s in enumerate(finp.systems):
                 enrich_cache_with_14(
                     s,
@@ -1905,11 +1913,17 @@ def NonlinearSolve(args,finp):
         set_extended_params(finp, get_extended_params(finp))
         # Ensure FC block matches linear guess when only FCs were solved.
         # get_extended_params already reads current dfcns FCs.
+        n_ext = count_extended_params(finp)
         print(
             f"[ffpopt] Extended fit mode={getattr(finp, 'fit_mode', '?')} "
-            f"backend={finp.fit_backend} "
+            f"backend={finp.fit_backend} nparam={n_ext} "
             f"opt_phase={finp.opt_phase} opt_periods={finp.opt_periods} "
             f"opt_scee_scnb={finp.opt_scee_scnb}"
+        )
+        print(
+            f"[affdo] GenDihedFit using extended solver "
+            f"(mode={getattr(finp, 'fit_mode', '?')} backend={finp.fit_backend} "
+            f"nparam={n_ext})"
         )
         solve_extended_lbfgsb(args, finp, finp._ll_cache)
         chisq = DihedFitObjFcn(finp.get_params(), finp)

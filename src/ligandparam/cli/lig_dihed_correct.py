@@ -295,11 +295,25 @@ def main(argv: list[str] | None = None) -> int:
         logger = set_stream_logger()
 
     logger.info(
-        "lig-dihed-correct: mol2=%s lib=%s frcmod=%s whole_ligand=%s",
+        "lig-dihed-correct: mol2=%s lib=%s frcmod=%s",
         bundle.mol2,
         bundle.lib,
         bundle.frcmod,
-        args.whole_ligand,
+    )
+    from ffpopt.affdo_log import describe_affdo_extras, log_affdo
+
+    log_affdo(
+        logger,
+        "extras: %s",
+        describe_affdo_extras(
+            whole_ligand=args.whole_ligand,
+            multi_centroid=args.multi_centroid,
+            boltzmann_charges=args.boltzmann_charges,
+            soft_dihed_restraint=args.soft_dihed_restraint,
+            soft_dihed_k=args.soft_dihed_k,
+            soft_dihed_tol=args.soft_dihed_tol,
+            fit_cli_args=_build_fit_cli_args(args),
+        ),
     )
     result = run_dihed_correct(
         bundle=bundle,

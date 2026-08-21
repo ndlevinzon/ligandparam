@@ -272,9 +272,16 @@ class WavefrontNode:
                     except Exception:
                         ok = True
                     if not ok:
+                        z = None
+                        try:
+                            z = float(rest.GetCrdValue(self.opt_geom.data["positions"]))
+                        except Exception:
+                            pass
+                        ztxt = f"{z:.2f}" if z is not None else "?"
                         print(
-                            f"Node {self.node_id}: soft dihedral outside "
-                            f"±{tol}° of target {self.angle}; falling back to hard IC"
+                            f"[affdo] Node {self.node_id}: soft dihedral "
+                            f"{ztxt} deg outside +/-{tol} deg of target "
+                            f"{self.angle}; falling back to hard IC"
                         )
                         self.opt_geom = GeomOpt(
                             self.los,
@@ -1493,6 +1500,15 @@ def run_dihed_wavefront(
             f"run_dihed_wavefront got unexpected keyword argument(s): {sorted(unknown)}"
         )
     std = {**std_defaults, **standard_kwargs}
+
+    if std.get("soft_dihed_restraint"):
+        k = std.get("soft_dihed_k", 500.0)
+        tol = std.get("soft_dihed_tol", 0.5)
+        print(
+            f"[affdo] wavefront soft harmonic dihedral: k={k:g} kcal/mol/rad^2 "
+            f"tol={tol:g} deg (hard IC fallback if out of band) dihed={dihed}",
+            flush=True,
+        )
 
     args = SimpleNamespace(
         inp=inp,
