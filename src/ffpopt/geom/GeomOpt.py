@@ -187,9 +187,13 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
         try:
             converged = bool(optimizer.run(fmax=strict_tol, steps=max_steps))
         except Exception as exc:
+            from ffpopt.runtime.Console import ascii_for_stdio
+
             sys.stderr.write(
-                f"[ffpopt] ASE {name} raised ({type(exc).__name__}: {exc}); "
-                f"trying next optimizer\n"
+                ascii_for_stdio(
+                    f"[ffpopt] ASE {name} raised ({type(exc).__name__}: {exc}); "
+                    f"trying next optimizer\n"
+                )
             )
             continue
         try:
@@ -1116,9 +1120,13 @@ def _geomopt_fallback_note(failed: str, exc: Exception, fallback: str) -> None:
     import sys
     import traceback
 
+    from ffpopt.runtime.Console import ascii_for_stdio
+
     sys.stderr.write(
-        f"[ffpopt] {failed} geomopt failed ({type(exc).__name__}: {exc}); "
-        f"falling back to {fallback}\n"
+        ascii_for_stdio(
+            f"[ffpopt] {failed} geomopt failed ({type(exc).__name__}: {exc}); "
+            f"falling back to {fallback}\n"
+        )
     )
     if os.environ.get("FFPOPT_GEOMOPT_TRACEBACK", "").strip().lower() in (
         "1",

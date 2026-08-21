@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Soft harmonic dihedral restraint (AFFDO-style 500 kcal/mol/rad^2, "
-            "±0.5°) with geomeTRIC instead of hard IC constraints"
+            "+/-0.5 deg) with geomeTRIC instead of hard IC constraints"
         ),
     )
     parser.add_argument(

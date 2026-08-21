@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **ffpopt layout** — domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import-redirect shims removed; callers use the canonical packages (``python -m ffpopt.geom.Geometric``).
 - **PascalCase library modules** — snake_case ``src/`` modules renamed to descriptive PascalCase (``TwistHelpers``, ``AffdoLog``, ``LigandIo``, …) to match existing ffpopt domain files. Package directories stay lowercase. Hyphenated ``ffpopt.bin`` CLIs unchanged.
+- **ASCII stdout** — console / argparse / exception-note lines map ``+/-``, ``deg``, ``chi^2`` (not ``±`` ``°`` ``χ²``) so latin-1 Slurm ``.out`` files stay greppable.
 
 ---
 

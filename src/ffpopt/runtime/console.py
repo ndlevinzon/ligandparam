@@ -9,6 +9,9 @@ hierarchy so callers can keep writing ``log.info("[frag-twist] ...")`` without
 duplicating tags. Console handlers always write to the real process streams
 (``sys.__stdout__`` / ``sys.__stderr__``) so teeing stdout for fragment logs
 does not double-prefix already-formatted logger lines.
+
+All console writes are forced to ASCII (``+/-``, ``deg``, ``chi^2``, …) so
+latin-1 Slurm ``.out`` files do not mojibake.
 """
 
 from __future__ import annotations
@@ -27,6 +30,86 @@ _PREFIXED_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[")
 _LEADING_SCOPE = re.compile(r"^\[([^\]]+)\]\s*")
 
 _BANNER_PRINTED = False
+
+# Readable ASCII stand-ins for symbols that otherwise mojibake on latin-1
+# Slurm ``.out`` files. Anything else is ``backslashreplace``'d.
+_ASCII_REPLACEMENTS = (
+    ("\u00b1", "+/-"),  # plus-minus
+    ("\u2213", "-/+"),
+    ("\u00b0", " deg"),  # degree
+    ("\u03c7", "chi"),
+    ("\u03a7", "chi"),
+    ("\u00b2", "^2"),
+    ("\u00b3", "^3"),
+    ("\u0394", "d"),
+    ("\u03b4", "d"),
+    ("\u2192", "->"),
+    ("\u2190", "<-"),
+    ("\u2194", "<->"),
+    ("\u2014", "-"),
+    ("\u2013", "-"),
+    ("\u2212", "-"),
+    ("\u00d7", "x"),
+    ("\u2264", "<="),
+    ("\u2265", ">="),
+    ("\u2260", "!="),
+    ("\u2248", "~="),
+    ("\u221d", "propto"),
+    ("\u00b7", "*"),
+    ("\u2022", "*"),
+    ("\u03bc", "u"),
+    ("\u00b5", "u"),
+    ("\u00c5", "Ang"),
+    ("\u2026", "..."),
+    ("\u2018", "'"),
+    ("\u2019", "'"),
+    ("\u201c", '"'),
+    ("\u201d", '"'),
+    ("\u00a0", " "),
+)
+
+
+def ascii_for_stdio(text: str) -> str:
+    """Return ``text`` encoded as ASCII suitable for stdout / Slurm logs."""
+    if not text or text.isascii():
+        return text
+    out = text
+    for src, dst in _ASCII_REPLACEMENTS:
+        if src in out:
+            out = out.replace(src, dst)
+    if out.isascii():
+        return out
+    return out.encode("ascii", errors="backslashreplace").decode("ascii")
+
+
+class _AsciiStdio:
+    """Proxy that forces ``write`` / ``writelines`` through :func:`ascii_for_stdio`."""
+
+    def __init__(self, inner: TextIO) -> None:
+        self._inner = inner
+        self._lp_ascii_stdio = True
+
+    def write(self, data: str) -> int:
+        if not isinstance(data, str):
+            data = str(data)
+        return self._inner.write(ascii_for_stdio(data))
+
+    def writelines(self, lines) -> None:
+        for line in lines:
+            self.write(line)
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+
+def ensure_ascii_stdio() -> None:
+    """Wrap ``sys.stdout`` / ``sys.stderr`` so print() cannot emit non-ASCII."""
+    for attr in ("stdout", "stderr"):
+        stream = getattr(sys, attr, None)
+        if stream is None or getattr(stream, "_lp_ascii_stdio", False):
+            continue
+        setattr(sys, attr, _AsciiStdio(stream))
+
 
 _LOGO = r"""
 .____    .__                         ._____________                              
@@ -100,6 +183,7 @@ def print_startup_banner(
     if not force:
         if _BANNER_PRINTED or os.environ.get("LIGANDPARAM_BANNER_PRINTED"):
             return False
+    ensure_ascii_stdio()
     out = stream if stream is not None else sys.__stdout__
     text = format_startup_banner()
     try:
@@ -164,7 +248,8 @@ def format_console_line(
     """Prefix ``message`` once: ``TIMESTAMP [tag…] [peeled…] rest``."""
     if _PREFIXED_LINE.match(message.lstrip("\r")):
         # Already formatted (e.g. logging handler wrote into a TeeTextIO).
-        return message if message.endswith("\n") else f"{message}\n"
+        lined = message if message.endswith("\n") else f"{message}\n"
+        return ascii_for_stdio(lined)
 
     base = _normalize_tags(tag)
     if tags:
@@ -187,7 +272,7 @@ def format_console_line(
         prefix = f"{stamp} {bracket} " if bracket else f"{stamp} "
         line = prefix + rest
         out.append(line + ("\n" if newline else "\n"))
-    return "".join(out)
+    return ascii_for_stdio("".join(out))
 
 
 class TeeTextIO:
@@ -209,6 +294,7 @@ class TeeTextIO:
     def write(self, data: str) -> int:
         if not data:
             return 0
+        data = ascii_for_stdio(data)
         self.file_stream.write(data)
         self._buf += data
         while "\n" in self._buf:
@@ -280,7 +366,7 @@ class HierarchicalConsoleFormatter(logging.Formatter):
             if head[-1:] != "\n":
                 head += "\n"
             head += record.exc_text
-        return head
+        return ascii_for_stdio(head)
 
 
 def console_formatter(
@@ -307,18 +393,19 @@ def attach_console_handlers(
         if getattr(handler, "_lp_console_marker", None):
             return
 
+    ensure_ascii_stdio()
     tags = _normalize_tags(tag)
     marker = "ffpopt.console:" + "/".join(tags)
     fmt = console_formatter(tags)
 
-    out = logging.StreamHandler(sys.__stdout__)
+    out = logging.StreamHandler(_AsciiStdio(sys.__stdout__))
     out.setLevel(level)
     out.addFilter(_MaxLevelFilter(logging.INFO))
     out.setFormatter(fmt)
     out._lp_console_marker = marker  # type: ignore[attr-defined]
     logger.addHandler(out)
 
-    err = logging.StreamHandler(sys.__stderr__)
+    err = logging.StreamHandler(_AsciiStdio(sys.__stderr__))
     err.setLevel(logging.WARNING)
     err.setFormatter(fmt)
     err._lp_console_marker = marker  # type: ignore[attr-defined]

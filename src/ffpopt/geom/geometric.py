@@ -493,9 +493,13 @@ def _recovery_attempts(
 
 
 def _geom_retry_note(label: str, exc: BaseException) -> None:
+    from ffpopt.runtime.Console import ascii_for_stdio
+
     sys.stderr.write(
-        f"[ffpopt] geomeTRIC attempt failed ({type(exc).__name__}: {exc}); "
-        f"retrying with recovery '{label}'\n"
+        ascii_for_stdio(
+            f"[ffpopt] geomeTRIC attempt failed ({type(exc).__name__}: {exc}); "
+            f"retrying with recovery '{label}'\n"
+        )
     )
 
 

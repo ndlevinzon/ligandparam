@@ -23,23 +23,15 @@ ANGLE_HOLD_K = 50.0
 
 
 def log_linear_torsion(msg: str) -> None:
-    """Write a linear-torsion log line to stderr as UTF-8 bytes.
+    """Write a linear-torsion log line to stderr as ASCII.
 
     Avoids ``UnicodeEncodeError`` / mojibake when the process console is not
-    UTF-8 (common on Windows). Message text itself stays ASCII (``deg``).
+    UTF-8 (common on Windows / latin-1 Slurm ``.out`` files).
     """
-    text = msg if msg.endswith("\n") else msg + "\n"
-    data = text.encode("utf-8", errors="strict")
-    buf = getattr(sys.stderr, "buffer", None)
-    if buf is not None:
-        try:
-            buf.write(data)
-            buf.flush()
-            return
-        except Exception:
-            pass
-    # Last resort: ASCII-safe text write.
-    sys.stderr.write(text.encode("ascii", errors="replace").decode("ascii"))
+    from ffpopt.runtime.Console import ascii_for_stdio
+
+    text = ascii_for_stdio(msg if msg.endswith("\n") else msg + "\n")
+    sys.stderr.write(text)
 
 
 def is_linear_torsion_error(exc: BaseException) -> bool:

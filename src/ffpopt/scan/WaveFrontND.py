@@ -265,6 +265,9 @@ class WavefrontNode(object):
 
     def calculate(self) -> None:
         """Calculate the energy of the atoms."""
+        from ffpopt.runtime.Console import ensure_ascii_stdio
+
+        ensure_ascii_stdio()
         if not self.complete:
 
             #print("calculate node ",self.node_pkl)
@@ -718,6 +721,9 @@ class Wavefront(object):
 
     
     def calculate(self) -> None:
+        from ffpopt.runtime.Console import ensure_ascii_stdio
+
+        ensure_ascii_stdio()
         if self.use_mpi:
             self.calculate_mpi()
         else:

@@ -455,6 +455,30 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertIn("hello", line)
         self.assertTrue(line.endswith("\n"))
 
+    def test_ascii_for_stdio_maps_common_symbols(self):
+        from ffpopt.runtime.Console import ascii_for_stdio, format_console_line
+
+        self.assertEqual(ascii_for_stdio("k=500 +/-0.5 deg"), "k=500 +/-0.5 deg")
+        self.assertEqual(ascii_for_stdio("k=500 \u00b10.5\u00b0"), "k=500 +/-0.5 deg")
+        self.assertEqual(ascii_for_stdio("shape-match \u03c7\u00b2"), "shape-match chi^2")
+        self.assertEqual(ascii_for_stdio("HL \u2192 LL"), "HL -> LL")
+        mapped = ascii_for_stdio("ok")
+        self.assertTrue(mapped.isascii())
+
+        line = format_console_line("[affdo] band \u00b10.5\u00b0", tag="ffpopt")
+        self.assertTrue(line.isascii())
+        self.assertIn("+/-0.5 deg", line)
+
+    def test_print_affdo_strips_non_ascii(self):
+        from ffpopt.affdo.AffdoLog import print_affdo
+
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            print_affdo("soft band \u00b10.5\u00b0")
+        out = buf.getvalue()
+        self.assertTrue(out.isascii())
+        self.assertIn("[affdo] soft band +/-0.5 deg", out)
+
     def test_affdo_scope_peels_on_console(self):
         from ffpopt.runtime.Console import format_console_line
 

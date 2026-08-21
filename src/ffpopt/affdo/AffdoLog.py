@@ -13,7 +13,9 @@ from typing import Optional, Sequence
 
 def print_affdo(msg: str, *, flush: bool = True) -> None:
     """Print one AFFDO line to stdout (wavefront / GenDihedFit subprocesses)."""
-    print(f"[affdo] {msg}", flush=flush)
+    from ffpopt.runtime.Console import ascii_for_stdio
+
+    print(ascii_for_stdio(f"[affdo] {msg}"), flush=flush)
 
 
 def log_affdo(log: logging.Logger, msg: str, *args) -> None:

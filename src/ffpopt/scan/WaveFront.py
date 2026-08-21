@@ -238,6 +238,9 @@ class WavefrontNode:
 
     def calculate(self) -> None:
         """Calculate the energy of the atoms."""
+        from ffpopt.runtime.Console import ensure_ascii_stdio
+
+        ensure_ascii_stdio()
         if not self.complete:
             self.constraints[0].value = self.angle
             precheck_err = self._precheck_geometry()
@@ -798,7 +801,7 @@ class Wavefront:
 
     def calculate(self) -> None:
         """Apply the wavefront algorithm to optimize a dihedral scan.
-        
+
         This runs the wavefront as a single calculation queue: a persistent pool
         of ``nproc`` workers pulls nodes off the queue, and each finished node
         immediately enqueues its active neighbors. Levels are kept only as a
@@ -832,6 +835,9 @@ class Wavefront:
         """
         import multiprocessing
         from collections import deque
+        from ffpopt.runtime.Console import ensure_ascii_stdio
+
+        ensure_ascii_stdio()
 
         # Seed the queue: a fresh run initializes level 1; a restart re-enqueues
         # the work the checkpoint recorded as pending/in-flight (falling back to
