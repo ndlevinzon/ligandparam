@@ -9,7 +9,7 @@ Flat package (intentional): snake_case modules, thin public ``__init__.py``,
 ``cli.py`` entrypoint, ``io.py`` / ``models.py`` for I/O and dataclasses.
 No ffpopt/ligandparam imports — keep that edge one-way.
 
-Used by ``ffpopt.Workflows.run_fragmented_dihed_twist_workflow`` and by the
+Used by ``ffpopt.workflows.run_fragmented_dihed_twist_workflow`` and by the
 standalone CLIs:
 
 ```bash

@@ -6,8 +6,8 @@ if __name__ == "__main__":
     import argparse
     import numpy as np
     from ffpopt.Options import AddStandardOptions
-    from ffpopt.Dihedrals import FitInputType
-    from ffpopt.Dihedrals import NonlinearSolve
+    from ffpopt.dihed.Dihedrals import FitInputType
+    from ffpopt.dihed.Dihedrals import NonlinearSolve
 
     parser = argparse.ArgumentParser \
         ( formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -83,8 +83,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.model="sander"
 
-    from ffpopt.affdo_log import print_affdo
-    from ffpopt.dihed_fit_ext import apply_fit_flags_to_args
+    from ffpopt.affdo.log import print_affdo
+    from ffpopt.dihed.fit_ext import apply_fit_flags_to_args
 
     apply_fit_flags_to_args(args)
     print_affdo(

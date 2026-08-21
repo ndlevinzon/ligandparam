@@ -298,7 +298,7 @@ src/
 ├── ffpopt/              # Torsion optimization
 │   ├── runtime/         # console, progress boards, CPU budget, --fast
 │   ├── scan/            # WaveFront, WaveFrontND, mixins, ScanAnalysis
-│   ├── Workflows.py, Dihedrals.py, GeomOpt.py, …
+│   ├── workflows/, dihed/, geom/, affdo/
 │   └── WaveFront.py     # pickle-compat alias → scan.WaveFront
 └── scission/            # Integrated ligand fragmentation + frcmod merge
 

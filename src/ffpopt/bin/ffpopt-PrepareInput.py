@@ -3,8 +3,8 @@
 
 def GetRestraintList(args,bonds):
     from pathlib import Path
-    from ffpopt.Constraints import ConstraintList
-    from ffpopt.Restraints  import RestraintList, RmsRestraint, TwistRestraint
+    from ffpopt.geom.Constraints import ConstraintList
+    from ffpopt.geom.Restraints  import RestraintList, RmsRestraint, TwistRestraint
     from ffpopt.AmberParm   import bonds2graph, RotateBondMask
     import numpy as np
     import ase
@@ -154,8 +154,8 @@ if __name__ == "__main__":
     
     from ffpopt.Reader      import ReadMol2, ReadXyz
     from ffpopt.constants   import GetAtomicSymbol, GetAtomicNumber, GetAtomicMass
-    from ffpopt.Constraints import ConstraintList
-    from ffpopt.Restraints  import RestraintList, RmsRestraint, TwistRestraint
+    from ffpopt.geom.Constraints import ConstraintList
+    from ffpopt.geom.Restraints  import RestraintList, RmsRestraint, TwistRestraint
     from ffpopt.AmberParm   import bonds2graph, RotateBondMask
     from ffpopt.Struct      import ListOfStruct, Struct
     

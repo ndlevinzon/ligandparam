@@ -22,15 +22,15 @@ from pathlib import Path
 from typing import Generator, Optional
 
 from ffpopt.Struct import ListOfStruct, Struct
-from ffpopt.GeomOpt import (
+from ffpopt.geom.GeomOpt import (
     GeomOpt,
     bare_potential_energy,
     is_mpi_worker,
     is_soft_opt_recovery,
     opt_recovery_label,
 )
-from ffpopt.Constraints import ConstraintList
-from ffpopt.Restraints import RestraintList
+from ffpopt.geom.Constraints import ConstraintList
+from ffpopt.geom.Restraints import RestraintList
 
 from .wavefront_mixins import (
     apply_slim_node_result,
@@ -306,7 +306,7 @@ class WavefrontNode(object):
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 try:
-                    from ffpopt.geometric_inprocess import refine_qdpi2_energy
+                    from ffpopt.geom.geometric import refine_qdpi2_energy
 
                     refined = refine_qdpi2_energy(self.los, self.opt_geom)
                     if refined is not None:
@@ -344,7 +344,7 @@ class WavefrontNode(object):
     def _precheck_geometry(self, min_dist: float = 0.8) -> Optional[str]:
         """Return a failure reason, or ``None`` if the geometry looks usable."""
         def _atoms():
-            from ffpopt.Constraints import ApplyConstraints
+            from ffpopt.geom.Constraints import ApplyConstraints
 
             myatoms = self.struct.GetASEAtoms()
             return ApplyConstraints(
@@ -403,7 +403,7 @@ class WavefrontLevel(object):
         None
         
         """
-        from ffpopt.Constraints import FillConstraints
+        from ffpopt.geom.Constraints import FillConstraints
         #node_id = len(self.nodes)
         if node_id is None:
             #crds = struct.get_positions()

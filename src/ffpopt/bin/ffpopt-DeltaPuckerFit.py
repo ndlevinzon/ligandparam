@@ -5,7 +5,7 @@ if __name__ == "__main__":
     import argparse
     import numpy as np
     from ffpopt.Options import AddStandardOptions
-    from ffpopt.DeltaPuckerFit import RunDeltaPuckerFit
+    from ffpopt.dihed.pucker import RunDeltaPuckerFit
 
     
     parser = argparse.ArgumentParser \

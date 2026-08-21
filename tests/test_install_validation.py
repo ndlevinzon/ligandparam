@@ -151,7 +151,7 @@ class TestPublicAPISurface(unittest.TestCase):
         self.assertTrue(hasattr(smiles, "StageSmilesToPDB"))
 
     def test_ffpopt_workflow_surface(self):
-        m = importlib.import_module("ffpopt.Workflows")
+        m = importlib.import_module("ffpopt.workflows")
         for name in (
             "run_dihed_twist_workflow",
             "run_fragmented_dihed_twist_workflow",
@@ -204,10 +204,18 @@ class TestPublicAPISurface(unittest.TestCase):
             "ffpopt.runtime.progress_board",
             "ffpopt.scan.wavefront_mixins",
             "ffpopt.scan.ScanAnalysis",
+            "ffpopt.affdo.log",
+            "ffpopt.affdo.charges",
+            "ffpopt.affdo.profiles",
+            "ffpopt.dihed.fit_ext",
+            "ffpopt.workflows",
+            "ffpopt.geom.geometric",
+            # Root shims still import.
             "ffpopt.affdo_log",
-            "ffpopt.profile_select",
-            "ffpopt.boltzmann_charges",
-            "ffpopt.dihed_fit_ext",
+            "ffpopt.Workflows",
+            "ffpopt.Dihedrals",
+            "ffpopt.GeomOpt",
+            "ffpopt.geometric_compat",
         )
         for mod in runtime:
             importlib.import_module(mod)

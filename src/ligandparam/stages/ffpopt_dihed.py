@@ -1,6 +1,6 @@
 """Optional ffpopt dihedral-twist correction stage.
 
-Wraps ``ffpopt.Workflows.run_fragmented_dihed_twist_workflow`` (package under
+Wraps ``ffpopt.workflows.run_fragmented_dihed_twist_workflow`` (package under
 ``src/ffpopt``) so recipes and the ``lig-dihed-correct`` CLI can apply torsion
 corrections to a parent ``mol2`` / ``lib`` / ``frcmod`` triplet.
 """
@@ -134,7 +134,7 @@ class StageDihedTwistCorrection(AbstractStage):
             self.out_frcmod,
             self.model,
         )
-        from ffpopt.affdo_log import describe_affdo_extras, log_affdo
+        from ffpopt.affdo.log import describe_affdo_extras, log_affdo
 
         log_affdo(
             self.logger,
@@ -165,7 +165,7 @@ class StageDihedTwistCorrection(AbstractStage):
             return None
 
         try:
-            from ffpopt.Workflows import (
+            from ffpopt.workflows import (
                 run_fragmented_dihed_twist_workflow,
                 run_whole_ligand_dihed_twist_workflow,
             )

@@ -6,29 +6,30 @@ Python package for force-field torsion optimization, vendored alongside
 ## Package layout
 
 Shared monorepo convention: public ``__init__.py``, ``README.md``, CLI/bin
-entrypoints, domain modules. Runtime UX helpers and scan engines live in
-subpackages; PascalCase mega-modules stay intact where they are meaningful
-(``Workflows``, ``Dihedrals``, ``GeomOpt`` at package root; wavefront engines
-under ``scan/``).
+entrypoints, domain packages. Runtime UX and scan engines already live in
+subpackages; twist/fit/geomopt/AFFDO now do too. Root PascalCase modules
+(``Workflows``, ``Dihedrals``, ``GeomOpt``, ``WaveFront``) are thin
+re-export shims.
 
 | Path | Concern |
 |------|---------|
-| ``runtime/`` | ``console``, ``progress_board`` (+ fragment aliases), ``cpu_budget``, ``fast_wavefront`` |
+| ``runtime/`` | ``console``, ``progress_board``, ``cpu_budget``, ``fast_wavefront`` |
 | ``scan/`` | ``WaveFront``, ``WaveFrontND``, ``wavefront_mixins``, ``ScanAnalysis`` |
-| ``GeomOpt`` | ASE / geomeTRIC optimization |
-| ``Workflows`` | Twist + fragmented twist orchestration |
-| ``Dihedrals`` | Fit types, solvers, Parmed script (pure math in ``dihed_math``) |
+| ``workflows/`` | Twist, fragmented, whole-ligand orchestration + bond batches |
+| ``dihed/`` | GenDihedFit types/solvers, ``math``, extended fit, pucker |
+| ``geom/`` | ``GeomOpt``, constraints/restraints, geomeTRIC driver, linear-torsion |
+| ``affdo/`` | Opt-in extras: log, centroid profiles, Boltzmann charges |
 | ``ase/``, ``cpefit/``, ``confsearch/``, ``constants/``, ``scosmo/``, ``bin/`` | Specialty stacks + CLIs |
 
-Root entrypoints use the canonical packages ``ffpopt.runtime.*`` and
-``ffpopt.scan.*``. Thin root modules ``ffpopt.WaveFront`` /
-``ffpopt.WaveFrontND`` re-export ``scan.*`` so older wavefront checkpoints
-still unpickle after the ``scan/`` move.
+Root entrypoints use the canonical packages (``ffpopt.workflows``,
+``ffpopt.dihed``, ``ffpopt.geom``, ``ffpopt.scan``, ``ffpopt.runtime``).
+Thin root modules re-export so older imports and wavefront checkpoints
+still resolve.
 
 Primary API for ligandparam integration:
 
 ```python
-from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
+from ffpopt.workflows import run_fragmented_dihed_twist_workflow
 ```
 
 CLI (installed with ligandparam):

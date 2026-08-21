@@ -5,10 +5,16 @@ Integrated under ``src/ffpopt`` next to ``ligandparam``.
 
 Primary APIs for torsion correction after ligand parameterization:
 
-* :mod:`ffpopt.Workflows` — ``run_dihed_twist_workflow``,
-  ``run_fragmented_dihed_twist_workflow``
-* :mod:`ffpopt.Dihedrals` — GenDihedFit input types and solvers
+* :mod:`ffpopt.workflows` — ``run_dihed_twist_workflow``,
+  ``run_fragmented_dihed_twist_workflow``,
+  ``run_whole_ligand_dihed_twist_workflow``
+* :mod:`ffpopt.dihed.Dihedrals` — GenDihedFit input types and solvers
 * :mod:`ffpopt.scan.WaveFront` — parallel dihedral scan engine
+* :mod:`ffpopt.geom.GeomOpt` — ASE / geomeTRIC optimization
+* :mod:`ffpopt.affdo` — optional AFFDO extras (log, centroids, charges)
+
+Root modules ``Workflows``, ``Dihedrals``, ``GeomOpt``, ``WaveFront`` remain
+as compatibility re-exports.
 
 Submodules are imported lazily so lightweight callers (and packaging checks)
 do not require every optional calculator stack at import time.
@@ -27,6 +33,10 @@ __all__ = [
     "scosmo",
     "runtime",
     "scan",
+    "affdo",
+    "dihed",
+    "geom",
+    "workflows",
     "Workflows",
     "Dihedrals",
     "WaveFront",
@@ -40,6 +50,10 @@ _LAZY = {
     "scosmo": ".scosmo",
     "runtime": ".runtime",
     "scan": ".scan",
+    "affdo": ".affdo",
+    "dihed": ".dihed",
+    "geom": ".geom",
+    "workflows": ".workflows",
     "Workflows": ".Workflows",
     "Dihedrals": ".Dihedrals",
     # WaveFront / WaveFrontND are real pickle-compat modules at package root.

@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Optional extra: ``pip install 'ligandparam[jax]'``
   - Tagged stdout ``[affdo]`` lines for extras, centroid ConfSearch, profile scores, Boltzmann weights, soft-restraint fallbacks, and extended-fit chi^2 / parameters
 
+### Changed
+
+- **ffpopt layout** — domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import paths remain as re-export shims (including ``python -m ffpopt.geometric_compat``).
+
 ---
 
 ## [1.5.1] — 2026-08-21

@@ -9,7 +9,7 @@
 #         self.out = None
 
 #     def calculate(self):
-#         from ffpopt.GeomOpt import GeomOpt,GeomOpt_SinglePoint
+#         from ffpopt.geom.GeomOpt import GeomOpt,GeomOpt_SinglePoint
 #         import copy
 #         if self.los.args.no_opt:
 #             self.out = copy.deepcopy(self.s)
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     
     from ffpopt.Options import AddStandardOptions
     from ffpopt.Struct import ListOfStruct
-    from ffpopt.GeomOpt import ParallelGeomOpt, is_mpi_worker
+    from ffpopt.geom.GeomOpt import ParallelGeomOpt, is_mpi_worker
     
     import argparse
     import multiprocessing
@@ -100,7 +100,7 @@ recommended options:
     #     exit(0)
 
     if args.test:
-        from ffpopt.GeomOpt import CheckForces
+        from ffpopt.geom.GeomOpt import CheckForces
         for inp in inps:
             print("")
             CheckForces(inps,inp,delta=args.test_delta)

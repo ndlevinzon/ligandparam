@@ -45,7 +45,7 @@ What pulls the score **up**
   owns logging / setup / ``new_files`` tracking; thin stages implement
   ``_run``.
 * **Write-once helpers:** Gaussian recipe configure, wavefront mixins
-  (MP + MPI drain, evaluate policy), ``dihed_math`` / ``ipc_slim``,
+  (MP + MPI drain, evaluate policy), ``dihed.math`` / ``ipc_slim``,
   ``runtime/`` (console, CPU budget, non-daemon pools), scission
   ``safe_name`` / DIHE key helpers.
 * **Two deliberate test entry points:** install validation for users;
@@ -61,9 +61,10 @@ What pulls the score **down**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * **God modules** still dominate absolute size, especially
-  ``ffpopt.Dihedrals``, ``ffpopt.Workflows``, ``ffpopt.scan.WaveFront*``,
-  ``ligandparam.multiresp.parmhelper``, and ``ffpopt.GeomOpt``. They are
-  coherent domains, but they violate SRP in the strict sense and raise
+  ``ffpopt.dihed.Dihedrals``, ``ffpopt.scan.WaveFront*``,
+  ``ligandparam.multiresp.parmhelper``, and ``ffpopt.geom.GeomOpt``.
+  Twist orchestration now lives in ``ffpopt.workflows`` (split by
+  entry point). They are coherent domains, but they still raise
   change risk.
 * **Control-flow-heavy stages** still override ``execute`` end-to-end
   (Gaussian rotation, DeepMD, dihed twist). Thin stages use ``_run``.
@@ -178,7 +179,7 @@ Stages               one external or data step
 ``ligandparam.io``   file formats, orientations, leap/gaussian I/O
 ``ffpopt.runtime``   process/console/CPU/pool cross-cuts
 ``ffpopt.scan``      wavefront engines + shared mixins
-``ffpopt.Workflows`` high-level twist / fragmented orchestration
+``ffpopt.workflows`` high-level twist / fragmented orchestration
 ``scission``         fragment selection, writers, frcmod merge
 Tests                install gate vs developer regression (two suites)
 ==================== ==================================================

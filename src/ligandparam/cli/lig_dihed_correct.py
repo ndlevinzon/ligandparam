@@ -300,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         bundle.lib,
         bundle.frcmod,
     )
-    from ffpopt.affdo_log import describe_affdo_extras, log_affdo
+    from ffpopt.affdo.log import describe_affdo_extras, log_affdo
 
     log_affdo(
         logger,

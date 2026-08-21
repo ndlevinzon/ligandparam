@@ -62,7 +62,7 @@ them, and rescans until HL~=LL or `maxiter` is reached.
 **Detail.** Exposed as `run_dihed_twist_workflow` (single molecule) and
 `run_fragmented_dihed_twist_workflow` (scission fragments + merge).
 
-**Authoritative source.** `src/ffpopt/Workflows.py`
+**Authoritative source.** `src/ffpopt/workflows/`
 
 ## Domain concepts
 
@@ -74,7 +74,7 @@ profiles match a chosen high-level model along rotatable bonds.
 **Detail.** Does not rewrite atomic charges or the Amber `.lib`; only DIHE
 (and related) terms are updated, typically into a new `.frcmod`.
 
-**Authoritative source.** `src/ffpopt/Workflows.py` (module docstring)
+**Authoritative source.** `src/ffpopt/workflows/` (package docstring)
 
 ### HL scan / LL scan
 
@@ -86,7 +86,7 @@ profiles match a chosen high-level model along rotatable bonds.
 scanned dihedral (shape match). Convergence heuristics can drop bonds that
 already match.
 
-**Authoritative source.** `src/ffpopt/Workflows.py:run_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/workflows/twist.py:run_dihed_twist_workflow`
 
 ### Shape-match chi^2
 
@@ -96,7 +96,7 @@ free vertical offset (not independent HL/LL min-shifts).
 **Detail.** Under fixed geometry, FCs enter linearly and are solved with
 bounded `lsq_linear`. Phase is kept at 0 for this pass.
 
-**Authoritative source.** `src/ffpopt/Dihedrals.py` (`shape_match_delta`,
+**Authoritative source.** `src/ffpopt/dihed/Dihedrals.py` (`shape_match_delta`,
 `NonlinearSolve`)
 
 ### bytype (global) vs bespoke parameters
@@ -108,7 +108,7 @@ quartets via a Parmed Python patch script.
 **Detail.** Fragmented / scission merges **require** `bytype=True` because
 fragment atom names do not exist in the parent topology.
 
-**Authoritative source.** `src/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/workflows/fragmented.py:run_fragmented_dihed_twist_workflow`
 
 ### nprim
 
@@ -117,7 +117,7 @@ per torsion parameter family.
 
 **Detail.** Default is 3 (periods 1, 2, and 3).
 
-**Authoritative source.** `src/ffpopt/Dihedrals.py` (GenDihedFit / `nprim`)
+**Authoritative source.** `src/ffpopt/dihed/Dihedrals.py` (GenDihedFit / `nprim`)
 
 ## Operational terms
 
@@ -132,7 +132,7 @@ terms back into a parent frcmod.
 Per-fragment merge accumulates DIHE from all `itXX.frcmod` files in order
 (drop-mode survivors retained unless a later iteration refits the same key).
 
-**Authoritative source.** `src/ffpopt/Workflows.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/workflows/fragmented.py:run_fragmented_dihed_twist_workflow`
 
 ### skip_existing
 
@@ -152,7 +152,7 @@ with more than two fit bonds are split into sequential proximity batches
 (``ffpopt.bond_batches``; ``FFPOPT_MAX_BONDS_PER_TWIST``,
 ``FFPOPT_BOND_COUPLE_RADIUS``) with MM updates between batches.
 
-**Authoritative source.** `src/ffpopt/Workflows.py`
+**Authoritative source.** `src/ffpopt/workflows/`
 
 ## External integrations
 

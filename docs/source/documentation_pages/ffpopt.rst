@@ -13,9 +13,10 @@ Package layout
    ffpopt/
    ├── runtime/     # console logging, progress boards, CPU budget, --fast presets
    ├── scan/        # WaveFront, WaveFrontND, wavefront_mixins, ScanAnalysis
-   ├── Workflows.py
-   ├── Dihedrals.py # GenDihedFit types + shape-match chi^2 / lsq_linear
-   ├── GeomOpt.py
+   ├── workflows/   # twist, fragmented, whole-ligand, bond_batches
+   ├── dihed/       # Dihedrals, math, fit_ext, pucker
+   ├── geom/        # GeomOpt, Constraints, Restraints, geometric, linear_torsion
+   ├── affdo/       # log, charges, multi-centroid profiles
    ├── WaveFront.py / WaveFrontND.py   # pickle-compat aliases → scan.*
    └── ase/, cpefit/, confsearch/, …
 
@@ -23,7 +24,7 @@ Canonical imports:
 
 .. code-block:: python
 
-   from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
+   from ffpopt.workflows import run_fragmented_dihed_twist_workflow
    from ffpopt.scan.WaveFront import run_dihed_wavefront
    from ffpopt.runtime.console import attach_console_handlers
 
@@ -32,7 +33,7 @@ Primary API
 
 .. code-block:: python
 
-   from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
+   from ffpopt.workflows import run_fragmented_dihed_twist_workflow
 
    result = run_fragmented_dihed_twist_workflow(
        mol2="LIG.mol2",
@@ -50,11 +51,11 @@ Call from an ``if __name__ == "__main__":`` guard (wavefront uses spawn-mode
 multiprocessing).
 
 Single-molecule twist (when you already have ``parm7`` / ``rst7`` and explicit
-bonds) is :func:`ffpopt.Workflows.run_dihed_twist_workflow`. Pass
+bonds) is :func:`ffpopt.workflows.run_dihed_twist_workflow`. Pass
 ``bond=[(i, j), ...]`` with **0-based** atom indices (CLI ``"i,j"`` strings
 still work). Scission's ``fit_torsions`` use 1-based indices and are converted
 at the fragmented-workflow boundary via
-:func:`ffpopt.Workflows.bonds0_from_scission_fit_torsions`.
+:func:`ffpopt.workflows.bonds0_from_scission_fit_torsions`.
 
 Wavefront evaluate policy
 -------------------------

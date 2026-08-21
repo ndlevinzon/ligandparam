@@ -10,8 +10,8 @@ import numpy as np
 from typing import Generator, Optional
 from pathlib import Path
 
-from ffpopt.GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
-from ffpopt.Constraints import Constraint
+from ffpopt.geom.GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
+from ffpopt.geom.Constraints import Constraint
 from ffpopt.Struct import ListOfStruct, Struct
 
 from .wavefront_mixins import (
@@ -55,7 +55,7 @@ def close_reused_wavefront_pool() -> None:
 
 
 def _pool_reuse_key(los: ListOfStruct, struct: Struct, nproc: int):
-    from ffpopt.geometric_inprocess import calc_cache_key
+    from ffpopt.geom.geometric import calc_cache_key
 
     return (int(nproc),) + tuple(calc_cache_key(los, struct))
 
@@ -98,7 +98,7 @@ def _struct_from_coords(coords) -> Struct:
 def _run_node_job(job: dict) -> dict:
     """Worker entry: slim angle/coords job in -> slim result out (no ``los``)."""
     if "con" in job and job["con"] is not None:
-        from ffpopt.Constraints import Constraint
+        from ffpopt.geom.Constraints import Constraint
 
         con = Constraint.from_dict(job["con"])
     else:
@@ -250,7 +250,7 @@ class WavefrontNode:
                 geom_prefix = str(Path(self.node_pkl).with_suffix("")) + "_geom"
                 soft = bool(getattr(self.los.args, "soft_dihed_restraint", False))
                 if soft:
-                    from ffpopt.Restraints import HarmonicDihedRestraint
+                    from ffpopt.geom.Restraints import HarmonicDihedRestraint
 
                     con0 = self.constraints[0]
                     k = float(getattr(self.los.args, "soft_dihed_k", 500.0))
@@ -305,7 +305,7 @@ class WavefrontNode:
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 try:
-                    from ffpopt.geometric_inprocess import refine_qdpi2_energy
+                    from ffpopt.geom.geometric import refine_qdpi2_energy
 
                     refined = refine_qdpi2_energy(self.los, self.opt_geom)
                     if refined is not None:
@@ -342,7 +342,7 @@ class WavefrontNode:
         apply failures, …) so failure reports are not all labeled as clashes.
         """
         def _atoms():
-            from ffpopt.Constraints import FillConstraints, ApplyConstraints
+            from ffpopt.geom.Constraints import FillConstraints, ApplyConstraints
 
             myatoms = self.struct.GetASEAtoms()
             cons = FillConstraints(myatoms, copy.deepcopy(self.constraints))
@@ -687,7 +687,7 @@ class Wavefront:
             A GeomOpt object representing the optimized geometry of the conformer.
             
         """
-        from ffpopt.Constraints import Constraint
+        from ffpopt.geom.Constraints import Constraint
         if iter_count > 5:
             raise ValueError("Maximum iteration count exceeded for conformer generation. This likely indicates a persistent clash that cannot be resolved.")
         
@@ -740,7 +740,7 @@ class Wavefront:
             Returns True if the initial geometry is valid, False otherwise.
             
         """
-        from ffpopt.Constraints import FillConstraints, ApplyConstraints
+        from ffpopt.geom.Constraints import FillConstraints, ApplyConstraints
         myatoms = struct.GetASEAtoms()
         con = copy.deepcopy(con)
         con.value = angle
@@ -753,7 +753,7 @@ class Wavefront:
         else:
             cons = FillConstraints(myatoms, [con])
         myatoms = ApplyConstraints(myatoms, cons)
-        from ffpopt.Constraints import has_nonbonded_clash
+        from ffpopt.geom.Constraints import has_nonbonded_clash
         clashed, i, j, dist = has_nonbonded_clash(
             myatoms.get_positions(), struct.data["bonds"], min_dist=0.8
         )

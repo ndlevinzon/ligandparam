@@ -226,7 +226,7 @@ def IdentifySugarAtoms(s,ring):
 
 def PrintConstraints(s,ring,forcerna,forcedna):
     import sys
-    from ffpopt.Restraints import PuckerXRestraint, PuckerYRestraint
+    from ffpopt.geom.Restraints import PuckerXRestraint, PuckerYRestraint
     from ffpopt.FindFuncGrps import __IdentifySugarAtoms_backend
     
     missing = "incomplete identification"
@@ -328,7 +328,7 @@ if __name__ == "__main__":
 
     import sys
     import argparse
-    from ffpopt.Dihedrals import FindPuckers
+    from ffpopt.dihed.Dihedrals import FindPuckers
     from ffpopt.Struct import ListOfStruct
 
     parser = argparse.ArgumentParser \

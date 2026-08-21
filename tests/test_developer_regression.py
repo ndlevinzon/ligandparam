@@ -492,6 +492,18 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertFalse(console_mod._BANNER_PRINTED)
         logger.handlers.clear()
 
+    def test_layout_shims_resolve_to_canonical(self):
+        from ffpopt.affdo.log import print_affdo as canon_log
+        from ffpopt.affdo_log import print_affdo as shim_log
+        from ffpopt.workflows import run_dihed_twist_workflow as canon_wf
+        from ffpopt.Workflows import run_dihed_twist_workflow as shim_wf
+        from ffpopt.geom.GeomOpt import is_soft_opt_recovery as canon_go
+        from ffpopt.GeomOpt import is_soft_opt_recovery as shim_go
+
+        self.assertIs(canon_log, shim_log)
+        self.assertIs(canon_wf, shim_wf)
+        self.assertIs(canon_go, shim_go)
+
 
 # ---------------------------------------------------------------------------
 # AFFDO-style extras — logging helpers + pure scoring
@@ -500,7 +512,7 @@ class TestLoggingContracts(unittest.TestCase):
 
 class TestAffdoLogging(unittest.TestCase):
     def test_describe_affdo_extras_default_and_full(self):
-        from ffpopt.affdo_log import describe_affdo_extras
+        from ffpopt.affdo.log import describe_affdo_extras
 
         default = describe_affdo_extras()
         self.assertIn("whole_ligand=False", default)
@@ -526,7 +538,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("jax", full)
 
     def test_format_boltzmann_summary(self):
-        from ffpopt.affdo_log import format_boltzmann_summary
+        from ffpopt.affdo.log import format_boltzmann_summary
 
         lines = format_boltzmann_summary(
             {
@@ -551,7 +563,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("equal weights", eq)
 
     def test_print_affdo_stdout(self):
-        from ffpopt.affdo_log import print_affdo
+        from ffpopt.affdo.log import print_affdo
 
         buf = io.StringIO()
         with patch("sys.stdout", buf):
@@ -559,7 +571,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertEqual(buf.getvalue(), "[affdo] soft restraint on\n")
 
     def test_pick_smoothest_profile_logs_details(self):
-        from ffpopt.profile_select import pick_smoothest_profile, score_profile_details
+        from ffpopt.affdo.profiles import pick_smoothest_profile, score_profile_details
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -590,7 +602,7 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertTrue(__import__("math").isfinite(d0["fourier"]))
 
     def test_boltzmann_average_summary_fields(self):
-        from ffpopt.boltzmann_charges import boltzmann_average_mol2_charges
+        from ffpopt.affdo.charges import boltzmann_average_mol2_charges
 
         def _mol2(charges):
             lines = [
@@ -622,7 +634,7 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertGreater(info["rms_vs_first"], 0.0)
 
     def test_format_extended_params(self):
-        from ffpopt.dihed_fit_ext import format_extended_params
+        from ffpopt.dihed.fit_ext import format_extended_params
 
         prim = SimpleNamespace(fc=1.25, phase=180.0, per=2)
         finp = SimpleNamespace(
@@ -745,7 +757,7 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
             coerce_fragment_config("nope")
 
     def test_normalize_bond_pairs0(self):
-        from ffpopt.Workflows import normalize_bond_pairs0
+        from ffpopt.workflows import normalize_bond_pairs0
 
         self.assertEqual(normalize_bond_pairs0([(1, 2), [3, 4]]), [(1, 2), (3, 4)])
         self.assertEqual(normalize_bond_pairs0(["0,1", "10,11"]), [(0, 1), (10, 11)])
@@ -755,7 +767,7 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
             normalize_bond_pairs0([42])
 
     def test_bonds0_from_scission_fit_torsions(self):
-        from ffpopt.Workflows import bonds0_from_scission_fit_torsions
+        from ffpopt.workflows import bonds0_from_scission_fit_torsions
 
         pairs = bonds0_from_scission_fit_torsions(
             [
@@ -971,13 +983,13 @@ class TestScissionFunctions(unittest.TestCase):
 
 class TestFfpoptCoreFunctions(unittest.TestCase):
     def test_constraints_to_geometric(self):
-        from ffpopt.Constraints import Constraint, to_geometric
+        from ffpopt.geom.Constraints import Constraint, to_geometric
 
         lines = to_geometric([Constraint("dihed", [0, 1, 2, 3], value=45.0)])
         self.assertTrue(any("45.0" in ln and ln.startswith("dihedral") for ln in lines))
 
     def test_is_soft_opt_and_evaluate_policy(self):
-        from ffpopt.GeomOpt import is_soft_opt_recovery
+        from ffpopt.geom.GeomOpt import is_soft_opt_recovery
         from ffpopt.scan.wavefront_mixins import evaluate_wavefront_minimum
 
         self.assertTrue(is_soft_opt_recovery("loose"))
@@ -1001,8 +1013,8 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         except ImportError:
             self.skipTest("ase required")
         import numpy as np
-        from ffpopt.Constraints import Constraint
-        from ffpopt.linear_torsion import (
+        from ffpopt.geom.Constraints import Constraint
+        from ffpopt.geom.linear_torsion import (
             find_near_linear_bends,
             has_near_linear_dihedral_bend,
             is_linear_torsion_error,
@@ -1086,7 +1098,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_dihed_math_reexported_and_ipc_slim(self):
         from ffpopt import dihed_math
-        from ffpopt.Dihedrals import shape_match_delta
+        from ffpopt.dihed.Dihedrals import shape_match_delta
         from ffpopt.runtime.ipc_slim import slim_scan_result, slim_twist_result
 
         self.assertIs(shape_match_delta, dihed_math.shape_match_delta)
@@ -1099,7 +1111,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_shape_match_and_joint_ls_symbols(self):
         import numpy as np
-        from ffpopt.Dihedrals import shape_match_delta
+        from ffpopt.dihed.Dihedrals import shape_match_delta
 
         hl = np.array([1.0, 2.0, 3.0])
         ll = np.array([0.0, 1.0, 2.0])
@@ -1107,7 +1119,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         np.testing.assert_allclose(d, shape_match_delta(hl, ll + 9.0))
 
     def test_align_scan_profiles(self):
-        from ffpopt.Dihedrals import align_scan_profiles
+        from ffpopt.dihed.Dihedrals import align_scan_profiles
         from ffpopt.Struct import ListOfStruct
 
         def _frame(name, e=0.0):
@@ -1150,7 +1162,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(len(leases), 3)
 
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
-        from ffpopt.Workflows import _is_sander_ll_model, _wf_kwargs_for_scan_model
+        from ffpopt.workflows.helpers import _is_sander_ll_model, _wf_kwargs_for_scan_model
         from ffpopt.runtime.fast_wavefront import (
             prefer_ase_first_model,
             prefer_bond_pool_depth,
@@ -1211,7 +1223,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertEqual(CpuBudget(path, 8).snapshot()["leases"], {})
 
     def test_fragment_twist_done_sentinel(self):
-        from ffpopt.Workflows import (
+        from ffpopt.workflows import (
             clear_fragment_twist_done,
             is_fragment_twist_done,
             mark_fragment_twist_done,
@@ -1229,7 +1241,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
     def test_read_last_optim_xyz_warm_start_helper(self):
         """Interrupted geomopt leaves ``_optim.xyz``; helper reads last frame."""
         import numpy as np
-        from ffpopt.geometric_inprocess import read_last_optim_xyz, write_plain_xyz
+        from ffpopt.geom.geometric import read_last_optim_xyz, write_plain_xyz
 
         try:
             import ase
@@ -1249,7 +1261,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             np.testing.assert_allclose(last[1, 2], 0.90)
 
     def test_pack_rotatable_bond_batches_conservative(self):
-        from ffpopt.bond_batches import (
+        from ffpopt.workflows.bond_batches import (
             adjacency_from_topology_bonds,
             pack_rotatable_bond_batches,
             should_batch_bonds,
@@ -1295,7 +1307,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIs(legacy.Wavefront, Wavefront)
 
     def test_prim_dihed_energy_term(self):
-        from ffpopt.Dihedrals import PrimDihedFcn
+        from ffpopt.dihed.Dihedrals import PrimDihedFcn
 
         prim = PrimDihedFcn(2.0, 0.0, 1)
         # CptEne(0°) = 2*(1+cos0) = 4

@@ -24,9 +24,10 @@ As of version **1.5**, the installable tree under ``src/`` is:
    ├── ffpopt/               # torsion / dihedral fitting (lig-dihed-correct)
    │   ├── runtime/          # console, progress boards, CPU budget, --fast
    │   ├── scan/             # WaveFront, WaveFrontND, wavefront_mixins
-   │   ├── Workflows.py
-   │   ├── Dihedrals.py
-   │   ├── GeomOpt.py
+   │   ├── workflows/        # twist, fragmented, whole-ligand
+   │   ├── dihed/            # GenDihedFit types + solvers
+   │   ├── geom/             # GeomOpt, constraints, geomeTRIC
+   │   ├── affdo/            # optional AFFDO extras
    │   ├── WaveFront.py      # pickle-compat alias → scan.WaveFront
    │   └── …
    └── scission/             # ligand fragmentation (lig-scission / scission)

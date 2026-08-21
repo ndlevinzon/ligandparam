@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 if __name__ == "__main__":
-    from ffpopt.GeomOpt import FwdRevDihedScan
+    from ffpopt.geom.GeomOpt import FwdRevDihedScan
     from ffpopt.AmberParm import parmed2graph
     from ffpopt.Options import AddStandardOptions
-    from ffpopt.Constraints import Constraint
+    from ffpopt.geom.Constraints import Constraint
     import ase.io
     import numpy as np
     import argparse

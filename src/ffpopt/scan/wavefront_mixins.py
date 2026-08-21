@@ -324,7 +324,7 @@ def precheck_geometry_clash(
     ``get_atoms`` should return an ASE atoms object with constraints applied.
     """
     try:
-        from ffpopt.Constraints import has_nonbonded_clash
+        from ffpopt.geom.Constraints import has_nonbonded_clash
 
         myatoms = get_atoms()
         clashed, i, j, dist = has_nonbonded_clash(
