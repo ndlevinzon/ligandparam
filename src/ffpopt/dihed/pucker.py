@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from ffpopt. GeomOpt import is_mpi_worker
+from ffpopt.geom.GeomOpt import is_mpi_worker
 
 def PrepareGrid(los):
     import ndfes
@@ -112,8 +112,8 @@ def SaveTmpParm(p,tmpdir=None):
 
 def PrepareLLStructs(llfile,loshl,args,parmfile,save_llnative):
     import copy
-    from ffpopt. Struct import ListOfStruct
-    from ffpopt. GeomOpt import ParallelGeomOpt
+    from ffpopt.Struct import ListOfStruct
+    from ffpopt.geom.GeomOpt import ParallelGeomOpt
     
     los = None
     llok = False
@@ -144,8 +144,8 @@ def PrepareLLStructs(llfile,loshl,args,parmfile,save_llnative):
         
 
 def EV2KCAL(x):
-    from ffpopt. constants import AU_PER_ELECTRON_VOLT
-    from ffpopt. constants import AU_PER_KCAL_PER_MOL
+    from ffpopt.constants import AU_PER_ELECTRON_VOLT
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL
     kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
     return x * kcal_per_ev
 
@@ -157,11 +157,11 @@ class DeltaPuckerFitType(object):
         
         import numpy as np
         
-        from ffpopt. Struct import ListOfStruct
-        from ffpopt. Dihedrals import ParamType
-        from ffpopt. Dihedrals import ParamInstance
-        from ffpopt. Dihedrals import GetDihedClasses
-        from ffpopt. Dihedrals import FindDihedrals
+        from ffpopt.Struct import ListOfStruct
+        from ffpopt.dihed.Dihedrals import ParamType
+        from ffpopt.dihed.Dihedrals import ParamInstance
+        from ffpopt.dihed.Dihedrals import GetDihedClasses
+        from ffpopt.dihed.Dihedrals import FindDihedrals
         import ndfes
 
         self.args = args
@@ -338,8 +338,8 @@ class DeltaPuckerFitType(object):
 
         
     def GetBeta(self):
-        from ffpopt. constants import AU_PER_ELECTRON_VOLT
-        from ffpopt. constants import BOLTZMANN_CONSTANT_AU
+        from ffpopt.constants import AU_PER_ELECTRON_VOLT
+        from ffpopt.constants import BOLTZMANN_CONSTANT_AU
         kbT_au = BOLTZMANN_CONSTANT_AU() * 600
         kbT_eV = kbT_au / AU_PER_ELECTRON_VOLT()
         beta = 1 / kbT_eV
@@ -421,7 +421,7 @@ class DeltaPuckerFitType(object):
         import copy
         import numpy as np
         from pathlib import Path
-        from ffpopt. GeomOpt import GeomOpt_SinglePoint
+        from ffpopt.geom.GeomOpt import GeomOpt_SinglePoint
 
         origparms = []
         for s in self.los_llmod:
@@ -466,8 +466,8 @@ class DeltaPuckerFitType(object):
     def GetDihedralEnergies(self,x):
         import copy
         import numpy as np
-        from ffpopt. Geometry import CptDihed
-        from ffpopt. constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
+        from ffpopt.geom.Geometry import CptDihed
+        from ffpopt.constants import AU_PER_ELECTRON_VOLT, AU_PER_KCAL_PER_MOL
         
         KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
         EV_PER_KCAL = 1/KCAL_PER_EV
@@ -507,8 +507,8 @@ class DeltaPuckerFitType(object):
         
         """
         from parmed import DihedralType
-        from ffpopt. Dihedrals import ChangeDihedrals
-        from ffpopt. AmberParm import CopyParm
+        from ffpopt.dihed.Dihedrals import ChangeDihedrals
+        from ffpopt.AmberParm import CopyParm
 
         p = CopyParm(self.parm)
         
@@ -560,7 +560,7 @@ class DeltaPuckerFitType(object):
         
         """
         import copy
-        from ffpopt. Dihedrals import WriteParmedScript
+        from ffpopt.dihed.Dihedrals import WriteParmedScript
         dfcns = []
         for pinst in self.pinstances:
             for idxs in pinst.dihedidxs:
@@ -728,9 +728,9 @@ def RunDeltaPuckerFit\
     import subprocess
     import sys
     from types import SimpleNamespace
-    from ffpopt. Options import AddStandardOptions
-    from ffpopt. Struct import ListOfStruct
-    from ffpopt. Dihedrals import FindDihedrals
+    from ffpopt.Options import AddStandardOptions
+    from ffpopt.Struct import ListOfStruct
+    from ffpopt.dihed.Dihedrals import FindDihedrals
     
     _p = argparse.ArgumentParser(add_help=False)
     AddStandardOptions(_p)

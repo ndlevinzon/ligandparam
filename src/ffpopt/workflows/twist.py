@@ -196,7 +196,7 @@ def run_dihed_twist_workflow(
     """ Wavefront-only twist workflow, run in-process.
 
     Mirrors the phase structure of ``bin/ffpopt-DihedTwistWorkflow.py`` but
-    executes each scan via :func:`ffpopt.WaveFront.run_dihed_wavefront`
+    executes each scan via :func:`ffpopt.scan.WaveFront.run_dihed_wavefront`
     instead of emitting a bash script; fit and prepare steps still shell
     out to the existing bin scripts. The phases are: a high-level scan per
     bond at ``model``; a reference sander scan per bond; an optional

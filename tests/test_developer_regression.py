@@ -492,18 +492,6 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertFalse(console_mod._BANNER_PRINTED)
         logger.handlers.clear()
 
-    def test_layout_shims_resolve_to_canonical(self):
-        from ffpopt.affdo.log import print_affdo as canon_log
-        from ffpopt.affdo_log import print_affdo as shim_log
-        from ffpopt.workflows import run_dihed_twist_workflow as canon_wf
-        from ffpopt.Workflows import run_dihed_twist_workflow as shim_wf
-        from ffpopt.geom.GeomOpt import is_soft_opt_recovery as canon_go
-        from ffpopt.GeomOpt import is_soft_opt_recovery as shim_go
-
-        self.assertIs(canon_log, shim_log)
-        self.assertIs(canon_wf, shim_wf)
-        self.assertIs(canon_go, shim_go)
-
 
 # ---------------------------------------------------------------------------
 # AFFDO-style extras — logging helpers + pure scoring
@@ -1097,7 +1085,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 self.assertEqual(d["active"], act)
 
     def test_dihed_math_reexported_and_ipc_slim(self):
-        from ffpopt import dihed_math
+        from ffpopt.dihed import math as dihed_math
         from ffpopt.dihed.Dihedrals import shape_match_delta
         from ffpopt.runtime.ipc_slim import slim_scan_result, slim_twist_result
 
@@ -1301,8 +1289,11 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(n_outer2 * n_inner2, 8)
 
     def test_pickle_compat_alias(self):
-        import ffpopt.WaveFront as legacy
+        from ffpopt.scan.wavefront_mixins import register_wavefront_pickle_aliases
         from ffpopt.scan.WaveFront import Wavefront
+
+        register_wavefront_pickle_aliases()
+        import ffpopt.WaveFront as legacy
 
         self.assertIs(legacy.Wavefront, Wavefront)
 

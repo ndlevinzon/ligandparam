@@ -28,7 +28,6 @@ As of version **1.5**, the installable tree under ``src/`` is:
    │   ├── dihed/            # GenDihedFit types + solvers
    │   ├── geom/             # GeomOpt, constraints, geomeTRIC
    │   ├── affdo/            # optional AFFDO extras
-   │   ├── WaveFront.py      # pickle-compat alias → scan.WaveFront
    │   └── …
    └── scission/             # ligand fragmentation (lig-scission / scission)
 
@@ -39,9 +38,10 @@ packages under ``src/`` are used. Optional ``ffpopt-main/`` / ``scission-main/``
 checkouts (often gitignored) are upstream reference trees only — not a runtime
 dependency.
 
-Canonical imports use ``ffpopt.runtime.*`` and ``ffpopt.scan.*``. Thin root
-modules ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` exist only so older
-wavefront checkpoints still unpickle after the ``scan/`` move.
+Canonical imports use ``ffpopt.workflows``, ``ffpopt.scan``, ``ffpopt.geom``,
+and ``ffpopt.runtime``. Older wavefront checkpoints pickle classes as
+``ffpopt.WaveFront.*``; loaders register those names onto ``scan.WaveFront``
+in ``sys.modules``.
 
 Multi-orientation RESP
 ----------------------

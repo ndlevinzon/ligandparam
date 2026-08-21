@@ -98,7 +98,7 @@ files use the **target** dihedral (scan step), not the pre-twist snapshot.
 If the optimizer fails twice to invert an IC step, upstream geomeTRIC tries a
 Cartesian recovery that **cannot** keep constraints and raises
 ``Cannot continue a constrained optimization``. ffpopt runs geomeTRIC through
-``python -m ffpopt.geometric_compat``, which rebuilds the same constrained IC
+``python -m ffpopt.geom.geometric``, which rebuilds the same constrained IC
 system instead of aborting.
 
 Soft / loose recoveries (``soft-maxiter``, ``*-soft``, ``loose``, ``*-loose``)

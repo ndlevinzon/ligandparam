@@ -17,7 +17,6 @@ Package layout
    ├── dihed/       # Dihedrals, math, fit_ext, pucker
    ├── geom/        # GeomOpt, Constraints, Restraints, geometric, linear_torsion
    ├── affdo/       # log, charges, multi-centroid profiles
-   ├── WaveFront.py / WaveFrontND.py   # pickle-compat aliases → scan.*
    └── ase/, cpefit/, confsearch/, …
 
 Canonical imports:
@@ -97,7 +96,7 @@ Module reference
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: ffpopt.Workflows
+.. automodule:: ffpopt.workflows
    :members: run_fragmented_dihed_twist_workflow, run_dihed_twist_workflow
    :undoc-members:
    :show-inheritance:

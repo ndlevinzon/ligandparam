@@ -240,18 +240,18 @@ def ParseConstraintAndRestraintOptions(args,struct=None):
       
    Returns
    -------
-   conlist : ffpopt.Constraints.ConstraintList
+   conlist : ffpopt.geom.Constraints.ConstraintList
       The object containing the list of constraints
 
-   reslist : ffpopt.Restraints.RestraintList
+   reslist : ffpopt.geom.Restraints.RestraintList
       The object containing the list of restraints
    """
    from pathlib import Path
    import numpy as np
    import ase
    import ase.io
-   from . Constraints import ConstraintList
-   from . Restraints  import RestraintList, RmsRestraint, TwistRestraint
+   from ffpopt.geom.Constraints import ConstraintList
+   from ffpopt.geom.Restraints import RestraintList, RmsRestraint, TwistRestraint
    from . AmberParm   import RotateBondMask
    
    atoms = None
@@ -399,17 +399,17 @@ def DeleteConstraintAndRestraintFromStruct(struct,conlist,reslist):
    ----------
    struct : ffpopt.Struct.Struct
        The structure object to modify
-   conlist : ffpopt.Constraints.ConstraintList
+   conlist : ffpopt.geom.Constraints.ConstraintList
        The list of constraints that should not appear within the Struct object
-   reslist : ffpopt.Restraints.RestraintList
+   reslist : ffpopt.geom.Restraints.RestraintList
        The list of restraints that should not appear within the Struct object
 
    Returns
    -------
    None
    """
-   from . Constraints import Constraint
-   from . Restraints import RestraintList
+   from ffpopt.geom.Constraints import Constraint
+   from ffpopt.geom.Restraints import RestraintList
    idels = []
    for i in range(len(struct.data["constraints"])):
       x = struct.data["constraints"][i]
@@ -623,10 +623,10 @@ def argparse2geometric(jsonfname,args):
    asestr = ",".join( [ '"%s": "%s"'%(key,asek[key]) for key in asek ])
    asestr = "{%s}"%(asestr)
 
-   # Invoke via ffpopt.geometric_compat so constrained IC recovery cannot
+   # Invoke via ffpopt.geom.geometric so constrained IC recovery cannot
    # abort on geomeTRIC's unsupported Cartesian fallback (see that module).
    import sys
-   cmds = [sys.executable, "-m", "ffpopt.geometric_compat",
+   cmds = [sys.executable, "-m", "ffpopt.geom.geometric",
            "--engine", "ase",
            "--ase-class", "ffpopt.Struct.RestCalculator",
            "--ase-kwargs", asestr ] + geoopts

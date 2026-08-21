@@ -29,8 +29,8 @@ class Struct(object):
     
     def __init__(self,data):
         from copy import deepcopy
-        from . Restraints import RestraintList
-        from . Constraints import ConstraintList
+        from ffpopt.geom.Restraints import RestraintList
+        from ffpopt.geom.Constraints import ConstraintList
         
         self.data = deepcopy( data )
         self.restraints = None
@@ -759,7 +759,7 @@ class Struct(object):
     
     def set_dihedral(self,a,b,c,d,value):
         #import numpy as np
-        from . Constraints import Constraint
+        from ffpopt.geom.Constraints import Constraint
         atoms = self.GetASEAtoms()
         #initial = self.get_dihedral(a,b,c,d)
         con = Constraint("dihed",[a,b,c,d],

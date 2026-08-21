@@ -480,7 +480,7 @@ def GeomOpt_GEOMETRIC(
     """ Perform a geometry optimization using the GEOMETRIC program.
 
     By default runs geomeTRIC **in-process** with a persistent ASE calculator
-    cached on ``los`` (avoids spawning ``python -m ffpopt.geometric_compat``
+    cached on ``los`` (avoids spawning ``python -m ffpopt.geom.geometric``
     per call). Set ``FFPOPT_GEOMETRIC_SUBPROCESS=1`` to restore the legacy
     subprocess + watchdog path.
 
@@ -630,7 +630,7 @@ def GeomOpt_GEOMETRIC(
 
     result = None
     if use_geometric_subprocess():
-        # Legacy path: spawn geometric_compat + watchdog.
+        # Legacy path: spawn geom.geometric + watchdog.
         ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
         mystruct = copy.deepcopy(struct)
         if conslist is not None:

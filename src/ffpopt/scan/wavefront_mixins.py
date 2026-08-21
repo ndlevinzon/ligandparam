@@ -250,18 +250,28 @@ def evaluate_wavefront_minimum(
     }
 
 
+def register_wavefront_pickle_aliases() -> None:
+    """Map historical ``ffpopt.WaveFront*`` pickle names onto ``scan.*`` modules."""
+    import sys
+
+    from ffpopt.scan import WaveFront as wf
+    from ffpopt.scan import WaveFrontND as wfnd
+
+    sys.modules.setdefault("ffpopt.WaveFront", wf)
+    sys.modules.setdefault("ffpopt.WaveFrontND", wfnd)
+
+
 def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):
     """Unpickle a Wavefront object and optionally restore soft-opt attrs.
 
     Soft-opt restoration matches the 1-D loader behavior and is safe for N-D
     nodes that lack ``_ensure_soft_opt_attrs``.
 
-    Imports pickle-compat aliases (``ffpopt.WaveFront`` / ``WaveFrontND``) so
-    checkpoints written before the ``scan/`` move still resolve.
+    Checkpoints written before the ``scan/`` move pickle classes as
+    ``ffpopt.WaveFront.*``. :func:`register_wavefront_pickle_aliases` maps
+    those names onto :mod:`ffpopt.scan.WaveFront` without extra shim files.
     """
-    # Side-effect imports: register old module paths for pickle.find_class.
-    import ffpopt.WaveFront  # noqa: F401
-    import ffpopt.WaveFrontND  # noqa: F401
+    register_wavefront_pickle_aliases()
 
     with open(filename, "rb") as f:
         wavefront = pickle.load(f)
@@ -285,8 +295,7 @@ def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):
 
 def pickle_load_compat(file_or_path):
     """``pickle.load`` with wavefront module-path aliases registered."""
-    import ffpopt.WaveFront  # noqa: F401
-    import ffpopt.WaveFrontND  # noqa: F401
+    register_wavefront_pickle_aliases()
 
     if hasattr(file_or_path, "read"):
         return pickle.load(file_or_path)

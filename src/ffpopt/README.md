@@ -6,10 +6,7 @@ Python package for force-field torsion optimization, vendored alongside
 ## Package layout
 
 Shared monorepo convention: public ``__init__.py``, ``README.md``, CLI/bin
-entrypoints, domain packages. Runtime UX and scan engines already live in
-subpackages; twist/fit/geomopt/AFFDO now do too. Root PascalCase modules
-(``Workflows``, ``Dihedrals``, ``GeomOpt``, ``WaveFront``) are thin
-re-export shims.
+entrypoints, domain packages.
 
 | Path | Concern |
 |------|---------|
@@ -21,10 +18,8 @@ re-export shims.
 | ``affdo/`` | Opt-in extras: log, centroid profiles, Boltzmann charges |
 | ``ase/``, ``cpefit/``, ``confsearch/``, ``constants/``, ``scosmo/``, ``bin/`` | Specialty stacks + CLIs |
 
-Root entrypoints use the canonical packages (``ffpopt.workflows``,
-``ffpopt.dihed``, ``ffpopt.geom``, ``ffpopt.scan``, ``ffpopt.runtime``).
-Thin root modules re-export so older imports and wavefront checkpoints
-still resolve.
+Canonical imports: ``ffpopt.workflows``, ``ffpopt.dihed``, ``ffpopt.geom``,
+``ffpopt.scan``, ``ffpopt.runtime``.
 
 Primary API for ligandparam integration:
 

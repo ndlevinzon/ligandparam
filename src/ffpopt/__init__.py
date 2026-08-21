@@ -13,9 +13,6 @@ Primary APIs for torsion correction after ligand parameterization:
 * :mod:`ffpopt.geom.GeomOpt` — ASE / geomeTRIC optimization
 * :mod:`ffpopt.affdo` — optional AFFDO extras (log, centroids, charges)
 
-Root modules ``Workflows``, ``Dihedrals``, ``GeomOpt``, ``WaveFront`` remain
-as compatibility re-exports.
-
 Submodules are imported lazily so lightweight callers (and packaging checks)
 do not require every optional calculator stack at import time.
 """
@@ -37,27 +34,9 @@ __all__ = [
     "dihed",
     "geom",
     "workflows",
-    "Workflows",
-    "Dihedrals",
-    "WaveFront",
 ]
 
-_LAZY = {
-    "ase": ".ase",
-    "constants": ".constants",
-    "confsearch": ".confsearch",
-    "cpefit": ".cpefit",
-    "scosmo": ".scosmo",
-    "runtime": ".runtime",
-    "scan": ".scan",
-    "affdo": ".affdo",
-    "dihed": ".dihed",
-    "geom": ".geom",
-    "workflows": ".workflows",
-    "Workflows": ".Workflows",
-    "Dihedrals": ".Dihedrals",
-    # WaveFront / WaveFrontND are real pickle-compat modules at package root.
-}
+_LAZY = {name: f".{name}" for name in __all__}
 
 
 def __getattr__(name: str) -> Any:

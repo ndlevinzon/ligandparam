@@ -22,7 +22,7 @@ def ReadGeomsFromXYZ(stdargs,fname):
     """
 
     import ase.io
-    from . Constraints import info2constraints, FillConstraints
+    from ffpopt.geom.Constraints import info2constraints, FillConstraints
     
     geoms = ase.io.read(fname,index=":")
     cons = []

@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **ffpopt layout** — domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import paths remain as re-export shims (including ``python -m ffpopt.geometric_compat``).
+- **ffpopt layout** — domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import-redirect shims removed; callers use the canonical packages (``python -m ffpopt.geom.geometric``).
 
 ---
 

@@ -72,9 +72,9 @@ What pulls the score **down**
   AmberTools at import or runtime, so “unit test everything” is
   unrealistic without heavy mocking. Tests therefore target contracts
   and pure helpers first.
-* **Checkpoint / pickle compatibility:** thin root aliases
-  (``ffpopt.WaveFront``) exist for resume. Necessary, but they are a
-  permanent compatibility tax.
+* **Checkpoint / pickle compatibility:** wavefront loaders register historical
+  ``ffpopt.WaveFront`` names onto ``scan.WaveFront`` in ``sys.modules`` so
+  older checkpoints resume without extra shim files.
 
 Toward 9/10
 ~~~~~~~~~~~

@@ -1,7 +1,6 @@
 """High-level torsion-fitting workflows for Amber force fields.
 
-Canonical package for dihedral (twist) corrections. Root
-``ffpopt.Workflows`` re-exports these names for compatibility.
+Canonical package for dihedral (twist) corrections.
 
 When to use which entry point
 -----------------------------

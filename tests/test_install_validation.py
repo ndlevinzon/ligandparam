@@ -161,7 +161,7 @@ class TestPublicAPISurface(unittest.TestCase):
             self.assertTrue(callable(getattr(m, name)), name)
 
     def test_ffpopt_geomopt_and_dihedrals(self):
-        geom = importlib.import_module("ffpopt.GeomOpt")
+        geom = importlib.import_module("ffpopt.geom.GeomOpt")
         for name in (
             "GeomOpt",
             "GeomOpt_ASE",
@@ -172,7 +172,7 @@ class TestPublicAPISurface(unittest.TestCase):
         ):
             self.assertTrue(hasattr(geom, name), name)
 
-        dihed = importlib.import_module("ffpopt.Dihedrals")
+        dihed = importlib.import_module("ffpopt.dihed.Dihedrals")
         for name in (
             "FitInputType",
             "NonlinearSolve",
@@ -192,7 +192,8 @@ class TestPublicAPISurface(unittest.TestCase):
         for name in ("Wavefront", "WavefrontNode", "run_dihed_wavefront"):
             self.assertTrue(hasattr(wnd, name), name)
 
-        # Pre-scan/ pickle paths must resolve for checkpoint resume.
+        mixins = importlib.import_module("ffpopt.scan.wavefront_mixins")
+        mixins.register_wavefront_pickle_aliases()
         legacy = importlib.import_module("ffpopt.WaveFront")
         self.assertIs(legacy.Wavefront, wf.Wavefront)
 
@@ -210,12 +211,6 @@ class TestPublicAPISurface(unittest.TestCase):
             "ffpopt.dihed.fit_ext",
             "ffpopt.workflows",
             "ffpopt.geom.geometric",
-            # Root shims still import.
-            "ffpopt.affdo_log",
-            "ffpopt.Workflows",
-            "ffpopt.Dihedrals",
-            "ffpopt.GeomOpt",
-            "ffpopt.geometric_compat",
         )
         for mod in runtime:
             importlib.import_module(mod)
@@ -312,7 +307,7 @@ class TestBehavioralSmoke(unittest.TestCase):
 
     def test_shape_match_delta_invariant_to_constant(self):
         import numpy as np
-        from ffpopt.Dihedrals import shape_match_delta
+        from ffpopt.dihed.Dihedrals import shape_match_delta
 
         hl = np.array([1.0, 3.0, 2.0, 4.0])
         ll = np.array([0.5, 1.5, 1.0, 2.0])
@@ -322,7 +317,7 @@ class TestBehavioralSmoke(unittest.TestCase):
         self.assertAlmostEqual(float(np.mean(d0)), 0.0, places=12)
 
     def test_wavefront_evaluate_policy(self):
-        from ffpopt.GeomOpt import is_soft_opt_recovery
+        from ffpopt.geom.GeomOpt import is_soft_opt_recovery
         from ffpopt.scan.wavefront_mixins import evaluate_wavefront_minimum
 
         self.assertTrue(is_soft_opt_recovery("loose"))
@@ -352,7 +347,7 @@ class TestBehavioralSmoke(unittest.TestCase):
     def test_align_scan_profiles_on_shared_angles(self):
         if not _has_module("ase"):
             self.skipTest("ase required for Struct import path")
-        from ffpopt.Dihedrals import align_scan_profiles
+        from ffpopt.dihed.Dihedrals import align_scan_profiles
         from ffpopt.Struct import ListOfStruct
 
         def _frame(name: str, energy: float = 0.0):
@@ -422,7 +417,7 @@ class TestBehavioralSmoke(unittest.TestCase):
             self.assertIn(("c3", "c3", "c3", "n"), keys)
 
     def test_constraints_to_geometric_roundtrip(self):
-        from ffpopt.Constraints import Constraint, to_geometric
+        from ffpopt.geom.Constraints import Constraint, to_geometric
 
         cons = [Constraint("dihed", [0, 1, 2, 3], value=90.0)]
         lines = to_geometric(cons)

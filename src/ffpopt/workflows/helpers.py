@@ -404,7 +404,7 @@ def _run_one_scan(
     workdir: Optional[Path] = None,
     **wf_kwargs,
 ):
-    """ Run one wavefront scan via :func:`ffpopt.WaveFront.run_dihed_wavefront`.
+    """ Run one wavefront scan via :func:`ffpopt.scan.WaveFront.run_dihed_wavefront`.
 
     Parameters
     ----------
@@ -425,7 +425,7 @@ def _run_one_scan(
         When set, relative ``inp`` / ``out`` paths are resolved under this
         directory (absolute paths are left unchanged).
     **wf_kwargs
-        Forwarded unchanged to :func:`ffpopt.WaveFront.run_dihed_wavefront`.
+        Forwarded unchanged to :func:`ffpopt.scan.WaveFront.run_dihed_wavefront`.
 
     Returns
     -------

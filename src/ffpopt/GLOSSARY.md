@@ -48,8 +48,8 @@ until neighboring energies agree within a threshold.
 modern twist workflows. Driven by `ffpopt.scan.WaveFront.run_dihed_wavefront`
 (1-D) or `ffpopt.scan.WaveFrontND` (N-D). Soft/loose recoveries follow
 `evaluate_wavefront_minimum` in `wavefront_mixins` (soft seeds once; hard
-replaces soft only if not higher). Root `ffpopt.WaveFront` is a pickle-compat
-alias for older checkpoints.
+replaces soft only if not higher). Loaders map older pickle module names
+onto `ffpopt.scan.WaveFront`.
 
 **Authoritative source.** `src/ffpopt/scan/WaveFront.py`
 
@@ -149,7 +149,7 @@ pools prefer fragment/bond breadth over depth (see
 ``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
 ``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override). Fragments
 with more than two fit bonds are split into sequential proximity batches
-(``ffpopt.bond_batches``; ``FFPOPT_MAX_BONDS_PER_TWIST``,
+(``ffpopt.workflows.bond_batches``; ``FFPOPT_MAX_BONDS_PER_TWIST``,
 ``FFPOPT_BOND_COUPLE_RADIUS``) with MM updates between batches.
 
 **Authoritative source.** `src/ffpopt/workflows/`

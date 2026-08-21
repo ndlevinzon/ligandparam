@@ -372,7 +372,7 @@ def compare_scans(
 def load_scan_dat(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """ Load a wavefront ``.dat`` file and return ``(angles, energies)``.
 
-    The companion file written by :func:`ffpopt.WaveFront.run_dihed_wavefront`
+    The companion file written by :func:`ffpopt.scan.WaveFront.run_dihed_wavefront`
     has three columns per line: ``angle e_shifted e_unshifted``. This
     function reads the first two - the shifted energies are already in
     kcal/mol.
