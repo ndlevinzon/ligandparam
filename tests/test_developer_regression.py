@@ -720,6 +720,123 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertGreater(d0["npts"], 3)
             self.assertTrue(__import__("math").isfinite(d0["fourier"]))
 
+    def test_profile_is_smooth_enough_uses_fourier(self):
+        import math
+        from ffpopt.affdo.CentroidProfiles import (
+            profile_is_smooth_enough,
+            score_profile_details,
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            smooth = root / "smooth.dat"
+            jagged = root / "jagged.dat"
+            barrier = root / "barrier.dat"
+            angs = list(range(-180, 181, 30))
+            smooth.write_text(
+                "\n".join(
+                    f"{a} {0.5 * (1.0 - math.cos(math.radians(a)))} 0" for a in angs
+                ),
+                encoding="utf-8",
+            )
+            jagged.write_text(
+                "\n".join(
+                    f"{a} {(0.0 if i % 2 == 0 else 8.0)} 0"
+                    for i, a in enumerate(angs)
+                ),
+                encoding="utf-8",
+            )
+            barrier.write_text(
+                "\n".join(
+                    f"{a} {3.0 * (1.0 - math.cos(math.radians(2 * a)))} 0" for a in angs
+                ),
+                encoding="utf-8",
+            )
+            self.assertTrue(profile_is_smooth_enough(score_profile_details(smooth), fourier_max=0.5))
+            self.assertTrue(profile_is_smooth_enough(score_profile_details(barrier), fourier_max=0.5))
+            self.assertFalse(profile_is_smooth_enough(score_profile_details(jagged), fourier_max=0.5))
+            self.assertFalse(profile_is_smooth_enough(score_profile_details(smooth), fourier_max=None))
+
+    def test_hl_orig_and_centroid_jobs_share_pools(self):
+        from ffpopt.workflows import TwistHelpers as th
+
+        class _Scan:
+            def __init__(self, idxs):
+                self.idxs = list(idxs)
+
+            def GetIdxStr(self):
+                return "-".join(str(i) for i in self.idxs)
+
+        scans = [_Scan([0, 1, 2, 3]), _Scan([4, 5, 6, 7])]
+        captured = []
+
+        def _fake_execute(jobs, **kwargs):
+            captured.append({"label": kwargs.get("label"), "jobs": list(jobs)})
+            return [
+                (j["prefix"], tuple(j["dihed_idxs"]), None) for j in jobs
+            ]
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            starts = [root / "c0.json", root / "c1.json", root / "c2.json"]
+            for p in starts:
+                p.write_text("{}", encoding="utf-8")
+            angs = list(range(-180, 181, 30))
+            import math
+
+            def _write_dat(name, jagged=False):
+                path = root / name
+                if jagged:
+                    text = "\n".join(
+                        f"{a} {(0.0 if i % 2 == 0 else 8.0)} 0"
+                        for i, a in enumerate(angs)
+                    )
+                else:
+                    text = "\n".join(
+                        f"{a} {0.5 * (1.0 - math.cos(math.radians(a)))} 0" for a in angs
+                    )
+                path.write_text(text, encoding="utf-8")
+
+            _write_dat("xtb.c0_0-1-2-3.dat", jagged=False)
+            _write_dat("xtb.c0_4-5-6-7.dat", jagged=True)
+
+            with patch.object(th, "_execute_bond_scan_jobs", side_effect=_fake_execute), patch(
+                "ffpopt.affdo.CentroidProfiles.generate_centroid_start_jsons",
+                return_value=starts,
+            ):
+                th._run_hl_and_orig_scans(
+                    scans,
+                    hl_prefix="xtb",
+                    hl_model="xtb",
+                    inp=str(root / "start.json"),
+                    nproc=8,
+                    skip_existing=True,
+                    workdir=root,
+                    logger=None,
+                    wf_kwargs={},
+                    multi_centroid=3,
+                )
+            self.assertTrue((root / "xtb_0-1-2-3.dat").is_file())
+            self.assertTrue((root / "xtb_4-5-6-7.dat").is_file())
+
+        self.assertEqual(len(captured), 2)
+        first_prefixes = {j["prefix"] for j in captured[0]["jobs"]}
+        self.assertEqual(first_prefixes, {"xtb.c0", "orig"})
+        self.assertEqual(len(captured[0]["jobs"]), 4)
+        extra_prefixes = {j["prefix"] for j in captured[1]["jobs"]}
+        self.assertEqual(extra_prefixes, {"xtb.c1", "xtb.c2"})
+        extra_idxs = {tuple(j["dihed_idxs"]) for j in captured[1]["jobs"]}
+        self.assertEqual(extra_idxs, {(4, 5, 6, 7)})
+
+    def test_interleave_job_groups(self):
+        from ffpopt.workflows.TwistHelpers import _interleave_job_groups
+
+        a = [{"id": "a0"}, {"id": "a1"}]
+        b = [{"id": "b0"}, {"id": "b1"}, {"id": "b2"}]
+        ids = [j["id"] for j in _interleave_job_groups(a, b)]
+        self.assertEqual(ids, ["a0", "b0", "a1", "b1", "b2"])
+        self.assertEqual(_interleave_job_groups([], a), a)
+
     def test_boltzmann_average_summary_fields(self):
         from ffpopt.affdo.BoltzmannCharges import boltzmann_average_mol2_charges
 

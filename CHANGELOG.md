@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **PascalCase library modules** — snake_case ``src/`` modules renamed to descriptive PascalCase (``TwistHelpers``, ``AffdoLog``, ``LigandIo``, …) to match existing ffpopt domain files. Package directories stay lowercase. Hyphenated ``ffpopt.bin`` CLIs unchanged.
 - **ASCII stdout** — console / argparse / exception-note lines map ``+/-``, ``deg``, ``chi^2`` (not ``±`` ``°`` ``χ²``) so latin-1 Slurm ``.out`` files stay greppable.
 - **Env defaults JSON** — all user ``FFPOPT_*`` knobs live in ``ffpopt/pkgdata/files/env_defaults.json`` (commented JSONC; this is the store the code reads). Overlay with ``FFPOPT_DEFAULTS=/path.json``; per-key ``export FFPOPT_*=`` still wins.
+- **Multi-centroid HL pooling** — centroid-0 HL and ``orig`` share one job queue; extra ConfSearch starts run only for jagged torsions (Fourier RMSE vs ``FFPOPT_CENTROID_FOURIER_MAX``, default 0.5 kcal) and those centroid×bond jobs share one pool.
 
 ---
 

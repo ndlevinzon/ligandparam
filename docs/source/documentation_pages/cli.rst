@@ -71,7 +71,8 @@ Notes
   All ``export FFPOPT_*`` defaults ship in
   ``ffpopt/pkgdata/files/env_defaults.json`` (the values the code reads).
   Copy/edit that file and set ``FFPOPT_DEFAULTS`` to overlay it; per-key
-  ``EXPORT`` still wins.
+  ``EXPORT`` still wins. ``--multi-centroid`` scans extra ConfSearch starts
+  only when centroid-0 Fourier RMSE exceeds ``FFPOPT_CENTROID_FOURIER_MAX``.
 * Console logs use a single timestamp and hierarchical ``[tag]`` brackets
   (``ffpopt.runtime.Console``).
 

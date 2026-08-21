@@ -7,9 +7,11 @@ score picks the smoothest profile per torsion (AFFDO-style).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Any, Iterable, Optional, Sequence, Tuple
 
 import numpy as np
+
+_FOURIER_MAX_UNSET = object()
 
 
 def generate_centroid_start_jsons(
@@ -231,6 +233,32 @@ def score_profile_details(path, *, max_order: int = 3) -> dict:
     return row
 
 
+def profile_is_smooth_enough(row: dict, *, fourier_max: Optional[float] | object = _FOURIER_MAX_UNSET) -> bool:
+    """True when a centroid-0 profile can skip extra ConfSearch starts.
+
+    Uses Fourier RMSE (kcal), not the composite score: a smooth high barrier
+    has large roughness but a near-zero Fourier residual. Omit ``fourier_max``
+    to use ``FFPOPT_CENTROID_FOURIER_MAX`` (JSON). Pass ``None`` to disable
+    adaptive keep (extra centroids always run).
+    """
+    if row.get("error"):
+        return False
+    fourier = row.get("fourier")
+    npts = int(row.get("npts") or 0)
+    if npts < 5 or fourier is None or not np.isfinite(float(fourier)):
+        return False
+    cap: Any
+    if fourier_max is _FOURIER_MAX_UNSET:
+        from ffpopt.runtime.EnvDefaults import env_value
+
+        cap = env_value("FFPOPT_CENTROID_FOURIER_MAX")
+    else:
+        cap = fourier_max
+    if cap is None:
+        return False
+    return float(fourier) <= float(cap)
+
+
 def pick_smoothest_profile(
     candidates: Iterable,
     *,
@@ -263,14 +291,24 @@ def pick_smoothest_profile(
     return finite[0]["path"], float(finite[0]["score"]), rows
 
 
+def _scan_file_stem(path: Path) -> Path:
+    """Drop ``.json`` / ``.dat`` / ``.pkl`` without treating ``xtb.c0_...`` as a suffix."""
+    path = Path(path)
+    lower = path.name.lower()
+    for suf in (".json", ".dat", ".pkl"):
+        if lower.endswith(suf):
+            return path.with_name(path.name[: -len(suf)])
+    return path
+
+
 def promote_profile_files(src_stem: Path, dst_stem: Path) -> None:
     """Copy wavefront outputs ``src.*`` onto ``dst.*`` (json/dat/pkl)."""
     import shutil
 
-    src_stem = Path(src_stem)
-    dst_stem = Path(dst_stem)
+    src_stem = _scan_file_stem(src_stem)
+    dst_stem = _scan_file_stem(dst_stem)
     for suf in (".json", ".dat", ".pkl"):
-        sp = src_stem.with_suffix(suf)
+        sp = src_stem.parent / (src_stem.name + suf)
         if sp.is_file():
-            dp = dst_stem.with_suffix(suf)
+            dp = dst_stem.parent / (dst_stem.name + suf)
             shutil.copy2(sp, dp)

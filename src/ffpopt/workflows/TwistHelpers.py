@@ -532,6 +532,22 @@ def _build_bond_scan_jobs(
     return jobs
 
 
+def _interleave_job_groups(*groups: list[dict]) -> list[dict]:
+    """Round-robin independent job lists so cheap orig work can fill cores."""
+    groups = [g for g in groups if g]
+    if not groups:
+        return []
+    if len(groups) == 1:
+        return list(groups[0])
+    out: list[dict] = []
+    n = max(len(g) for g in groups)
+    for i in range(n):
+        for g in groups:
+            if i < len(g):
+                out.append(g[i])
+    return out
+
+
 def _execute_bond_scan_jobs(
     jobs: list[dict],
     *,
@@ -640,6 +656,61 @@ def _run_scans_for_bonds(
     )
 
 
+def _log_centroid_profile_rows(log, idx: str, rows: list, *, best=None) -> None:
+    from ffpopt.affdo.AffdoLog import log_affdo
+
+    best_path = Path(best) if best is not None else None
+    for row in rows:
+        err = row.get("error")
+        if err:
+            log_affdo(log, "%s skip %s (%s)", idx, Path(row["path"]).name, err)
+            continue
+        marker = ""
+        if best_path is not None and Path(row["path"]) == best_path:
+            marker = " <- selected"
+        log_affdo(
+            log,
+            "%s %s: score=%.4g fourier=%.4g roughness=%.4g npts=%s%s",
+            idx,
+            Path(row["path"]).name,
+            row["score"],
+            row["fourier"],
+            row["roughness"],
+            row["npts"],
+            marker,
+        )
+
+
+def _promote_centroid_pick(
+    log,
+    *,
+    idx: str,
+    hl_prefix: str,
+    workdir: Optional[Path],
+    candidates: list,
+) -> None:
+    from ffpopt.affdo.AffdoLog import log_affdo
+    from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, promote_profile_files
+
+    best, score, rows = pick_smoothest_profile(candidates)
+    if best is None:
+        log.warning("[affdo] %s: no centroid HL profiles to score", idx)
+        return
+    _log_centroid_profile_rows(log, idx, rows, best=best)
+    src_stem = Path(best)
+    dst_stem = _in_workdir(workdir, f"{hl_prefix}_{idx}")
+    promote_profile_files(src_stem, dst_stem)
+    log_affdo(
+        log,
+        "%s: promoted %s -> %s.* (score=%.4g, %s centroid(s))",
+        idx,
+        Path(best).name,
+        dst_stem.name,
+        score,
+        len(rows),
+    )
+
+
 def _run_hl_and_orig_scans(
     scans,
     *,
@@ -657,20 +728,37 @@ def _run_hl_and_orig_scans(
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Pipeline HL (optionally multi-centroid) and reference-sander scans.
 
-    When ``multi_centroid >= 2``, each torsion is scanned from ConfSearch
-    centroids and the smoothest HL profile (Fourier + roughness score) is
-    promoted to the canonical ``{hl_prefix}_{idxs}.*`` paths used by fitting.
-    Reference sander scans still start from the primary ``inp`` geometry.
+    Independent HL and ``orig`` jobs share one pool. With
+    ``multi_centroid >= 2``, centroid-0 HL is scored first; extra ConfSearch
+    starts run only for jagged torsions (Fourier RMSE), and those extra
+    centroid×bond jobs share one pool. The smoothest HL profile is promoted
+    to ``{hl_prefix}_{idxs}.*``. ``orig`` always starts from primary ``inp``.
     """
     log = _resolve_logger(logger)
     results: list[tuple[str, tuple, Optional[dict]]] = []
     n_cent = max(0, int(multi_centroid or 0))
+    orig_jobs = _build_bond_scan_jobs(
+        scans,
+        prefix="orig",
+        model="sander",
+        inp=inp,
+        skip_existing=skip_existing,
+        workdir=workdir,
+        wf_kwargs=wf_kwargs,
+    )
+    exec_kw = dict(
+        nproc=nproc,
+        prefer_wf_depth=prefer_wf_depth,
+        logger=logger,
+    )
 
     if n_cent >= 2:
-        from ffpopt.affdo.CentroidProfiles import generate_centroid_start_jsons
-        from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, promote_profile_files
-
         from ffpopt.affdo.AffdoLog import log_affdo
+        from ffpopt.affdo.CentroidProfiles import (
+            generate_centroid_start_jsons,
+            profile_is_smooth_enough,
+            score_profile_details,
+        )
 
         cent_starts = generate_centroid_start_jsons(
             inp,
@@ -679,114 +767,111 @@ def _run_hl_and_orig_scans(
             workdir=workdir,
             logger=log,
         )
+        n_starts = len(cent_starts)
         log_affdo(
             log,
-            "multi-centroid HL: %s start geometry(ies) -> pick smoothest "
-            "profile per torsion (Fourier residual + roughness)",
-            len(cent_starts),
+            "multi-centroid HL: %s start(s); centroid-0 + orig share one pool; "
+            "extra starts only if Fourier RMSE > FFPOPT_CENTROID_FOURIER_MAX",
+            n_starts,
         )
-        for ci, cent_inp in enumerate(cent_starts):
-            results.extend(
-                _execute_bond_scan_jobs(
-                    _build_bond_scan_jobs(
-                        scans,
-                        prefix=f"{hl_prefix}.c{ci}",
-                        model=hl_model,
-                        inp=str(cent_inp),
-                        skip_existing=skip_existing,
-                        workdir=workdir,
-                        wf_kwargs=wf_kwargs,
-                    ),
-                    nproc=nproc,
-                    prefer_wf_depth=prefer_wf_depth,
-                    logger=logger,
-                    label=f"HL({hl_model}).c{ci}",
-                )
-            )
-        for scan in scans:
-            idx = scan.GetIdxStr()
-            cands = [
-                _in_workdir(workdir, f"{hl_prefix}.c{ci}_{idx}.dat")
-                for ci in range(len(cent_starts))
-            ]
-            best, score, rows = pick_smoothest_profile(cands)
-            if best is None:
-                log.warning("[affdo] %s: no centroid HL profiles to score", idx)
-                continue
-            for row in rows:
-                err = row.get("error")
-                if err:
-                    log_affdo(
-                        log,
-                        "%s skip %s (%s)",
-                        idx,
-                        Path(row["path"]).name,
-                        err,
-                    )
-                    continue
-                fourier = row["fourier"]
-                rough = row["roughness"]
-                sc = row["score"]
-                marker = " <- selected" if Path(row["path"]) == Path(best) else ""
-                log_affdo(
-                    log,
-                    "%s %s: score=%.4g fourier=%.4g roughness=%.4g npts=%s%s",
-                    idx,
-                    Path(row["path"]).name,
-                    sc,
-                    fourier,
-                    rough,
-                    row["npts"],
-                    marker,
-                )
-            src_stem = Path(best).with_suffix("")
-            dst_stem = _in_workdir(workdir, f"{hl_prefix}_{idx}")
-            promote_profile_files(src_stem, dst_stem)
-            log_affdo(
-                log,
-                "%s: promoted %s -> %s.* (score=%.4g, %s centroid(s))",
-                idx,
-                best.name,
-                dst_stem.name,
-                score,
-                len(rows),
-            )
-    else:
+        c0_jobs = _build_bond_scan_jobs(
+            scans,
+            prefix=f"{hl_prefix}.c0",
+            model=hl_model,
+            inp=str(cent_starts[0]),
+            skip_existing=skip_existing,
+            workdir=workdir,
+            wf_kwargs=wf_kwargs,
+        )
         results.extend(
             _execute_bond_scan_jobs(
+                _interleave_job_groups(c0_jobs, orig_jobs),
+                label=f"HL({hl_model}).c0+orig(sander)",
+                **exec_kw,
+            )
+        )
+        extra_scans = []
+        for scan in scans:
+            idx = scan.GetIdxStr()
+            c0_dat = _in_workdir(workdir, f"{hl_prefix}.c0_{idx}.dat")
+            row = score_profile_details(c0_dat)
+            if n_starts > 1 and profile_is_smooth_enough(row):
+                log_affdo(
+                    log,
+                    "%s centroid-0 kept (fourier=%.4g npts=%s); skip extra starts",
+                    idx,
+                    row["fourier"],
+                    row["npts"],
+                )
+                _promote_centroid_pick(
+                    log,
+                    idx=idx,
+                    hl_prefix=hl_prefix,
+                    workdir=workdir,
+                    candidates=[c0_dat],
+                )
+            elif n_starts > 1:
+                extra_scans.append(scan)
+                why = row.get("error") or f"fourier={row.get('fourier')}"
+                log_affdo(log, "%s needs extra centroids (%s)", idx, why)
+            else:
+                _promote_centroid_pick(
+                    log,
+                    idx=idx,
+                    hl_prefix=hl_prefix,
+                    workdir=workdir,
+                    candidates=[c0_dat],
+                )
+        if extra_scans and n_starts > 1:
+            extra_groups = [
                 _build_bond_scan_jobs(
-                    scans,
-                    prefix=hl_prefix,
+                    extra_scans,
+                    prefix=f"{hl_prefix}.c{ci}",
                     model=hl_model,
-                    inp=inp,
+                    inp=str(cent_inp),
                     skip_existing=skip_existing,
                     workdir=workdir,
                     wf_kwargs=wf_kwargs,
-                ),
-                nproc=nproc,
-                prefer_wf_depth=prefer_wf_depth,
-                logger=logger,
-                label=f"HL({hl_model})",
+                )
+                for ci, cent_inp in enumerate(cent_starts[1:], start=1)
+            ]
+            results.extend(
+                _execute_bond_scan_jobs(
+                    _interleave_job_groups(*extra_groups),
+                    label=f"HL({hl_model}).c1-{n_starts - 1} extra centroids",
+                    **exec_kw,
+                )
+            )
+            for scan in extra_scans:
+                idx = scan.GetIdxStr()
+                cands = [
+                    _in_workdir(workdir, f"{hl_prefix}.c{ci}_{idx}.dat")
+                    for ci in range(n_starts)
+                ]
+                _promote_centroid_pick(
+                    log,
+                    idx=idx,
+                    hl_prefix=hl_prefix,
+                    workdir=workdir,
+                    candidates=cands,
+                )
+    else:
+        hl_jobs = _build_bond_scan_jobs(
+            scans,
+            prefix=hl_prefix,
+            model=hl_model,
+            inp=inp,
+            skip_existing=skip_existing,
+            workdir=workdir,
+            wf_kwargs=wf_kwargs,
+        )
+        results.extend(
+            _execute_bond_scan_jobs(
+                _interleave_job_groups(hl_jobs, orig_jobs),
+                label=f"HL({hl_model})+orig(sander)",
+                **exec_kw,
             )
         )
-
-    results.extend(
-        _execute_bond_scan_jobs(
-            _build_bond_scan_jobs(
-                scans,
-                prefix="orig",
-                model="sander",
-                inp=inp,
-                skip_existing=skip_existing,
-                workdir=workdir,
-                wf_kwargs=wf_kwargs,
-            ),
-            nproc=nproc,
-            prefer_wf_depth=prefer_wf_depth,
-            logger=logger,
-            label="orig(sander)",
-        )
-    )
     return results
 
 

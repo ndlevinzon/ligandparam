@@ -73,10 +73,13 @@
   // Last ladder rung: treat maxiter as success and keep the best frame.
   "FFPOPT_GEOMOPT_SOFT_MAXITER": true,
 
-  // --- ConfSearch ---------------------------------------------------------
+  // --- ConfSearch / multi-centroid HL -------------------------------------
   // Conformer count at which RMS clustering uses the fast (align-to-first)
   // path. 0 = always legacy per-pair GetBestRMS.
   "FFPOPT_CONFSEARCH_RMS_FAST_N": 50,
+  // Keep centroid-0 HL when Fourier RMSE (kcal) is at or below this; scan
+  // extra ConfSearch starts only for jagged torsions. null = always scan all.
+  "FFPOPT_CENTROID_FOURIER_MAX": 0.5,
 
   // --- Dihedral fit -------------------------------------------------------
   // Legacy GeomOpt-per-iteration fit (slow). Default is fixed-geometry lsq.
