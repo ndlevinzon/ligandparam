@@ -65,9 +65,12 @@ dihed = [
   "geometric",  # geomeTRIC optimizer used by ffpopt WaveFront scans
 ]
 
+# Prefer conda-forge JAX on HPC / conda envs (avoids pip ml-dtypes build failures):
+#   conda install -c conda-forge "jax>=0.4" "jaxlib>=0.4"
+# Pip wheels are fine on many Linux/macOS setups; Windows often needs conda.
 jax = [
-  "jax",
-  "jaxlib",
+  "jax>=0.4.30",
+  "jaxlib>=0.4.30",
 ]
 
 misc = [
