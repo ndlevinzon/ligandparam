@@ -6,6 +6,12 @@ Typical same-session workflow::
     lig-dihed-correct -d CHA3 -r CHA --label chaps
 
 Or pass explicit ``--mol2`` / ``--lib`` / ``--frcmod`` paths.
+
+Additive AFFDO-style options (all default off; fragmented path unchanged)::
+
+    lig-dihed-correct ... --whole-ligand --multi-centroid 5 \\
+        --soft-dihed-restraint --fit-full --fit-backend jax \\
+        --boltzmann-charges
 """
 
 from __future__ import annotations
@@ -16,6 +22,27 @@ from pathlib import Path
 from ligandparam.io.amber_bundle import AmberLigandBundle, resolve_getparam_bundle
 from ligandparam.log import get_logger, set_file_logger, set_stream_logger
 from ligandparam.stages.ffpopt_dihed import StageDihedTwistCorrection
+
+
+def _build_fit_cli_args(args) -> list[str]:
+    out: list[str] = []
+    if getattr(args, "fit_full", False):
+        out.append("--fit-full")
+    if getattr(args, "barrier_only", False):
+        out.append("--barrier-only")
+    mode = getattr(args, "fit_mode", None)
+    if mode:
+        out.extend(["--fit-mode", str(mode)])
+    backend = getattr(args, "fit_backend", None)
+    if backend:
+        out.extend(["--fit-backend", str(backend)])
+    if getattr(args, "fit_phases", False):
+        out.append("--fit-phases")
+    if getattr(args, "fit_periods", False):
+        out.append("--fit-periods")
+    if getattr(args, "fit_scee_scnb", False):
+        out.append("--fit-scee-scnb")
+    return out
 
 
 def run_dihed_correct(
@@ -36,6 +63,13 @@ def run_dihed_correct(
     skip_existing: bool = True,
     dry_run: bool = False,
     fast_wavefront: bool | None = None,
+    whole_ligand: bool = False,
+    multi_centroid: int = 0,
+    boltzmann_charges: bool = False,
+    soft_dihed_restraint: bool = False,
+    soft_dihed_k: float | None = None,
+    soft_dihed_tol: float | None = None,
+    fit_cli_args: list[str] | None = None,
     logger=None,
 ):
     """Execute :class:`StageDihedTwistCorrection` on an Amber ligand bundle."""
@@ -53,7 +87,12 @@ def run_dihed_correct(
             work_dir=Path(work_dir),
         )
     out_frcmod = out_frcmod or bundle.work_dir / f"{bundle.stem}.dihed.frcmod"
-    out_dir = out_dir or bundle.work_dir / f"{bundle.stem}.dihed_fragments"
+    default_out = (
+        f"{bundle.stem}.dihed_whole"
+        if whole_ligand
+        else f"{bundle.stem}.dihed_fragments"
+    )
+    out_dir = out_dir or bundle.work_dir / default_out
 
     stage = StageDihedTwistCorrection(
         "DihedTwist",
@@ -71,6 +110,13 @@ def run_dihed_correct(
         geometric_opt=geometric_opt,
         skip_existing=skip_existing,
         fast_wavefront=fast_wavefront,
+        whole_ligand=whole_ligand,
+        multi_centroid=multi_centroid,
+        boltzmann_charges=boltzmann_charges,
+        soft_dihed_restraint=soft_dihed_restraint,
+        soft_dihed_k=soft_dihed_k,
+        soft_dihed_tol=soft_dihed_tol,
+        fit_cli_args=fit_cli_args or [],
         logger=logger,
     )
     return stage.execute(dry_run=dry_run, nproc=nproc)
@@ -83,7 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Fit dihedral corrections with ffpopt after ligandparam "
-            "(fragmented twist -> merged frcmod; lib unchanged)."
+            "(default: fragmented twist -> merged frcmod; lib unchanged). "
+            "Optional --whole-ligand and AFFDO-style flags are additive."
         )
     )
     parser.add_argument(
@@ -161,6 +208,62 @@ def main(argv: list[str] | None = None) -> int:
             "--geometric-* overrides still win when not at library defaults."
         ),
     )
+    parser.add_argument(
+        "--whole-ligand",
+        action="store_true",
+        help="Skip scission fragmentation; twist the full parent ligand",
+    )
+    parser.add_argument(
+        "--multi-centroid",
+        type=int,
+        default=0,
+        help=(
+            "ConfSearch centroids for HL scans; pick smoothest profile per "
+            "torsion (Fourier+roughness). Default 0 (off)."
+        ),
+    )
+    parser.add_argument(
+        "--boltzmann-charges",
+        action="store_true",
+        help="Boltzmann-average charges over centroid mol2s (whole-ligand)",
+    )
+    parser.add_argument(
+        "--soft-dihed-restraint",
+        action="store_true",
+        help=(
+            "Soft harmonic dihedral restraint (AFFDO-style 500 kcal/mol/rad^2, "
+            "±0.5°) with geomeTRIC instead of hard IC constraints"
+        ),
+    )
+    parser.add_argument(
+        "--soft-dihed-k",
+        type=float,
+        default=None,
+        help="Soft dihedral k in kcal/mol/rad^2 (default 500)",
+    )
+    parser.add_argument(
+        "--soft-dihed-tol",
+        type=float,
+        default=None,
+        help="Soft dihedral tolerance in degrees (default 0.5)",
+    )
+    parser.add_argument(
+        "--fit-mode",
+        choices=("barrier", "torsion", "full"),
+        default=None,
+        help="GenDihedFit mode (default barrier / FC-only)",
+    )
+    parser.add_argument(
+        "--fit-backend",
+        choices=("lsq", "lbfgsb", "jax"),
+        default=None,
+        help="GenDihedFit solver (jax needs ligandparam[jax])",
+    )
+    parser.add_argument("--fit-full", action="store_true", help="Fit FC+phase+period+scee/scnb")
+    parser.add_argument("--barrier-only", action="store_true", help="Force FC-only fit")
+    parser.add_argument("--fit-phases", action="store_true")
+    parser.add_argument("--fit-periods", action="store_true")
+    parser.add_argument("--fit-scee-scnb", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Log planned work only")
     parser.add_argument(
         "--logger",
@@ -192,10 +295,11 @@ def main(argv: list[str] | None = None) -> int:
         logger = set_stream_logger()
 
     logger.info(
-        "lig-dihed-correct: mol2=%s lib=%s frcmod=%s",
+        "lig-dihed-correct: mol2=%s lib=%s frcmod=%s whole_ligand=%s",
         bundle.mol2,
         bundle.lib,
         bundle.frcmod,
+        args.whole_ligand,
     )
     result = run_dihed_correct(
         bundle=bundle,
@@ -210,12 +314,21 @@ def main(argv: list[str] | None = None) -> int:
         skip_existing=not args.force,
         dry_run=args.dry_run,
         fast_wavefront=True if args.fast else None,
+        whole_ligand=args.whole_ligand,
+        multi_centroid=args.multi_centroid,
+        boltzmann_charges=args.boltzmann_charges,
+        soft_dihed_restraint=args.soft_dihed_restraint,
+        soft_dihed_k=args.soft_dihed_k,
+        soft_dihed_tol=args.soft_dihed_tol,
+        fit_cli_args=_build_fit_cli_args(args),
         logger=logger,
     )
     if result is not None:
+        key = "out_frcmod" if args.whole_ligand else "merged_frcmod"
         logger.info(
-            "Done (all fragment scans + merge finished). merged_frcmod=%s",
-            result.get("merged_frcmod"),
+            "Done. %s=%s",
+            key,
+            result.get(key) or result.get("merged_frcmod") or result.get("out_frcmod"),
         )
     return 0
 

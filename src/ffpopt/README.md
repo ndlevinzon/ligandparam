@@ -99,3 +99,22 @@ GenDihedFit's objective is a **shape match**: mean-centered HL-LL residual
 not used in chi^2 (plot files may still min-shift for display). Under fixed
 geometry, force constants enter linearly and are solved with bounded linear
 least squares (phase fixed at 0).
+
+## AFFDO-style extras (opt-in)
+
+Fragmented twist remains the default. For whole-ligand / AFFDO-like runs::
+
+    lig-dihed-correct ... --whole-ligand --multi-centroid 5 \\
+        --soft-dihed-restraint --fit-full --fit-backend jax \\
+        --boltzmann-charges
+
+| Flag | Behavior |
+|------|----------|
+| ``--whole-ligand`` | No scission; twist parent rotatable bonds |
+| ``--multi-centroid N`` | ConfSearch starts; pick smoothest HL profile (Fourier + roughness) |
+| ``--soft-dihed-restraint`` | Harmonic dihedral spring (500 kcal/mol/rad², ±0.5°) via geomeTRIC + ASE |
+| ``--fit-full`` / ``--fit-mode`` | FC + phase + period + scee/scnb (default remains barrier-only) |
+| ``--fit-backend jax`` | L-BFGS-B with JAX autodiff (``pip install 'ligandparam[jax]'``) |
+| ``--boltzmann-charges`` | Average centroid mol2 charges (when available) |
+
+Wavefront sampling is unchanged when these are off.

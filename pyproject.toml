@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ligandparam"
-version = "1.5.0"
+version = "1.5.1"
 description = "A ligand parameterization package for Amber"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -65,6 +65,11 @@ dihed = [
   "geometric",  # geomeTRIC optimizer used by ffpopt WaveFront scans
 ]
 
+jax = [
+  "jax",
+  "jaxlib",
+]
+
 misc = [
   "openbabel",
 ]
@@ -83,6 +88,7 @@ all = [
   "ligandparam[ml]",
   "ligandparam[ml-potentials]",
   "ligandparam[dihed]",
+  "ligandparam[jax]",
   "ligandparam[misc]",
   "ligandparam[sage]",
   "ligandparam[docs]",

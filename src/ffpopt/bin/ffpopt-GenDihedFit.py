@@ -5,8 +5,6 @@
 if __name__ == "__main__":
     import argparse
     import numpy as np
-    #from ffpopt.Options import AddGeomOptOptions
-    #from ffpopt.Options import AddRestraintOptions, AddModelOptions
     from ffpopt.Options import AddStandardOptions
     from ffpopt.Dihedrals import FitInputType
     from ffpopt.Dihedrals import NonlinearSolve
@@ -43,13 +41,44 @@ if __name__ == "__main__":
          help="Tolerance on the parameter optimization. Default: 0.01",
          default=0.01,
          type=float)
-    
-    
 
-    #AddGeomOptOptions(parser)
-    #AddRestraintOptions(parser)
-    #AddModelOptions(parser)
-    
+    parser.add_argument(
+        "--fit-mode",
+        choices=("barrier", "torsion", "full"),
+        default=None,
+        help=(
+            "barrier=FCs only (default); torsion=FC+phase+period; "
+            "full=FC+phase+period+scee/scnb. Overrides FFPOPT_FIT_MODE."
+        ),
+    )
+    parser.add_argument(
+        "--fit-backend",
+        choices=("lsq", "lbfgsb", "jax"),
+        default=None,
+        help="Solver backend (default lsq for barrier; lbfgsb/jax for extended).",
+    )
+    parser.add_argument(
+        "--fit-full",
+        action="store_true",
+        help="Shorthand for --fit-mode full",
+    )
+    parser.add_argument(
+        "--barrier-only",
+        action="store_true",
+        help="Force FC-only fit (default behavior)",
+    )
+    parser.add_argument("--fit-phases", action="store_true", help="Also optimize phases")
+    parser.add_argument(
+        "--fit-periods", action="store_true", help="Also optimize periodicities"
+    )
+    parser.add_argument(
+        "--fit-scee-scnb",
+        action="store_true",
+        help="Also optimize 1-4 scee/scnb scaling factors",
+    )
+    parser.add_argument("--scee", type=float, default=None, help="Initial scee (default 1.2)")
+    parser.add_argument("--scnb", type=float, default=None, help="Initial scnb (default 2.0)")
+
     AddStandardOptions(parser)
     args = parser.parse_args()
     args.model="sander"

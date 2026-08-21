@@ -226,6 +226,8 @@ class RestraintList(object):
                 rests.append( AngleRestraint.from_dict(x) )
             elif x["name"] == "dihed":
                 rests.append( DihedRestraint.from_dict(x) )
+            elif x["name"] == "harmonic_dihed":
+                rests.append( HarmonicDihedRestraint.from_dict(x) )
             elif x["name"] == "r12":
                 rests.append( R12Restraint.from_dict(x) )
             elif x["name"] == "puckerx":
@@ -402,6 +404,87 @@ class DihedRestraint(Restraint):
     
     def isper(self):
         return True
+
+
+class HarmonicDihedRestraint(Restraint):
+    """AFFDO-style soft dihedral spring for ASE / geomeTRIC.
+
+    Energy (ASE eV): ``E = 0.5 * k_eV * (Δφ_rad)^2`` with
+    ``k_eV = k_kcal * (kcal→eV)``. Default ``k_kcal=500`` matches
+    AFFDO (kcal/mol/rad²). ``tol_deg`` is recorded for post-opt checks
+    (±0.5° default) and does not flatten the potential.
+    """
+
+    def __init__(self, k_kcal, idxs, value, tol_deg=0.5):
+        super().__init__("harmonic_dihed")
+        self.k_kcal = float(k_kcal)
+        self.k = self.k_kcal  # alias for generic printers
+        self.idxs = [i for i in idxs]
+        self.value = value
+        self.tol_deg = float(tol_deg)
+
+    def GetCrdValue(self, crds):
+        import numpy as np
+        from .Geometry import CptDihed
+
+        crds = np.array(crds)
+        return CptDihed(
+            crds[self.idxs[0], :],
+            crds[self.idxs[1], :],
+            crds[self.idxs[2], :],
+            crds[self.idxs[3], :],
+        )
+
+    def GetValueAndGradients(self, crds):
+        import numpy as np
+        from ase import units
+        from .Geometry import CptDihedAndGrd
+
+        crds = np.array(crds)
+        g = np.zeros(crds.shape)
+        if self.value is None:
+            raise Exception("HarmonicDihedRestraint value is None")
+        z, dzdra, dzdrb, dzdrc, dzdrd = CptDihedAndGrd(
+            crds[self.idxs[0], :],
+            crds[self.idxs[1], :],
+            crds[self.idxs[2], :],
+            crds[self.idxs[3], :],
+        )
+        diff_deg = (z - self.value + 180.0 + 180.0) % 360.0 - 180.0
+        diff_rad = np.deg2rad(diff_deg)
+        # ASE calculator energies are eV; convert k from kcal/mol/rad².
+        k_ev = self.k_kcal * (units.kcal / units.mol)
+        e = 0.5 * k_ev * (diff_rad ** 2)
+        # dE/dφ_deg = k_ev * Δφ_rad * (π/180); grads of CptDihed are per degree.
+        tmp = k_ev * diff_rad * (np.pi / 180.0)
+        g[self.idxs[0], :] = tmp * dzdra
+        g[self.idxs[1], :] = tmp * dzdrb
+        g[self.idxs[2], :] = tmp * dzdrc
+        g[self.idxs[3], :] = tmp * dzdrd
+        return e, g
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "k": self.k_kcal,
+            "k_kcal": self.k_kcal,
+            "idxs": self.idxs,
+            "value": self.value,
+            "tol_deg": self.tol_deg,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        k = data.get("k_kcal", data.get("k"))
+        return cls(k, data["idxs"], data["value"], tol_deg=data.get("tol_deg", 0.5))
+
+    def isper(self):
+        return True
+
+    def within_tolerance(self, crds) -> bool:
+        z = float(self.GetCrdValue(crds))
+        diff = (z - self.value + 180.0 + 180.0) % 360.0 - 180.0
+        return abs(diff) <= self.tol_deg
     
 
 class R12Restraint(Restraint):

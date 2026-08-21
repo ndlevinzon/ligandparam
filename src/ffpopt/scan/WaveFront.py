@@ -248,12 +248,47 @@ class WavefrontNode:
                 # Stable geomeTRIC basename beside the node pickle so a killed
                 # mid-minimize can warm-start from ``*_optim.xyz`` on restart.
                 geom_prefix = str(Path(self.node_pkl).with_suffix("")) + "_geom"
-                self.opt_geom = GeomOpt(
-                    self.los,
-                    self.struct,
-                    constraints=self.constraints,
-                    geom_prefix=geom_prefix,
-                )
+                soft = bool(getattr(self.los.args, "soft_dihed_restraint", False))
+                if soft:
+                    from ffpopt.Restraints import HarmonicDihedRestraint
+
+                    con0 = self.constraints[0]
+                    k = float(getattr(self.los.args, "soft_dihed_k", 500.0))
+                    tol = float(getattr(self.los.args, "soft_dihed_tol", 0.5))
+                    rest = HarmonicDihedRestraint(
+                        k, list(con0.idxs), float(self.angle), tol_deg=tol
+                    )
+                    self.opt_geom = GeomOpt(
+                        self.los,
+                        self.struct,
+                        constraints=None,
+                        restraints=[rest],
+                        geom_prefix=geom_prefix,
+                    )
+                    try:
+                        ok = rest.within_tolerance(
+                            self.opt_geom.data["positions"]
+                        )
+                    except Exception:
+                        ok = True
+                    if not ok:
+                        print(
+                            f"Node {self.node_id}: soft dihedral outside "
+                            f"±{tol}° of target {self.angle}; falling back to hard IC"
+                        )
+                        self.opt_geom = GeomOpt(
+                            self.los,
+                            self.struct,
+                            constraints=self.constraints,
+                            geom_prefix=geom_prefix,
+                        )
+                else:
+                    self.opt_geom = GeomOpt(
+                        self.los,
+                        self.struct,
+                        constraints=self.constraints,
+                        geom_prefix=geom_prefix,
+                    )
                 self.opt_recovery = opt_recovery_label(self.opt_geom)
                 self.soft_opt = is_soft_opt_recovery(self.opt_geom)
                 if self.soft_opt:

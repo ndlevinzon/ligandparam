@@ -6,5 +6,5 @@ Public entry points typically come from :mod:`ligandparam.recipes`
 :mod:`ligandparam.stages`.
 """
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 __logging_name__ = "ligandparam"

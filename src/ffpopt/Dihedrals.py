@@ -1001,6 +1001,10 @@ class SystemType(object):
         
         scee = 1.2
         scnb = 2.0
+        owner = getattr(self, "_fit_owner", None)
+        if owner is not None:
+            scee = float(getattr(owner, "scee", scee))
+            scnb = float(getattr(owner, "scnb", scnb))
         for pinst in self.pinstances:
             xs = []
             for prim in pinst.ptype.dfcns.prims:
@@ -1083,7 +1087,13 @@ class SystemType(object):
                 dfcn = copy.deepcopy(pinst.ptype.dfcns)
                 dfcn.idxs = idxs
                 dfcns.append(dfcn)
-        WriteParmedScript(self.output,self.mol,dfcns)
+        WriteParmedScript(
+            self.output,
+            self.mol,
+            dfcns,
+            scee=float(getattr(getattr(self, "_fit_owner", None), "scee", 1.2)),
+            scnb=float(getattr(getattr(self, "_fit_owner", None), "scnb", 2.0)),
+        )
     
     
 class FitInputType(object):
@@ -1417,8 +1427,8 @@ class FitInputType(object):
             if ptype.masks is not None and ptype.dfcns is not None:
 
                 typs = DihedralTypeList()
-                scee = 1.2
-                scnb = 2.0
+                scee = float(getattr(self, "scee", 1.2))
+                scnb = float(getattr(self, "scnb", 2.0))
                 for iprim,prim in enumerate(ptype.dfcns.prims):
                     per = prim.per
                     ph = prim.phase
@@ -1848,10 +1858,19 @@ def NonlinearSolve(args,finp):
     """
     from scipy.optimize import minimize, lsq_linear
     import numpy as np
+    from ffpopt.dihed_fit_ext import (
+        configure_fit_input,
+        enrich_cache_with_14,
+        get_extended_params,
+        set_extended_params,
+        solve_extended_lbfgsb,
+    )
 
     for s in finp.systems:
         for p in s.profiles:
             p.losll.SetArgs(args)
+
+    configure_fit_input(finp, args)
 
     finp._ll_cache = None
     reopt = use_dihed_fit_reopt()
@@ -1859,11 +1878,42 @@ def NonlinearSolve(args,finp):
         finp._ll_cache = [
             build_fixed_geometry_ll_cache(s, args) for s in finp.systems
         ]
+        if getattr(finp, "opt_scee_scnb", False):
+            for isys, s in enumerate(finp.systems):
+                enrich_cache_with_14(
+                    s,
+                    finp._ll_cache[isys],
+                    scee0=float(getattr(finp, "scee", 1.2)),
+                    scnb0=float(getattr(finp, "scnb", 2.0)),
+                )
 
     x = finp.make_initial_guesses(args=args, caches=finp._ll_cache)
     n = finp.get_num_params()
     if n == 0:
         print("[ffpopt] NonlinearSolve: no parameters to fit")
+        return
+
+    # Extended AFFDO-style knobs (phase / period / scee·scnb) or explicit backends.
+    use_extended = bool(
+        getattr(finp, "opt_phase", False)
+        or getattr(finp, "opt_periods", False)
+        or getattr(finp, "opt_scee_scnb", False)
+        or str(getattr(finp, "fit_backend", "lsq")) in ("lbfgsb", "jax")
+    )
+    if use_extended and not reopt:
+        # Seed phases/periods/scee from templates + FC guess.
+        set_extended_params(finp, get_extended_params(finp))
+        # Ensure FC block matches linear guess when only FCs were solved.
+        # get_extended_params already reads current dfcns FCs.
+        print(
+            f"[ffpopt] Extended fit mode={getattr(finp, 'fit_mode', '?')} "
+            f"backend={finp.fit_backend} "
+            f"opt_phase={finp.opt_phase} opt_periods={finp.opt_periods} "
+            f"opt_scee_scnb={finp.opt_scee_scnb}"
+        )
+        solve_extended_lbfgsb(args, finp, finp._ll_cache)
+        chisq = DihedFitObjFcn(finp.get_params(), finp)
+        print(f"[ffpopt] Final shape-match chi^2 = {chisq:.6e}")
         return
 
     xlo = x[:] - 2.0
@@ -1914,7 +1964,7 @@ def NonlinearSolve(args,finp):
     )
     finp.set_params(res.x)
 
-def WriteParmedScript(fname,p,dfcns): #,bytype):
+def WriteParmedScript(fname,p,dfcns,scee=1.2,scnb=2.0): #,bytype):
     """ Write a Parmed script to modify dihedral parameters in a Parm object.
     
     Parameters
@@ -1925,6 +1975,8 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
         The Parm object containing the molecular structure.
     dfcns : list of MultiDihedFcn
         A list of MultiDihedFcn objects representing the dihedral functions to be modified.
+    scee, scnb : float, optional
+        1–4 electrostatic and VDW scaling factors written into the script.
     
     Returns
     -------
@@ -1953,8 +2005,8 @@ def WriteParmedScript(fname,p,dfcns): #,bytype):
     fh.write("args = parser.parse_args()\n")
     fh.write("rname = args.resname\n")
 
-    fh.write("scee = 1.2\n")
-    fh.write("scnb = 2.0\n")
+    fh.write(f"scee = {float(scee)}\n")
+    fh.write(f"scnb = {float(scnb)}\n")
 
     
     fh.write("if args.iparm == args.oparm:\n")

@@ -62,6 +62,28 @@ def AddGeomOptOptions(parser):
         default=None,
         type=str)
 
+   parser.add_argument \
+       ("--soft-dihed-restraint",
+        help=(
+            "Use an AFFDO-style soft harmonic dihedral restraint "
+            "(default k=500 kcal/mol/rad^2, ±0.5° tolerance band) instead of "
+            "a hard IC dihedral constraint during wavefront opts. Works with "
+            "geomeTRIC via ASE RestrainedCalculator."
+        ),
+        action="store_true")
+
+   parser.add_argument \
+       ("--soft-dihed-k",
+        help="Soft dihedral spring constant in kcal/mol/rad^2. Default: 500",
+        default=500.0,
+        type=float)
+
+   parser.add_argument \
+       ("--soft-dihed-tol",
+        help="Soft dihedral tolerance band in degrees. Default: 0.5",
+        default=0.5,
+        type=float)
+
 
 
 def AddModelOptions(parser):

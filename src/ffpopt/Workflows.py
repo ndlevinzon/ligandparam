@@ -688,38 +688,109 @@ def _run_hl_and_orig_scans(
     logger: logging.Logger | None,
     wf_kwargs: dict,
     prefer_wf_depth: bool | None = None,
+    multi_centroid: int = 0,
+    centroid_mol2: Optional[PathLike] = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
-    """Pipeline independent HL and reference-sander scans in one job queue."""
-    jobs = []
-    jobs.extend(
-        _build_bond_scan_jobs(
-            scans,
-            prefix=hl_prefix,
-            model=hl_model,
-            inp=inp,
-            skip_existing=skip_existing,
+    """Pipeline HL (optionally multi-centroid) and reference-sander scans.
+
+    When ``multi_centroid >= 2``, each torsion is scanned from ConfSearch
+    centroids and the smoothest HL profile (Fourier + roughness score) is
+    promoted to the canonical ``{hl_prefix}_{idxs}.*`` paths used by fitting.
+    Reference sander scans still start from the primary ``inp`` geometry.
+    """
+    log = _resolve_logger(logger)
+    results: list[tuple[str, tuple, Optional[dict]]] = []
+    n_cent = max(0, int(multi_centroid or 0))
+
+    if n_cent >= 2:
+        from ffpopt.centroids import generate_centroid_start_jsons
+        from ffpopt.profile_select import pick_smoothest_profile, promote_profile_files
+
+        cent_starts = generate_centroid_start_jsons(
+            inp,
+            mol2_path=centroid_mol2,
+            nkeep=n_cent,
             workdir=workdir,
-            wf_kwargs=wf_kwargs,
+        )
+        log.info(
+            "[twist] multi-centroid HL: %s starts -> pick smoothest per torsion",
+            len(cent_starts),
+        )
+        for ci, cent_inp in enumerate(cent_starts):
+            results.extend(
+                _execute_bond_scan_jobs(
+                    _build_bond_scan_jobs(
+                        scans,
+                        prefix=f"{hl_prefix}.c{ci}",
+                        model=hl_model,
+                        inp=str(cent_inp),
+                        skip_existing=skip_existing,
+                        workdir=workdir,
+                        wf_kwargs=wf_kwargs,
+                    ),
+                    nproc=nproc,
+                    prefer_wf_depth=prefer_wf_depth,
+                    logger=logger,
+                    label=f"HL({hl_model}).c{ci}",
+                )
+            )
+        for scan in scans:
+            idx = scan.GetIdxStr()
+            cands = [
+                _in_workdir(workdir, f"{hl_prefix}.c{ci}_{idx}.dat")
+                for ci in range(len(cent_starts))
+            ]
+            best, score, rows = pick_smoothest_profile(cands)
+            if best is None:
+                log.warning("[twist] %s: no centroid HL profiles to score", idx)
+                continue
+            src_stem = Path(best).with_suffix("")
+            dst_stem = _in_workdir(workdir, f"{hl_prefix}_{idx}")
+            promote_profile_files(src_stem, dst_stem)
+            log.info(
+                "[twist] %s: selected %s (score=%.4g) among %s centroids",
+                idx,
+                best.name,
+                score,
+                len(rows),
+            )
+    else:
+        results.extend(
+            _execute_bond_scan_jobs(
+                _build_bond_scan_jobs(
+                    scans,
+                    prefix=hl_prefix,
+                    model=hl_model,
+                    inp=inp,
+                    skip_existing=skip_existing,
+                    workdir=workdir,
+                    wf_kwargs=wf_kwargs,
+                ),
+                nproc=nproc,
+                prefer_wf_depth=prefer_wf_depth,
+                logger=logger,
+                label=f"HL({hl_model})",
+            )
+        )
+
+    results.extend(
+        _execute_bond_scan_jobs(
+            _build_bond_scan_jobs(
+                scans,
+                prefix="orig",
+                model="sander",
+                inp=inp,
+                skip_existing=skip_existing,
+                workdir=workdir,
+                wf_kwargs=wf_kwargs,
+            ),
+            nproc=nproc,
+            prefer_wf_depth=prefer_wf_depth,
+            logger=logger,
+            label="orig(sander)",
         )
     )
-    jobs.extend(
-        _build_bond_scan_jobs(
-            scans,
-            prefix="orig",
-            model="sander",
-            inp=inp,
-            skip_existing=skip_existing,
-            workdir=workdir,
-            wf_kwargs=wf_kwargs,
-        )
-    )
-    return _execute_bond_scan_jobs(
-        jobs,
-        nproc=nproc,
-        prefer_wf_depth=prefer_wf_depth,
-        logger=logger,
-        label=f"HL({hl_model})||orig",
-    )
+    return results
 
 
 def _write_fit_json(
@@ -811,6 +882,7 @@ def _run_gendihedfit(
     skip_existing: bool,
     logger: logging.Logger | None = None,
     workdir: Optional[Path] = None,
+    fit_cli_args: Optional[list] = None,
 ) -> None:
     """ Subprocess into ``ffpopt-GenDihedFit.py`` to produce ``<citname>.py``.
 
@@ -829,6 +901,8 @@ def _run_gendihedfit(
         Optional logger for progress messages.
     workdir : pathlib.Path, optional
         Directory containing the fit JSON; passed as ``subprocess`` ``cwd``.
+    fit_cli_args : list, optional
+        Extra CLI flags (e.g. ``--fit-full``, ``--fit-backend jax``).
     """
     log = _resolve_logger(logger)
     py_out = _in_workdir(workdir, f"{citname}.py").resolve()
@@ -838,9 +912,11 @@ def _run_gendihedfit(
         log.info("[twist] %s exists - skipping GenDihedFit.", py_out)
         return
     log.info("[twist] GenDihedFit -> %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
+    extra = list(fit_cli_args or [])
     _run_ffpopt_bin(
         "ffpopt-GenDihedFit.py",
         f"--nlmaxiter={nlmaxiter}",
+        *extra,
         fit_json,
         cwd=_subprocess_cwd(workdir),
     )
@@ -1191,6 +1267,9 @@ def run_dihed_twist_workflow(
     budget_total: int | None = None,
     fast_wavefront: bool | None = None,
     bond_batching: bool | None = None,
+    multi_centroid: int = 0,
+    centroid_mol2: PathLike | None = None,
+    fit_cli_args: list | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -1242,6 +1321,9 @@ def run_dihed_twist_workflow(
             budget_owner=budget_owner,
             budget_total=budget_total,
             fast_wavefront=fast_wavefront,
+            multi_centroid=multi_centroid,
+            centroid_mol2=centroid_mol2,
+            fit_cli_args=fit_cli_args,
             **standard_kwargs,
         )
 
@@ -1425,6 +1507,8 @@ def run_dihed_twist_workflow(
                 logger=log,
                 wf_kwargs=wf_kwargs,
                 prefer_wf_depth=prefer_depth,
+                multi_centroid=multi_centroid,
+                centroid_mol2=centroid_mol2,
             )
         )
 
@@ -1493,6 +1577,7 @@ def run_dihed_twist_workflow(
                 skip_existing=skip_existing,
                 logger=log,
                 workdir=wd,
+                fit_cli_args=fit_cli_args,
             )
 
             # 3c. Apply fit + PrepareInput. FUTURE: replace subprocess with API calls.
@@ -1983,6 +2068,9 @@ def run_fragmented_dihed_twist_workflow(
     plot_comparisons: bool = True,
     logger: logging.Logger | None = None,
     fast_wavefront: bool | None = None,
+    multi_centroid: int = 0,
+    centroid_mol2: PathLike | None = None,
+    fit_cli_args: list | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Fragment a ligand with scission, run the twist workflow on each fragment, then recombine.
@@ -2201,6 +2289,9 @@ def run_fragmented_dihed_twist_workflow(
         convergence_mode=convergence_mode,
         plot_comparisons=plot_comparisons,
         fast_wavefront=fast_on,
+        multi_centroid=multi_centroid,
+        centroid_mol2=centroid_mol2,
+        fit_cli_args=fit_cli_args,
         **standard_kwargs,
     )
 
@@ -2439,3 +2530,192 @@ def run_fragmented_dihed_twist_workflow(
         "merge_report": merge_report,
         "merged_frcmod": str(merged_frcmod_path),
     }
+
+
+def run_whole_ligand_dihed_twist_workflow(
+    *,
+    mol2: PathLike,
+    lib: PathLike,
+    frcmod: PathLike,
+    out_dir: PathLike = "whole_ligand_twist",
+    out_frcmod: PathLike | None = None,
+    rotatable_bond_smarts=None,
+    delta: int = 10,
+    nprim: int = 3,
+    maxiter: int = 2,
+    nlmaxiter: int = 300,
+    nproc: int = 1,
+    multi_centroid: int = 0,
+    boltzmann_charges: bool = False,
+    fit_cli_args: list | None = None,
+    skip_existing: bool = True,
+    logger: logging.Logger | None = None,
+    fast_wavefront: bool | None = None,
+    **standard_kwargs,
+) -> dict:
+    """Whole-ligand (non-fragmented) dihedral twist with optional AFFDO extras.
+
+    Builds ``parm7``/``rst7`` via tleap-like PrepareInput from the parent
+    Amber triplet, discovers rotatable central bonds with scission, then
+    runs :func:`run_dihed_twist_workflow` with ``bytype=True``. Does not
+    remove the fragmented path — call this explicitly (e.g. CLI
+    ``--whole-ligand``).
+    """
+    import shutil
+
+    from scission.io import load_ligand_from_mol2
+    from scission.torsions import find_rotatable_bonds
+
+    log = _resolve_logger(logger)
+    out_dir_path = _as_path(out_dir).resolve()
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+    mol2_p = _as_path(mol2).resolve()
+    lib_p = _as_path(lib).resolve()
+    frcmod_p = _as_path(frcmod).resolve()
+    out_frcmod_path = (
+        _as_path(out_frcmod).resolve()
+        if out_frcmod is not None
+        else out_dir_path / f"{mol2_p.stem}.dihed.frcmod"
+    )
+
+    # Materialize parm7/rst7 beside the work dir via leap when needed.
+    parm7 = out_dir_path / "ligand.parm7"
+    rst7 = out_dir_path / "ligand.rst7"
+    if not (skip_existing and parm7.is_file() and rst7.is_file()):
+        _write_parent_parm_rst7(mol2_p, lib_p, frcmod_p, parm7, rst7, logger=log)
+
+    start_json = out_dir_path / "start.json"
+    if not (skip_existing and start_json.is_file()):
+        log.info("[whole-twist] PrepareInput -> %s", start_json)
+        _run_ffpopt_bin(
+            "ffpopt-PrepareInput.py",
+            f"--parm={parm7}",
+            f"--crd={rst7}",
+            f"--out={start_json.name}",
+            cwd=str(out_dir_path),
+        )
+
+    ligand = load_ligand_from_mol2(mol2_p)
+    smarts = ()
+    if rotatable_bond_smarts:
+        if isinstance(rotatable_bond_smarts, str):
+            smarts = (rotatable_bond_smarts,)
+        else:
+            smarts = tuple(rotatable_bond_smarts)
+    # scission bonds are 1-based; ffpopt expects 0-based.
+    bonds = [
+        (int(a) - 1, int(b) - 1)
+        for a, b in find_rotatable_bonds(ligand, rotatable_bond_smarts=smarts)
+    ]
+    bonds = sorted({(min(a, b), max(a, b)) for a, b in bonds})
+    if not bonds:
+        raise RuntimeError("whole-ligand twist: no rotatable bonds found")
+    log.info("[whole-twist] %s rotatable bond(s): %s", len(bonds), bonds)
+
+    boltz_info = None
+    if boltzmann_charges and multi_centroid >= 2:
+        from ffpopt.boltzmann_charges import (
+            boltzmann_average_mol2_charges,
+            update_lib_charges_from_mol2,
+        )
+        from ffpopt.centroids import generate_centroid_start_jsons
+
+        cents = generate_centroid_start_jsons(
+            start_json,
+            mol2_path=mol2_p,
+            nkeep=int(multi_centroid),
+            workdir=out_dir_path,
+        )
+        # Without per-centroid charge mol2s, average is a no-op on the parent;
+        # write a marker and keep parent charges unless ConfSearch also dumped mol2.
+        cent_mol2s = sorted(out_dir_path.glob("centroids_*.mol2"))
+        if len(cent_mol2s) >= 2:
+            # Energies: equal weights if unknown.
+            energies = [0.0] * len(cent_mol2s)
+            avg_mol2 = out_dir_path / f"{mol2_p.stem}.boltz.mol2"
+            boltz_info = boltzmann_average_mol2_charges(
+                cent_mol2s, energies, avg_mol2, ref_mol2=mol2_p
+            )
+            out_lib = out_dir_path / f"{mol2_p.stem}.boltz.lib"
+            update_lib_charges_from_mol2(lib_p, avg_mol2, out_lib)
+            boltz_info["out_lib"] = str(out_lib)
+            log.info("[whole-twist] Boltzmann-averaged charges -> %s", avg_mol2)
+        else:
+            log.info(
+                "[whole-twist] boltzmann_charges requested but no per-centroid "
+                "mol2 charge files; skipping charge rewrite"
+            )
+
+    twist = run_dihed_twist_workflow(
+        inp=str(start_json),
+        bond=bonds,
+        delta=delta,
+        nprim=nprim,
+        maxiter=maxiter,
+        bytype=True,
+        nlmaxiter=nlmaxiter,
+        nproc=nproc,
+        skip_existing=skip_existing,
+        workdir=out_dir_path,
+        logger=log,
+        fast_wavefront=fast_wavefront,
+        multi_centroid=multi_centroid,
+        centroid_mol2=mol2_p,
+        fit_cli_args=fit_cli_args,
+        **standard_kwargs,
+    )
+
+    # Promote last iteration frcmod to out_frcmod.
+    it_frcmods = _list_iteration_frcmods(out_dir_path)
+    if it_frcmods:
+        shutil.copy2(it_frcmods[-1], out_frcmod_path)
+        log.info("[whole-twist] wrote %s from %s", out_frcmod_path, it_frcmods[-1])
+    else:
+        # No refit needed — copy parent.
+        shutil.copy2(frcmod_p, out_frcmod_path)
+        log.info("[whole-twist] no itXX.frcmod; copied parent frcmod")
+
+    return {
+        "out_frcmod": str(out_frcmod_path),
+        "out_dir": str(out_dir_path),
+        "bonds": bonds,
+        "twist": twist,
+        "boltzmann_charges": boltz_info,
+    }
+
+
+def _write_parent_parm_rst7(mol2, lib, frcmod, parm7, rst7, logger=None) -> None:
+    """Generate parent parm7/rst7 with tleap from mol2/lib/frcmod."""
+    import subprocess
+    import textwrap
+
+    log = _resolve_logger(logger)
+    work = parm7.parent
+    leapin = work / "tleap.in"
+    leapin.write_text(
+        textwrap.dedent(
+            f"""
+            source leaprc.gaff2
+            loadoff {lib}
+            loadamberparams {frcmod}
+            LIG = loadmol2 {mol2}
+            saveamberparm LIG {parm7.name} {rst7.name}
+            quit
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    log.info("[whole-twist] tleap -> %s %s", parm7, rst7)
+    proc = subprocess.run(
+        ["tleap", "-f", str(leapin)],
+        cwd=str(work),
+        capture_output=True,
+        text=True,
+    )
+    (work / "tleap.stdout.log").write_text(proc.stdout or "", encoding="utf-8")
+    (work / "tleap.stderr.log").write_text(proc.stderr or "", encoding="utf-8")
+    if proc.returncode != 0 or not parm7.is_file() or not rst7.is_file():
+        raise RuntimeError(
+            f"tleap failed to write {parm7.name}/{rst7.name}; see tleap.*.log"
+        )

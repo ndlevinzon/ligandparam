@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **AFFDO-style whole-ligand extras** (default off; fragmented path unchanged):
+  - ``--whole-ligand`` / ``run_whole_ligand_dihed_twist_workflow`` — full-ligand twist without scission
+  - ``--multi-centroid N`` — ConfSearch starts + smoothest HL profile (Fourier + roughness)
+  - ``--soft-dihed-restraint`` — harmonic dihedral spring (500 kcal/mol/rad², ±0.5°) with geomeTRIC
+  - ``--fit-full`` / ``--fit-mode`` / ``--fit-backend {lsq,lbfgsb,jax}`` — phase, period, scee/scnb (or barrier-only)
+  - ``--boltzmann-charges`` — Boltzmann-average charges over centroid mol2s
+  - Optional extra: ``pip install 'ligandparam[jax]'``
+
+---
+
+## [1.5.1] — 2026-08-21
+
 ### Changed
 
 - **Fragment CPU saturation** — CPU leases are held only during wavefront scan phases (released for PrepareInput / GenDihedFit / compare); small fair-share leases prefer bond/fragment breadth over a single narrow wavefront; ``OMP_NUM_THREADS=1`` when unset on fragmented entry. Env overrides: ``FFPOPT_PREF_WF_DEPTH``, ``FFPOPT_PREF_WF_BREADTH``.
@@ -173,6 +187,8 @@ Prior releases focused on core RESP / FreeLigand recipes, orientation protocols 
 
 ---
 
+[Unreleased]: https://github.com/piskulichz/ligandparam/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/piskulichz/ligandparam/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/piskulichz/ligandparam/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/piskulichz/ligandparam/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/piskulichz/ligandparam/compare/v1.0.1...v1.4.0

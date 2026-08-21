@@ -105,6 +105,13 @@ class StageDihedTwistCorrection(AbstractStage):
         self.geometric_maxiter = kwargs.get("geometric_maxiter")
         self.geometric_converge = kwargs.get("geometric_converge")
         self.ase_opt_tol = kwargs.get("ase_opt_tol")
+        self.whole_ligand = bool(kwargs.get("whole_ligand", False))
+        self.multi_centroid = int(kwargs.get("multi_centroid", 0) or 0)
+        self.boltzmann_charges = bool(kwargs.get("boltzmann_charges", False))
+        self.soft_dihed_restraint = bool(kwargs.get("soft_dihed_restraint", False))
+        self.soft_dihed_k = kwargs.get("soft_dihed_k")
+        self.soft_dihed_tol = kwargs.get("soft_dihed_tol")
+        self.fit_cli_args = list(kwargs.get("fit_cli_args") or [])
         self.add_required(self.in_mol2)
         self.add_required(self.in_lib)
         self.add_required(self.in_frcmod)
@@ -128,9 +135,14 @@ class StageDihedTwistCorrection(AbstractStage):
             self.model,
         )
         if dry_run:
+            which = (
+                "run_whole_ligand_dihed_twist_workflow"
+                if self.whole_ligand
+                else "run_fragmented_dihed_twist_workflow"
+            )
             self.logger.info(
-                "Dry run: would call run_fragmented_dihed_twist_workflow "
-                "(out_dir=%s, maxiter=%s, nproc=%s)",
+                "Dry run: would call %s (out_dir=%s, maxiter=%s, nproc=%s)",
+                which,
                 self.out_dir,
                 self.maxiter,
                 nproc_eff,
@@ -138,7 +150,10 @@ class StageDihedTwistCorrection(AbstractStage):
             return None
 
         try:
-            from ffpopt.Workflows import run_fragmented_dihed_twist_workflow
+            from ffpopt.Workflows import (
+                run_fragmented_dihed_twist_workflow,
+                run_whole_ligand_dihed_twist_workflow,
+            )
         except ImportError as exc:
             raise ImportError(
                 "StageDihedTwistCorrection requires the integrated 'ffpopt' "
@@ -157,6 +172,41 @@ class StageDihedTwistCorrection(AbstractStage):
             extra["geometric_converge"] = self.geometric_converge
         if self.ase_opt_tol is not None:
             extra["ase_opt_tol"] = float(self.ase_opt_tol)
+        if self.soft_dihed_restraint:
+            extra["soft_dihed_restraint"] = True
+            if self.soft_dihed_k is not None:
+                extra["soft_dihed_k"] = float(self.soft_dihed_k)
+            if self.soft_dihed_tol is not None:
+                extra["soft_dihed_tol"] = float(self.soft_dihed_tol)
+
+        if self.whole_ligand:
+            result = run_whole_ligand_dihed_twist_workflow(
+                mol2=self.in_mol2.resolve(),
+                lib=self.in_lib.resolve(),
+                frcmod=self.in_frcmod.resolve(),
+                out_dir=self.out_dir.resolve(),
+                out_frcmod=self.out_frcmod.resolve(),
+                model=self.model,
+                maxiter=self.maxiter,
+                nprim=self.nprim,
+                delta=self.delta,
+                nproc=int(nproc_eff),
+                geometric_opt=self.geometric_opt,
+                skip_existing=self.skip_existing,
+                rotatable_bond_smarts=self.rotatable_bond_smarts,
+                fast_wavefront=self.fast_wavefront,
+                multi_centroid=self.multi_centroid,
+                boltzmann_charges=self.boltzmann_charges,
+                fit_cli_args=self.fit_cli_args,
+                logger=self.logger,
+                **extra,
+            )
+            self.logger.info(
+                "Whole-ligand dihed twist complete: out_frcmod=%s bonds=%s",
+                result.get("out_frcmod"),
+                result.get("bonds"),
+            )
+            return result
 
         result = run_fragmented_dihed_twist_workflow(
             mol2=self.in_mol2.resolve(),
@@ -174,6 +224,9 @@ class StageDihedTwistCorrection(AbstractStage):
             rotatable_bond_smarts=self.rotatable_bond_smarts,
             fragment_config=self.fragment_config,
             fast_wavefront=self.fast_wavefront,
+            multi_centroid=self.multi_centroid,
+            centroid_mol2=self.in_mol2.resolve(),
+            fit_cli_args=self.fit_cli_args,
             logger=self.logger,
             **extra,
         )
