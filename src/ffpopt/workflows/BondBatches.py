@@ -17,44 +17,28 @@ two fit bonds. Override with ``FFPOPT_MAX_BONDS_PER_TWIST`` /
 
 from __future__ import annotations
 
-import os
 from collections import defaultdict, deque
 from typing import Iterable, Optional, Sequence
+
+from ffpopt.runtime.EnvDefaults import env_bool, env_int
 
 
 BondPair = tuple[int, int]
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or not str(raw).strip():
-        return int(default)
-    try:
-        return int(raw)
-    except ValueError:
-        return int(default)
-
-
-def _env_truthy(name: str, default: bool = True) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
-
-
 def bond_batching_enabled() -> bool:
     """True unless ``FFPOPT_BOND_BATCH=0`` disables automatic packing."""
-    return _env_truthy("FFPOPT_BOND_BATCH", True)
+    return env_bool("FFPOPT_BOND_BATCH")
 
 
 def max_bonds_per_twist_batch() -> int:
-    """Max bonds per joint twist job (default 2)."""
-    return max(1, _env_int("FFPOPT_MAX_BONDS_PER_TWIST", 2))
+    """Max bonds per joint twist job (default from env JSON)."""
+    return max(1, env_int("FFPOPT_MAX_BONDS_PER_TWIST"))
 
 
 def bond_couple_radius() -> int:
     """Graph distance at which two rotatable bonds are treated as coupled."""
-    return max(0, _env_int("FFPOPT_BOND_COUPLE_RADIUS", 2))
+    return max(0, env_int("FFPOPT_BOND_COUPLE_RADIUS"))
 
 
 def _normalize_bond(bond: Sequence[int]) -> BondPair:

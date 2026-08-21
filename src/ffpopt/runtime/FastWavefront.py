@@ -10,8 +10,9 @@ fewer maxiters, slightly coarser angle steps. Depth vs breadth when splitting
 
 from __future__ import annotations
 
-import os
 from typing import Any, MutableMapping, Optional
+
+from ffpopt.runtime.EnvDefaults import as_bool, env_bool, env_int, env_value
 
 # Documented library defaults for knobs that ``--fast`` may override when
 # the caller left them at the stock value.
@@ -34,18 +35,11 @@ FAST_WAVEFRONT_PRESETS: dict[str, Any] = {
 }
 
 
-def _env_truthy(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
-
-
 def fast_wavefront_enabled(explicit: Optional[bool] = None) -> bool:
     """Return whether fast-wavefront presets are active."""
     if explicit is not None:
         return bool(explicit)
-    return _env_truthy("FFPOPT_FAST_WAVEFRONT", False)
+    return env_bool("FFPOPT_FAST_WAVEFRONT")
 
 
 def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = None) -> bool:
@@ -60,9 +54,9 @@ def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = N
     :func:`prefer_bond_pool_depth` so small fair-share leases can run bonds
     concurrently instead of a single 1–2-wide wavefront.
     """
-    if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
+    if env_bool("FFPOPT_PREF_WF_DEPTH"):
         return True
-    if _env_truthy("FFPOPT_PREF_WF_BREADTH", False):
+    if env_bool("FFPOPT_PREF_WF_BREADTH"):
         return False
     if not fast_wavefront_enabled(fast):
         return False
@@ -85,17 +79,14 @@ def prefer_bond_pool_depth(
     Explicit ``prefer`` is a model/fast hint only; small-lease breadth and
     ``FFPOPT_PREF_WF_*`` env overrides still win.
     """
-    if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
+    if env_bool("FFPOPT_PREF_WF_DEPTH"):
         return True
-    if _env_truthy("FFPOPT_PREF_WF_BREADTH", False):
+    if env_bool("FFPOPT_PREF_WF_BREADTH"):
         return False
     nproc = max(1, int(nproc))
     n_bonds = max(1, int(n_bonds))
     if n_bonds >= 2:
-        try:
-            min_inner = max(1, int(os.environ.get("FFPOPT_MIN_WF_NPROC", "2")))
-        except ValueError:
-            min_inner = 2
+        min_inner = max(1, env_int("FFPOPT_MIN_WF_NPROC"))
         # Depth would force n_outer < n_bonds → run bonds concurrently instead.
         if (nproc // min_inner) < n_bonds:
             return False
@@ -117,9 +108,9 @@ def prefer_fragment_pool_depth(
     fragments run at once (each with a small wavefront) instead of parking
     half the fragments behind a deep-but-narrow pool.
     """
-    if _env_truthy("FFPOPT_PREF_WF_DEPTH", False):
+    if env_bool("FFPOPT_PREF_WF_DEPTH"):
         return True
-    if _env_truthy("FFPOPT_PREF_WF_BREADTH", False):
+    if env_bool("FFPOPT_PREF_WF_BREADTH"):
         return False
     nproc = max(1, int(nproc))
     n_fragments = max(1, int(n_fragments))
@@ -179,10 +170,7 @@ def split_nproc_for_items(
         n_inner = max(1, nproc // n_outer)
     else:
         if min_inner is None:
-            try:
-                min_inner = max(1, int(os.environ.get("FFPOPT_MIN_WF_NPROC", "2")))
-            except ValueError:
-                min_inner = 2
+            min_inner = max(1, env_int("FFPOPT_MIN_WF_NPROC"))
         min_inner = max(1, int(min_inner))
         n_outer = min(n_items, max(1, nproc // min_inner))
         n_inner = max(1, nproc // n_outer)
@@ -218,9 +206,9 @@ def prefer_ase_first_model(model: str | None, *, fast: Optional[bool] = None) ->
     Always for sander/MM. Under fast mode also for XTB-like and QDpi2 HL.
     Override with ``FFPOPT_ASE_FIRST=0|1``.
     """
-    raw = os.environ.get("FFPOPT_ASE_FIRST")
-    if raw is not None and str(raw).strip():
-        return _env_truthy("FFPOPT_ASE_FIRST", True)
+    raw = env_value("FFPOPT_ASE_FIRST")
+    if raw is not None:
+        return as_bool(raw)
     m = (model or "").strip().lower()
     if m in {"sander", "amber", "mm"} or m.startswith("sander"):
         return True
@@ -240,9 +228,9 @@ def qdpi2_opt_components(*, fast: Optional[bool] = None) -> str:
     Under ``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` defaults to ``xtb``.
     Override with ``FFPOPT_QDPI2_OPT=both|xtb|dp``.
     """
-    raw = os.environ.get("FFPOPT_QDPI2_OPT")
-    if raw is not None and str(raw).strip():
-        mode = raw.strip().lower()
+    raw = env_value("FFPOPT_QDPI2_OPT")
+    if raw is not None:
+        mode = str(raw).strip().lower()
         if mode in {"both", "full", "all"}:
             return "both"
         if mode in {"xtb", "gfn2", "tblite"}:
@@ -257,19 +245,19 @@ def qdpi2_opt_components(*, fast: Optional[bool] = None) -> str:
 
 def qdpi2_refine_energy_after_opt(*, fast: Optional[bool] = None) -> bool:
     """Re-score XTB/DP-only QDpi2 opts with a full QDpi2 single-point."""
-    raw = os.environ.get("FFPOPT_QDPI2_REFINE")
-    if raw is not None and str(raw).strip():
-        return _env_truthy("FFPOPT_QDPI2_REFINE", True)
+    raw = env_value("FFPOPT_QDPI2_REFINE")
+    if raw is not None:
+        return as_bool(raw)
     return qdpi2_opt_components(fast=fast) != "both"
 
 
 def wf_checkpoint_every(nproc: int, *, fast: Optional[bool] = None) -> int:
     """How many completed nodes between wavefront checkpoints."""
-    raw = os.environ.get("FFPOPT_WF_CHECKPOINT_EVERY")
-    if raw is not None and str(raw).strip():
+    raw = env_value("FFPOPT_WF_CHECKPOINT_EVERY")
+    if raw is not None:
         try:
             return max(1, int(raw))
-        except ValueError:
+        except (TypeError, ValueError):
             pass
     base = max(1, int(nproc))
     if fast_wavefront_enabled(fast):
@@ -283,9 +271,9 @@ def write_success_node_pickle(*, fast: Optional[bool] = None) -> bool:
     Failures always write. Default: off in fast mode, on otherwise.
     Override with ``FFPOPT_WF_NODE_PICKLE=0|1``.
     """
-    raw = os.environ.get("FFPOPT_WF_NODE_PICKLE")
-    if raw is not None and str(raw).strip():
-        return _env_truthy("FFPOPT_WF_NODE_PICKLE", True)
+    raw = env_value("FFPOPT_WF_NODE_PICKLE")
+    if raw is not None:
+        return as_bool(raw)
     return not fast_wavefront_enabled(fast)
 
 
@@ -294,14 +282,14 @@ def geomopt_verbose() -> bool:
 
     Default on; silence in fast mode. Override with ``FFPOPT_GEOMOPT_VERBOSE``.
     """
-    raw = os.environ.get("FFPOPT_GEOMOPT_VERBOSE")
-    if raw is not None and str(raw).strip():
-        return _env_truthy("FFPOPT_GEOMOPT_VERBOSE", True)
+    raw = env_value("FFPOPT_GEOMOPT_VERBOSE")
+    if raw is not None:
+        return as_bool(raw)
     return not fast_wavefront_enabled(None)
 
 
 def fast_recovery_ladder() -> bool:
     """Use a shorter geomeTRIC recovery ladder (primary → loose → soft)."""
-    if _env_truthy("FFPOPT_GEOMOPT_FAST_RECOVERY", False):
+    if env_bool("FFPOPT_GEOMOPT_FAST_RECOVERY"):
         return True
     return fast_wavefront_enabled(None)

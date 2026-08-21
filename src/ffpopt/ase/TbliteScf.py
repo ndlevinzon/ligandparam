@@ -9,30 +9,17 @@ provides stabler defaults and an escalating retry ladder used by
 
 from __future__ import annotations
 
-import os
 import sys
 from typing import Any, Mapping, MutableMapping, Optional
 
+from ffpopt.runtime.EnvDefaults import env_float, env_int, env_str
 
-# Defaults tuned for large / constrained ligands (vs tblite stock defaults).
+
+# Non-EXPORT tblite kwargs (SCF numbers live in env_defaults.json).
 _DEFAULT_TBLITE: dict[str, Any] = {
     "method": "GFN2-xTB",
-    "max_iterations": 500,
-    "electronic_temperature": 500.0,
-    "mixer_damping": 0.25,
     "verbosity": -1,
     "cache_api": True,
-}
-
-# Prefer eeq when supported; fall back handled in make_tblite_calculator.
-_DEFAULT_GUESS = "eeq"
-
-# Env -> parameter mapping.
-_ENV_MAP = {
-    "FFPOPT_XTB_MAX_ITER": ("max_iterations", int),
-    "FFPOPT_XTB_ETEMP": ("electronic_temperature", float),
-    "FFPOPT_XTB_MIXER_DAMPING": ("mixer_damping", float),
-    "FFPOPT_XTB_GUESS": ("initial_guess", str),
 }
 
 
@@ -61,15 +48,10 @@ def tblite_kwargs_from_env(
     * ``FFPOPT_XTB_GUESS``
     """
     kwargs = dict(_DEFAULT_TBLITE)
-    kwargs["initial_guess"] = _DEFAULT_GUESS
-    for env_key, (param, caster) in _ENV_MAP.items():
-        raw = os.environ.get(env_key)
-        if raw is None or str(raw).strip() == "":
-            continue
-        try:
-            kwargs[param] = caster(raw)
-        except (TypeError, ValueError):
-            continue
+    kwargs["max_iterations"] = env_int("FFPOPT_XTB_MAX_ITER")
+    kwargs["electronic_temperature"] = env_float("FFPOPT_XTB_ETEMP")
+    kwargs["mixer_damping"] = env_float("FFPOPT_XTB_MIXER_DAMPING")
+    kwargs["initial_guess"] = env_str("FFPOPT_XTB_GUESS")
     if overrides:
         kwargs.update({k: v for k, v in overrides.items() if v is not None})
     return kwargs

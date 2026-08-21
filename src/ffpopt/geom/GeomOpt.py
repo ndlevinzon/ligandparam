@@ -13,12 +13,12 @@ def _ase_loose_fmax(strict_tol: float) -> float:
     """Soft-accept threshold for ASE when strict fmax is not met.
 
     Override with ``FFPOPT_ASE_LOOSE_FMAX`` (eV/Ang). Default is
-    ``max(3 * ase_opt_tol, 0.05)``.
+    ``max(3 * ase_opt_tol, 0.05)`` when the JSON value is ``null``.
     """
-    import os
+    from ffpopt.runtime.EnvDefaults import env_value
 
-    raw = os.environ.get("FFPOPT_ASE_LOOSE_FMAX", "").strip()
-    if raw:
+    raw = env_value("FFPOPT_ASE_LOOSE_FMAX")
+    if raw is not None:
         return float(raw)
     return max(3.0 * float(strict_tol), 0.05)
 
@@ -333,17 +333,13 @@ def _path_tree_mtime(path: str) -> float:
     return newest
 
 
-def _geometric_stall_timeout_sec(default: float = 30 * 60) -> float:
+def _geometric_stall_timeout_sec(default: float | None = None) -> float:
     """Stall timeout from ``FFPOPT_GEOMETRIC_STALL_SEC`` (``0`` disables)."""
-    import os
+    from ffpopt.runtime.EnvDefaults import env_float
 
-    raw = os.environ.get("FFPOPT_GEOMETRIC_STALL_SEC")
-    if raw is None or raw.strip() == "":
+    if default is not None:
         return float(default)
-    try:
-        return float(raw)
-    except ValueError:
-        return float(default)
+    return float(env_float("FFPOPT_GEOMETRIC_STALL_SEC"))
 
 
 def _run_geometric_with_watchdog(
@@ -1116,11 +1112,11 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
 
 def _geomopt_fallback_note(failed: str, exc: Exception, fallback: str) -> None:
     """One-line stderr note; full traceback only if FFPOPT_GEOMOPT_TRACEBACK=1."""
-    import os
     import sys
     import traceback
 
     from ffpopt.runtime.Console import ascii_for_stdio
+    from ffpopt.runtime.EnvDefaults import env_bool
 
     sys.stderr.write(
         ascii_for_stdio(
@@ -1128,11 +1124,7 @@ def _geomopt_fallback_note(failed: str, exc: Exception, fallback: str) -> None:
             f"falling back to {fallback}\n"
         )
     )
-    if os.environ.get("FFPOPT_GEOMOPT_TRACEBACK", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    ):
+    if env_bool("FFPOPT_GEOMOPT_TRACEBACK"):
         traceback.print_exc()
 
 

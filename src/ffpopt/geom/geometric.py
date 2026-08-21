@@ -125,12 +125,13 @@ def main(argv: list[str] | None = None) -> None:
 
 # --- in-process driver (was geometric_inprocess.py) ---
 
-import os
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Union
 
 import numpy as np
+
+from ffpopt.runtime.EnvDefaults import env_bool
 
 
 PathLike = Union[str, Path]
@@ -138,21 +139,12 @@ PathLike = Union[str, Path]
 
 def use_geometric_subprocess() -> bool:
     """True when ``FFPOPT_GEOMETRIC_SUBPROCESS=1`` forces the legacy CLI path."""
-    raw = os.environ.get("FFPOPT_GEOMETRIC_SUBPROCESS", "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    return env_bool("FFPOPT_GEOMETRIC_SUBPROCESS")
 
 
 def use_geometric_robust() -> bool:
     """True unless ``FFPOPT_GEOMOPT_ROBUST=0`` disables the recovery ladder."""
-    raw = os.environ.get("FFPOPT_GEOMOPT_ROBUST", "1").strip().lower()
-    return raw not in ("0", "false", "no", "off")
-
-
-def _env_truthy(name: str, default: bool = True) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in ("0", "false", "no", "off", "")
+    return env_bool("FFPOPT_GEOMOPT_ROBUST")
 
 
 def is_geomopt_not_converged(exc: BaseException) -> bool:
@@ -479,7 +471,7 @@ def _recovery_attempts(
                 }
             )
     # Last geometric resort: treat maxiter as success (keeps best frame).
-    if _env_truthy("FFPOPT_GEOMOPT_SOFT_MAXITER", True):
+    if env_bool("FFPOPT_GEOMOPT_SOFT_MAXITER"):
         attempts.append(
             {
                 "label": "soft-maxiter",

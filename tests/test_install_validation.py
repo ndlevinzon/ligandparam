@@ -200,6 +200,7 @@ class TestPublicAPISurface(unittest.TestCase):
         runtime = (
             "ffpopt.runtime.Console",
             "ffpopt.runtime.CpuBudget",
+            "ffpopt.runtime.EnvDefaults",
             "ffpopt.runtime.FastWavefront",
             "ffpopt.runtime.NondaemonPool",
             "ffpopt.runtime.ProgressBoard",

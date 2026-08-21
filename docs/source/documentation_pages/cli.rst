@@ -68,6 +68,10 @@ Notes
   the original ``{label}.frcmod``; the ``.lib`` is unchanged.
 * ``--fast`` enables coarser wavefront / looser geomeTRIC presets
   (``FFPOPT_FAST_WAVEFRONT=1``). Explicit non-default knobs still win.
+  All ``export FFPOPT_*`` defaults ship in
+  ``ffpopt/pkgdata/files/env_defaults.json`` (the values the code reads).
+  Copy/edit that file and set ``FFPOPT_DEFAULTS`` to overlay it; per-key
+  ``EXPORT`` still wins.
 * Console logs use a single timestamp and hierarchical ``[tag]`` brackets
   (``ffpopt.runtime.Console``).
 

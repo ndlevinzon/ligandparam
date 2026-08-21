@@ -114,15 +114,12 @@ def ReadMolecule(fnameormol,quiet=False):
 def _confsearch_fast_rms_threshold() -> int:
     """Conformer count at which Condensed RMS switches to the fast path.
 
-    ``FFPOPT_CONFSEARCH_RMS_FAST_N`` (default ``50``). Set to ``0`` to always
-    use legacy per-pair ``GetBestRMS``.
+    ``FFPOPT_CONFSEARCH_RMS_FAST_N`` (default from env JSON). Set to ``0`` to
+    always use legacy per-pair ``GetBestRMS``.
     """
-    import os
+    from ffpopt.runtime.EnvDefaults import env_int
 
-    try:
-        return max(0, int(os.environ.get("FFPOPT_CONFSEARCH_RMS_FAST_N", "50")))
-    except ValueError:
-        return 50
+    return max(0, env_int("FFPOPT_CONFSEARCH_RMS_FAST_N"))
 
 
 def _butina_rms_distances(mol, cids, *, quiet: bool = False):

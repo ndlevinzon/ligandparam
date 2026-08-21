@@ -33,6 +33,11 @@ CLI (installed with ligandparam):
 lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb --fast
 ```
 
+Tunable ``export FFPOPT_*`` defaults live in
+``ffpopt/pkgdata/files/env_defaults.json`` (commented JSON; this is the store
+the code reads). Overlay a copy with ``export FFPOPT_DEFAULTS=/path/to.json``;
+per-key ``EXPORT`` still wins.
+
 Supported torsion / prep scripts stay as console entry points
 (``PrepareInput``, ``DihedWavefront``, twist workflow, …). Specialty
 tools (sugar/pucker, JSON, animate) are quarantined behind one dispatcher:

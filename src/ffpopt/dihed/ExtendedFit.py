@@ -10,13 +10,14 @@ Enable the AFFDO-style vector with CLI / env flags; backends:
 
 from __future__ import annotations
 
-import os
 from typing import Optional
+
+from ffpopt.runtime.EnvDefaults import env_float, env_str
 
 
 def fit_mode_from_env(default: str = "barrier") -> str:
     """``barrier`` | ``torsion`` | ``full`` from ``FFPOPT_FIT_MODE``."""
-    raw = (os.environ.get("FFPOPT_FIT_MODE") or default).strip().lower()
+    raw = env_str("FFPOPT_FIT_MODE", default).strip().lower()
     if raw in ("barrier", "barrier-only", "fc", "fcs"):
         return "barrier"
     if raw in ("torsion", "torsions", "phase"):
@@ -28,7 +29,7 @@ def fit_mode_from_env(default: str = "barrier") -> str:
 
 def fit_backend_from_env(default: str = "lsq") -> str:
     """``lsq`` | ``lbfgsb`` | ``jax`` from ``FFPOPT_FIT_BACKEND``."""
-    raw = (os.environ.get("FFPOPT_FIT_BACKEND") or default).strip().lower()
+    raw = env_str("FFPOPT_FIT_BACKEND", default).strip().lower()
     if raw in ("lsq", "lsq_linear", "linear"):
         return "lsq"
     if raw in ("lbfgsb", "l-bfgs-b", "scipy"):
@@ -74,9 +75,9 @@ def apply_fit_flags_to_args(args) -> None:
     args.opt_scee_scnb = bool(opt_scee_scnb)
 
     if not hasattr(args, "scee") or getattr(args, "scee", None) is None:
-        args.scee = float(os.environ.get("FFPOPT_SCEE", "1.2"))
+        args.scee = env_float("FFPOPT_SCEE")
     if not hasattr(args, "scnb") or getattr(args, "scnb", None) is None:
-        args.scnb = float(os.environ.get("FFPOPT_SCNB", "2.0"))
+        args.scnb = env_float("FFPOPT_SCNB")
 
     if (args.opt_phase or args.opt_periods or args.opt_scee_scnb) and args.fit_backend == "lsq":
         args.fit_backend = "lbfgsb"

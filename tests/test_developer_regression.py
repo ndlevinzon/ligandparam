@@ -428,6 +428,113 @@ class TestScissionHelpers(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Packaged FFPOPT_* defaults JSON
+# ---------------------------------------------------------------------------
+
+
+class TestEnvDefaults(unittest.TestCase):
+    def tearDown(self):
+        from ffpopt.runtime.EnvDefaults import clear_defaults_cache
+
+        clear_defaults_cache()
+
+    def test_packaged_json_loads_and_is_the_store(self):
+        from ffpopt.runtime.EnvDefaults import (
+            defaults_path,
+            env_bool,
+            env_int,
+            env_str,
+            env_value,
+            packaged_defaults,
+        )
+
+        path = defaults_path()
+        self.assertTrue(path.is_file(), path)
+        data = packaged_defaults()
+        self.assertFalse(data["FFPOPT_FAST_WAVEFRONT"])
+        self.assertEqual(data["FFPOPT_MIN_WF_NPROC"], 2)
+        self.assertIsNone(data["FFPOPT_ASE_FIRST"])
+        self.assertEqual(data["FFPOPT_XTB_GUESS"], "eeq")
+        self.assertTrue(data["FFPOPT_BOND_BATCH"])
+        self.assertEqual(data["FFPOPT_FIT_MODE"], "barrier")
+        with patch.dict(os.environ, {}, clear=False):
+            for key in (
+                "FFPOPT_FAST_WAVEFRONT",
+                "FFPOPT_DEFAULTS",
+                "FFPOPT_MIN_WF_NPROC",
+                "FFPOPT_XTB_GUESS",
+            ):
+                os.environ.pop(key, None)
+            self.assertFalse(env_bool("FFPOPT_FAST_WAVEFRONT"))
+            self.assertEqual(env_int("FFPOPT_MIN_WF_NPROC"), 2)
+            self.assertIsNone(env_value("FFPOPT_ASE_FIRST"))
+            self.assertEqual(env_str("FFPOPT_XTB_GUESS"), "eeq")
+
+    def test_export_overrides_json(self):
+        from ffpopt.runtime.EnvDefaults import env_bool, env_int, env_value
+
+        with patch.dict(
+            os.environ,
+            {
+                "FFPOPT_FAST_WAVEFRONT": "1",
+                "FFPOPT_MIN_WF_NPROC": "8",
+                "FFPOPT_ASE_FIRST": "0",
+            },
+            clear=False,
+        ):
+            os.environ.pop("FFPOPT_DEFAULTS", None)
+            self.assertTrue(env_bool("FFPOPT_FAST_WAVEFRONT"))
+            self.assertEqual(env_int("FFPOPT_MIN_WF_NPROC"), 8)
+            self.assertFalse(env_value("FFPOPT_ASE_FIRST"))
+
+    def test_overlay_file_then_export_wins(self):
+        from ffpopt.runtime.EnvDefaults import clear_defaults_cache, env_bool, env_int
+
+        with tempfile.TemporaryDirectory() as td:
+            overlay = Path(td) / "mine.json"
+            overlay.write_text(
+                '// overlay\n{"FFPOPT_MIN_WF_NPROC": 4, "FFPOPT_FAST_WAVEFRONT": true}\n',
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"FFPOPT_DEFAULTS": str(overlay), "FFPOPT_FAST_WAVEFRONT": "0"},
+                clear=False,
+            ):
+                os.environ.pop("FFPOPT_MIN_WF_NPROC", None)
+                clear_defaults_cache()
+                self.assertEqual(env_int("FFPOPT_MIN_WF_NPROC"), 4)
+                self.assertFalse(env_bool("FFPOPT_FAST_WAVEFRONT"))
+
+    def test_json_keys_cover_user_ffpopt_env(self):
+        import ast
+        import re
+        from ffpopt.runtime.EnvDefaults import packaged_defaults
+
+        allow = {"FFPOPT_IN_SPAWN_WORKER", "FFPOPT_DEFAULTS"}
+        keys = set(packaged_defaults())
+        name_re = re.compile(r"^FFPOPT_[A-Z0-9_]+$")
+        found: set[str] = set()
+        root = Path(__file__).resolve().parents[1] / "src"
+        for path in root.rglob("*.py"):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError):
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                    continue
+                if name_re.match(node.value):
+                    found.add(node.value)
+        missing = found - keys - allow
+        self.assertEqual(
+            missing,
+            set(),
+            f"FFPOPT_* used in code but missing from env_defaults.json: {missing}",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Logging / console contracts
 # ---------------------------------------------------------------------------
 

@@ -1653,10 +1653,9 @@ def ll_energies_kcal_from_cache(system, sys_cache):
 
 def use_dihed_fit_reopt() -> bool:
     """True when ``FFPOPT_DIHED_FIT_REOPT=1`` restores legacy GeomOpt-per-iter."""
-    import os
+    from ffpopt.runtime.EnvDefaults import env_bool
 
-    raw = os.environ.get("FFPOPT_DIHED_FIT_REOPT", "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    return env_bool("FFPOPT_DIHED_FIT_REOPT")
 
 
 def DihedFitObjFcn(x,self):

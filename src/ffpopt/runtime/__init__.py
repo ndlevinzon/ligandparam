@@ -8,6 +8,7 @@ __all__ = [
     "Console",
     "ProgressBoard",
     "CpuBudget",
+    "EnvDefaults",
     "FastWavefront",
     "NondaemonPool",
     "SlimIpc",

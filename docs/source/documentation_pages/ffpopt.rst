@@ -71,6 +71,8 @@ Profile minima and neighbor spawn share one policy in
 ``loose`` / ``*-loose`` recoveries are treated like soft for spawn.
 ``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` is a wall-time trade (coarser Δ,
 looser converge); it does not change this policy beyond soft/loose handling.
+Packaged defaults for every ``export FFPOPT_*`` knob are in
+``ffpopt/pkgdata/files/env_defaults.json``.
 
 Fit objective (chi^2)
 ---------------------

@@ -1,0 +1,98 @@
+// ffpopt / ligandparam environment defaults
+//
+// This file ships with the package and is the store of values the code reads.
+// Edit a copy and point at it, or override single keys (preferred):
+//
+//   export FFPOPT_DEFAULTS=/path/to/my_env_defaults.json
+//   export FFPOPT_FAST_WAVEFRONT=1
+//
+// Resolution: packaged file -> FFPOPT_DEFAULTS overlay -> per-key EXPORT
+// (EXPORT always wins). Booleans: 1/true/yes/on vs 0/false/no/off.
+//
+// null means "leave to code policy" (model / --fast heuristics). A non-null
+// value here is passed into the code even without an EXPORT.
+
+{
+  // --- Fast wavefront / parallelism ---------------------------------------
+  // Cheap presets: delta=15, GAU_LOOSE, maxiter=200, milder energy threshold.
+  // Same as lig-dihed-correct --fast.
+  "FFPOPT_FAST_WAVEFRONT": false,
+
+  // Force larger nested wavefront pools (depth) vs more concurrent bonds/frags.
+  "FFPOPT_PREF_WF_DEPTH": false,
+  "FFPOPT_PREF_WF_BREADTH": false,
+
+  // Minimum cores kept per wavefront when splitting nproc with prefer-depth.
+  "FFPOPT_MIN_WF_NPROC": 2,
+
+  // ASE-first (skip geomeTRIC ladder). null = auto (sander always; xtb/qdpi2
+  // under --fast). 1/0 to force.
+  "FFPOPT_ASE_FIRST": null,
+
+  // QDpi2 opt force terms: both | xtb | dp. null = xtb under --fast, else both.
+  "FFPOPT_QDPI2_OPT": null,
+
+  // Re-score xtb/dp-only QDpi2 opts with a full QDpi2 single-point.
+  // null = on when opt components are not "both".
+  "FFPOPT_QDPI2_REFINE": null,
+
+  // Completed nodes between wavefront checkpoints. null = nproc (x4 if --fast).
+  "FFPOPT_WF_CHECKPOINT_EVERY": null,
+
+  // Write per-node pickles after successful opts. Failures always write.
+  // null = off under --fast, on otherwise.
+  "FFPOPT_WF_NODE_PICKLE": null,
+
+  // Per-constraint / restraint summaries from GeomOpt.
+  // null = off under --fast, on otherwise.
+  "FFPOPT_GEOMOPT_VERBOSE": null,
+
+  // Shorter geomeTRIC recovery ladder (primary -> loose -> soft-maxiter).
+  // Also implied by --fast / FFPOPT_FAST_WAVEFRONT=1.
+  "FFPOPT_GEOMOPT_FAST_RECOVERY": false,
+
+  // --- Bond batching (fragment twist) -------------------------------------
+  // Pack many rotatable bonds into sequential joint-twist batches.
+  "FFPOPT_BOND_BATCH": true,
+  // Max bonds per joint twist job once a fragment exceeds this count.
+  "FFPOPT_MAX_BONDS_PER_TWIST": 2,
+  // Graph distance (bonds) at which two rotatable bonds are treated as coupled.
+  "FFPOPT_BOND_COUPLE_RADIUS": 2,
+
+  // --- GeomOpt / geomeTRIC ------------------------------------------------
+  // Soft-accept ASE fmax (eV/Ang). null = max(3 * ase_opt_tol, 0.05).
+  "FFPOPT_ASE_LOOSE_FMAX": null,
+  // Stall watchdog for the legacy geomeTRIC subprocess (seconds). 0 = disable.
+  "FFPOPT_GEOMETRIC_STALL_SEC": 1800,
+  // Full traceback on GeomOpt fallback (otherwise one-line stderr).
+  "FFPOPT_GEOMOPT_TRACEBACK": false,
+  // Force the old geomeTRIC CLI subprocess instead of in-process.
+  "FFPOPT_GEOMETRIC_SUBPROCESS": false,
+  // Recovery ladder on GeomOptNotConvergedError (loose / alt coordsys / soft).
+  "FFPOPT_GEOMOPT_ROBUST": true,
+  // Last ladder rung: treat maxiter as success and keep the best frame.
+  "FFPOPT_GEOMOPT_SOFT_MAXITER": true,
+
+  // --- ConfSearch ---------------------------------------------------------
+  // Conformer count at which RMS clustering uses the fast (align-to-first)
+  // path. 0 = always legacy per-pair GetBestRMS.
+  "FFPOPT_CONFSEARCH_RMS_FAST_N": 50,
+
+  // --- Dihedral fit -------------------------------------------------------
+  // Legacy GeomOpt-per-iteration fit (slow). Default is fixed-geometry lsq.
+  "FFPOPT_DIHED_FIT_REOPT": false,
+  // barrier | torsion | full. CLI --fit-mode / --fit-full still win.
+  "FFPOPT_FIT_MODE": "barrier",
+  // lsq | lbfgsb | jax. CLI --fit-backend still wins.
+  "FFPOPT_FIT_BACKEND": "lsq",
+  // Amber 1-4 electrostatic / VDW scale (used when the CLI omits them).
+  "FFPOPT_SCEE": 1.2,
+  "FFPOPT_SCNB": 2.0,
+
+  // --- tblite / GFN2-xTB SCF ----------------------------------------------
+  "FFPOPT_XTB_MAX_ITER": 500,
+  "FFPOPT_XTB_ETEMP": 500.0,
+  "FFPOPT_XTB_MIXER_DAMPING": 0.25,
+  // eeq (preferred) or sad. Unknown values are ignored by older tblite.
+  "FFPOPT_XTB_GUESS": "eeq"
+}
