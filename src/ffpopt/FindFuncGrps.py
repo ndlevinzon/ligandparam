@@ -663,7 +663,7 @@ def __IdentifySugarAtoms_backend(s,ring):
 
 def IdentifySugarAtoms(s,verbose=False):
     from ndfes.constants import GetAtomicNumber
-    from . Dihedrals import FindPuckers
+    from ffpopt.dihed.Dihedrals import FindPuckers
     import sys
     
     rings = FindPuckers(s)

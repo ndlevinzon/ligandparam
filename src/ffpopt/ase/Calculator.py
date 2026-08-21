@@ -371,14 +371,14 @@ class GenCalculator(Calculator):
 
         # if "twistrst" in kwargs:
         #     import json
-        #     from .. Restraints import TwistRestraint
+        #     from ffpopt.geom.Restraints import TwistRestraint
         #     #print("Processing:",str(kwargs["twistrst"]))
         #     cons = kwargs["twistrst"]
         #     self.calc = RestrainedCalculator(self.calc,cons,**kwargs)
 
         # if "restraintfile" in kwargs:
         #     import json
-        #     from .. Restraints import TwistRestraint
+        #     from ffpopt.geom.Restraints import TwistRestraint
         #     with open(kwargs["restraintfile"], 'r') as file:
         #         data = json.load(file)
         #     if "twistrst" in data:

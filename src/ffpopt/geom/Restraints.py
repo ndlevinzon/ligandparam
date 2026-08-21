@@ -598,8 +598,8 @@ class TwistRestraint(Restraint):
         super().__init__("twist")
         import numpy as np
         #import ase.io
-        #from . constants import GetAtomicMass
-        #from . AmberParm import RotateMask
+        #from ffpopt.constants import GetAtomicMass
+        #from ffpopt.AmberParm import RotateMask
         
         #geoms = ase.io.read(filename,index=":")
         #atoms = geoms[0]
@@ -641,8 +641,8 @@ class TwistRestraint(Restraint):
     # @classmethod
     # def from_str(cls,s,graph):
     #     import ase.io
-    #     from . constants import GetAtomicMass
-    #     from . AmberParm import RotateBondMask
+    #     from ffpopt.constants import GetAtomicMass
+    #     from ffpopt.AmberParm import RotateBondMask
     #     import numpy as np
         
     #     cs = s.split(",")

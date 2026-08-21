@@ -1599,6 +1599,71 @@ class TestGitTrackedModuleCase(unittest.TestCase):
         )
 
 
+class TestSrcImportGraph(unittest.TestCase):
+    """Every ``src/`` import of ffpopt / ligandparam / scission must resolve."""
+
+    _TOP = frozenset({"ffpopt", "ligandparam", "scission"})
+
+    def test_in_tree_imports_resolve(self):
+        import ast
+        import os
+
+        root = Path(__file__).resolve().parents[1] / "src"
+        modules: set[str] = set()
+        files: list[Path] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+            rel = Path(dirpath).relative_to(root)
+            py_files = [f for f in filenames if f.endswith(".py")]
+            if "__init__.py" in filenames:
+                modules.add(".".join(rel.parts))
+            for name in py_files:
+                fp = Path(dirpath) / name
+                files.append(fp)
+                if name == "__init__.py":
+                    modules.add(".".join(rel.parts))
+                else:
+                    modules.add(".".join(list(rel.parts) + [name[:-3]]))
+
+        broken: list[str] = []
+        for fp in files:
+            text = fp.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(text, filename=str(fp))
+            rel = fp.relative_to(root)
+            parts = list(rel.parts)
+            if parts[-1] == "__init__.py":
+                file_pkg = ".".join(parts[:-1])
+            else:
+                file_pkg = ".".join(parts[:-1])
+            pkg_parts = file_pkg.split(".") if file_pkg else []
+            for node in ast.walk(tree):
+                tgt = None
+                if isinstance(node, ast.ImportFrom):
+                    if node.level:
+                        if node.level == 1:
+                            base = pkg_parts
+                        else:
+                            trim = node.level - 1
+                            if trim > len(pkg_parts):
+                                broken.append(f"{rel}:{node.lineno} relative past package root")
+                                continue
+                            base = pkg_parts[: len(pkg_parts) - trim]
+                        if node.module:
+                            tgt = ".".join(base + node.module.split(".")) if base else node.module
+                        else:
+                            tgt = ".".join(base)
+                    elif node.module and node.module.split(".")[0] in self._TOP:
+                        tgt = node.module
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split(".")[0] in self._TOP and alias.name not in modules:
+                            broken.append(f"{rel}:{node.lineno} import {alias.name}")
+                    continue
+                if tgt and tgt.split(".")[0] in self._TOP and tgt not in modules:
+                    broken.append(f"{rel}:{node.lineno} {tgt}")
+        self.assertEqual(broken, [], "unresolved in-tree imports:\n" + "\n".join(broken))
+
+
 class TestRecipeDefaultsIsolation(unittest.TestCase):
     def test_fresh_defaults_not_shared(self):
         from ligandparam.Parametrization import fresh_recipe_defaults

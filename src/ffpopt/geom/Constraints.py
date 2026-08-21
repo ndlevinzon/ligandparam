@@ -205,7 +205,7 @@ class Constraint(object):
             A graph object that can be used to set the mask for the constraint.
         
         """
-        from . AmberParm import RotateMask
+        from ffpopt.AmberParm import RotateMask
         self.mask = None
         if len(self.idxs) == 4:
             self.mask = RotateMask(graph,self.idxs)
