@@ -1,7 +1,7 @@
-ligandparam.stages.charge
+ligandparam.stages.Charge
 ==================================
 
-.. automodule:: ligandparam.stages.charge
+.. automodule:: ligandparam.stages.Charge
    :members:
    :undoc-members:
    :show-inheritance:

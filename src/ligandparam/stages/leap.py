@@ -9,10 +9,10 @@ from typing import Optional,  Union, Any
 
 from pathlib import Path
 import shutil
-from ligandparam.stages.abstractstage import AbstractStage
-from ligandparam.io.leap_io import LeapWriter
-from ligandparam.interfaces import Leap
-from ligandparam.utils import find_word_and_get_line
+from ligandparam.stages.AbstractStage import AbstractStage
+from ligandparam.io.LeapIo import LeapWriter
+from ligandparam.Interfaces import Leap
+from ligandparam.Utils import find_word_and_get_line
 
 
 class StageLeap(AbstractStage):

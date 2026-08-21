@@ -478,11 +478,11 @@ def plan_caps(
     Args:
         cap_sites: Iterable of objects exposing ``retained_atom``,
             ``removed_atom`` and ``bond_type`` (typically
-            :class:`~scission.models.CapSite`).
+            :class:`~scission.Models.CapSite`).
         element_of: Callable mapping a parent atom index to its element.
         position_of: Callable mapping a parent atom index to its coordinate.
         direction_of: Callable mapping ``(retained, removed)`` to the unit cap
-            direction (typically :func:`scission.screen.cap_direction`).
+            direction (typically :func:`scission.Screen.cap_direction`).
         strategy: One of :data:`CAP_STRATEGIES`.
         retained_net_charge: Net charge of the retained parent atoms.
         existing_names: Atom names already used in the fragment; updated in place

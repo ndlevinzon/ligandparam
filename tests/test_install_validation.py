@@ -104,8 +104,8 @@ class TestPublicAPISurface(unittest.TestCase):
     """Canonical modules and symbols used by recipes / CLIs must import."""
 
     def test_ligandparam_stages_and_recipes(self):
-        from ligandparam.recipes.registry import available_recipes, get_recipe
-        from ligandparam.stages.abstractstage import AbstractStage
+        from ligandparam.recipes.Registry import available_recipes, get_recipe
+        from ligandparam.stages.AbstractStage import AbstractStage
 
         names = available_recipes()
         self.assertIsInstance(names, (list, tuple))
@@ -117,9 +117,9 @@ class TestPublicAPISurface(unittest.TestCase):
 
         # Module files must be present (find_spec does not execute heavy imports).
         for modname in (
-            "ligandparam.recipes.freeligand",
-            "ligandparam.recipes.lazyligand",
-            "ligandparam.stages.gaussian",
+            "ligandparam.recipes.FreeLigand",
+            "ligandparam.recipes.LazyLigand",
+            "ligandparam.stages.Gaussian",
         ):
             self.assertIsNotNone(
                 importlib.util.find_spec(modname),
@@ -127,7 +127,7 @@ class TestPublicAPISurface(unittest.TestCase):
             )
 
         # Import gaussian stages (no RDKit at module top in typical installs).
-        m = importlib.import_module("ligandparam.stages.gaussian")
+        m = importlib.import_module("ligandparam.stages.Gaussian")
         for name in (
             "GaussianMinimizeRESP",
             "GaussianRESP",
@@ -139,7 +139,7 @@ class TestPublicAPISurface(unittest.TestCase):
         self.assertIs(m.StageGaussiantoMol2, m.StageGaussianToMol2)
 
         if _has_module("rdkit"):
-            pdb_names = importlib.import_module("ligandparam.stages.pdb_names")
+            pdb_names = importlib.import_module("ligandparam.stages.PdbNames")
             self.assertIs(pdb_names.PDB_Name_Fixer, pdb_names.StagePdbNameFixer)
 
     def test_gaussian_and_smiles_stages(self):
@@ -147,7 +147,7 @@ class TestPublicAPISurface(unittest.TestCase):
             self.skipTest(
                 "rdkit required for smiles stages; install with: pip install -e ."
             )
-        smiles = importlib.import_module("ligandparam.stages.smiles_to_pdb")
+        smiles = importlib.import_module("ligandparam.stages.SmilesToPdb")
         self.assertTrue(hasattr(smiles, "StageSmilesToPDB"))
 
     def test_ffpopt_workflow_surface(self):
@@ -192,35 +192,35 @@ class TestPublicAPISurface(unittest.TestCase):
         for name in ("Wavefront", "WavefrontNode", "run_dihed_wavefront"):
             self.assertTrue(hasattr(wnd, name), name)
 
-        mixins = importlib.import_module("ffpopt.scan.wavefront_mixins")
+        mixins = importlib.import_module("ffpopt.scan.WavefrontMixins")
         mixins.register_wavefront_pickle_aliases()
         legacy = importlib.import_module("ffpopt.WaveFront")
         self.assertIs(legacy.Wavefront, wf.Wavefront)
 
         runtime = (
-            "ffpopt.runtime.console",
-            "ffpopt.runtime.cpu_budget",
-            "ffpopt.runtime.fast_wavefront",
-            "ffpopt.runtime.nondaemon_pool",
-            "ffpopt.runtime.progress_board",
-            "ffpopt.scan.wavefront_mixins",
+            "ffpopt.runtime.Console",
+            "ffpopt.runtime.CpuBudget",
+            "ffpopt.runtime.FastWavefront",
+            "ffpopt.runtime.NondaemonPool",
+            "ffpopt.runtime.ProgressBoard",
+            "ffpopt.scan.WavefrontMixins",
             "ffpopt.scan.ScanAnalysis",
-            "ffpopt.affdo.log",
-            "ffpopt.affdo.charges",
-            "ffpopt.affdo.profiles",
-            "ffpopt.dihed.fit_ext",
+            "ffpopt.affdo.AffdoLog",
+            "ffpopt.affdo.BoltzmannCharges",
+            "ffpopt.affdo.CentroidProfiles",
+            "ffpopt.dihed.ExtendedFit",
             "ffpopt.workflows",
-            "ffpopt.geom.geometric",
+            "ffpopt.geom.Geometric",
         )
         for mod in runtime:
             importlib.import_module(mod)
 
-        pool_mod = importlib.import_module("ffpopt.runtime.nondaemon_pool")
+        pool_mod = importlib.import_module("ffpopt.runtime.NondaemonPool")
         self.assertTrue(callable(pool_mod.make_nondaemon_spawn_pool))
 
-        writers = importlib.import_module("scission.writers")
+        writers = importlib.import_module("scission.Writers")
         self.assertEqual(writers.safe_name("a/b c"), "a_b_c")
-        frcmod = importlib.import_module("scission.frcmod")
+        frcmod = importlib.import_module("scission.Frcmod")
         key = frcmod._normalize_param_name_to_key("LIG_ca-c3-c-o")
         self.assertIsNotNone(key)
         self.assertEqual(len(key), 4)
@@ -237,7 +237,7 @@ class TestPublicAPISurface(unittest.TestCase):
         ):
             self.assertTrue(hasattr(scission, name), name)
 
-        merge = importlib.import_module("scission.merge")
+        merge = importlib.import_module("scission.Merge")
         self.assertTrue(callable(merge.merge_fragment_frcmods))
         self.assertTrue(callable(merge.list_iteration_frcmods))
 
@@ -246,14 +246,14 @@ class TestCLIEntrypoints(unittest.TestCase):
     """Console scripts declared in pyproject must be importable callables."""
 
     EXPECTED = (
-        ("ligandparam.cli.lig_dihed_correct", "main"),
-        ("ligandparam.cli.lig_scission", "main"),
-        ("scission.cli", "main"),
+        ("ligandparam.cli.LigDihedCorrect", "main"),
+        ("ligandparam.cli.LigScission", "main"),
+        ("scission.Cli", "main"),
     )
     # These pull RDKit at import time (core dep; skipped only if RDKit absent).
     RDKit_EXPECTED = (
-        ("ligandparam.cli.ligandparam_getparam", "main"),
-        ("ligandparam.cli.smiles_to_pdb", "main"),
+        ("ligandparam.cli.LigGetParam", "main"),
+        ("ligandparam.cli.SmilesToPdb", "main"),
     )
 
     def test_cli_modules_expose_main(self):
@@ -318,7 +318,7 @@ class TestBehavioralSmoke(unittest.TestCase):
 
     def test_wavefront_evaluate_policy(self):
         from ffpopt.geom.GeomOpt import is_soft_opt_recovery
-        from ffpopt.scan.wavefront_mixins import evaluate_wavefront_minimum
+        from ffpopt.scan.WavefrontMixins import evaluate_wavefront_minimum
 
         self.assertTrue(is_soft_opt_recovery("loose"))
         self.assertTrue(is_soft_opt_recovery("soft-maxiter"))
@@ -373,8 +373,8 @@ class TestBehavioralSmoke(unittest.TestCase):
         self.assertEqual(len(all_.structs), 3)
 
     def test_startup_banner_once(self):
-        from ffpopt.runtime import console as console_mod
-        from ffpopt.runtime.console import print_startup_banner
+        from ffpopt.runtime import Console as console_mod
+        from ffpopt.runtime.Console import print_startup_banner
 
         console_mod._BANNER_PRINTED = False
         os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
@@ -390,7 +390,7 @@ class TestBehavioralSmoke(unittest.TestCase):
             os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
 
     def test_scission_frcmod_merge_accumulates_iterations(self):
-        from scission.merge import _load_fragment_update
+        from scission.Merge import _load_fragment_update
 
         def _frcmod(dihe_lines: list[str]) -> str:
             return (

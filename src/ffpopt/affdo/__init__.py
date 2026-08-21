@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
-    "log",
-    "charges",
-    "profiles",
+    "AffdoLog",
+    "BoltzmannCharges",
+    "CentroidProfiles",
 ]
 
 _LAZY = {name: f".{name}" for name in __all__}

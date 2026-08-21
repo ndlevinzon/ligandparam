@@ -1,7 +1,7 @@
-ligandparam.multiresp.parmhelper
+ligandparam.multiresp.ParmHelper
 ---------------------------------
 
-.. automodule:: ligandparam.multiresp.parmhelper
+.. automodule:: ligandparam.multiresp.ParmHelper
    :members:
    :undoc-members:
    :show-inheritance:

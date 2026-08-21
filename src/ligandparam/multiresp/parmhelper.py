@@ -594,7 +594,7 @@ class Fragment(object):
         idx : int
             The index
         """
-        from ligandparam.multiresp.respfunctions import GetAtomsBondedToIdx as _bonded_to
+        from ligandparam.multiresp.RespFunctions import GetAtomsBondedToIdx as _bonded_to
         return _bonded_to(self.parmobj, idx)
 
 class FragmentedSys(object):

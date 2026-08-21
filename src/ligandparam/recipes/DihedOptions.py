@@ -12,17 +12,17 @@ def coerce_fragment_config(value: Any):
     Parameters
     ----------
     value
-        ``None``, a :class:`scission.models.FragmentConfig`, or a plain
+        ``None``, a :class:`scission.Models.FragmentConfig`, or a plain
         ``dict`` accepted by ``FragmentConfig.from_dict``.
 
     Returns
     -------
-    scission.models.FragmentConfig or None
+    scission.Models.FragmentConfig or None
     """
     if value is None:
         return None
     try:
-        from scission.models import FragmentConfig
+        from scission.Models import FragmentConfig
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "dihed_fragment_config requires the integrated scission package"
@@ -47,7 +47,7 @@ def pop_dihed_options(kwargs: MutableMapping[str, Any]) -> dict[str, Any]:
     * ``dihed_geometric_opt``, ``dihed_skip_existing``
     * ``dihed_out_frcmod``, ``dihed_out_dir``
     * ``dihed_rotatable_bond_smarts``
-    * ``dihed_fragment_config`` — :class:`~scission.models.FragmentConfig`,
+    * ``dihed_fragment_config`` — :class:`~scission.Models.FragmentConfig`,
       dict for ``FragmentConfig.from_dict``, or ``None``
     """
     return {
@@ -84,7 +84,7 @@ def append_dihed_twist_stage(
     if not getattr(recipe, "dihed_correct", False):
         return
     # Lazy import: stages package pulls optional heavy deps (rdkit, etc.).
-    from ligandparam.stages.ffpopt_dihed import StageDihedTwistCorrection
+    from ligandparam.stages.FfpoptDihed import StageDihedTwistCorrection
 
     out_frcmod = (
         Path(recipe.dihed_out_frcmod)

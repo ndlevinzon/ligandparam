@@ -4,7 +4,7 @@ from collections import deque
 
 import networkx as nx
 
-from .models import Bond, Ligand
+from .Models import Bond, Ligand
 
 
 def build_graph(ligand: Ligand) -> nx.Graph:

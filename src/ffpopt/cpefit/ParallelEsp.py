@@ -11,15 +11,15 @@ from typing import Optional, Sequence
 from .AbInitioOptions import AbInitioOptions
 
 
-_LOG = logging.getLogger("ffpopt.cpefit.parallel_esp")
+_LOG = logging.getLogger("ffpopt.cpefit.ParallelEsp")
 
 
 def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
     """Split a core budget across concurrent jobs and per-job threads.
 
-    Canonical implementation: :func:`ffpopt.runtime.fast_wavefront.split_core_budget`.
+    Canonical implementation: :func:`ffpopt.runtime.FastWavefront.split_core_budget`.
     """
-    from ffpopt.runtime.fast_wavefront import split_core_budget as _split
+    from ffpopt.runtime.FastWavefront import split_core_budget as _split
 
     return _split(total_cores, n_jobs)
 

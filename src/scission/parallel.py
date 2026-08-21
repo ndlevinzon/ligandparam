@@ -7,24 +7,24 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Sequence
 
-from .fragments import build_candidate_fragments
-from .models import (
+from .Fragments import build_candidate_fragments
+from .Models import (
     CandidateFragment,
     FragmentConfig,
     Ligand,
     SelectedFragment,
     TorsionDefinition,
 )
-from .screen import screen_candidate
-from .writers import write_fragment_outputs
+from .Screen import screen_candidate
+from .Writers import write_fragment_outputs
 
-_LOG = logging.getLogger("scission.parallel")
+_LOG = logging.getLogger("scission.Parallel")
 
 
 def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
     """Prefer as many workers as possible with ``workers * per_job <= total``.
 
-    Keep algorithm in sync with ``ffpopt.runtime.fast_wavefront.split_core_budget``
+    Keep algorithm in sync with ``ffpopt.runtime.FastWavefront.split_core_budget``
     (scission stays free of ffpopt imports).
     """
     total = max(1, int(total_cores))

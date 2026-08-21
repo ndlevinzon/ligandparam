@@ -7,9 +7,9 @@ from pathlib import Path
 
 import yaml
 
-from .merge import discover_fragment_dirs, merge_fragment_frcmods
-from .models import FragmentConfig, InputBundle
-from .pipeline import fragment_ligand
+from .Merge import discover_fragment_dirs, merge_fragment_frcmods
+from .Models import FragmentConfig, InputBundle
+from .Pipeline import fragment_ligand
 
 
 def _load_config(path: Path | None) -> FragmentConfig:
@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
         return 0
     if args.command == "pick-bond":
-        from .pickbond import run_pick_bond
+        from .PickBond import run_pick_bond
 
         return run_pick_bond(
             mol2_path=args.mol2,

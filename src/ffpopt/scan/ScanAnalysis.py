@@ -411,8 +411,8 @@ def load_scan_json(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     tuple of numpy.ndarray
         ``(angles, energies_kcal_per_mol)``.
     """
-    from .Struct import ListOfStruct
-    from .constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+    from ffpopt.Struct import ListOfStruct
+    from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
     kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
     los = ListOfStruct.from_file(str(path))

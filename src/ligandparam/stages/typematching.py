@@ -7,9 +7,9 @@ import shutil as cp
 
 import MDAnalysis as mda
 
-from ligandparam.stages.abstractstage import AbstractStage
-from ligandparam.interfaces import Antechamber
-from ligandparam.io.coordinates import Mol2Writer
+from ligandparam.stages.AbstractStage import AbstractStage
+from ligandparam.Interfaces import Antechamber
+from ligandparam.io.Coordinates import Mol2Writer
 
 
 class StageUpdate(AbstractStage):

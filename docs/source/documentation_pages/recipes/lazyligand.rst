@@ -1,7 +1,7 @@
-ligandparam.recipes.lazyligand
+ligandparam.recipes.LazyLigand
 --------------------------------
 
-.. automodule:: ligandparam.recipes.lazyligand
+.. automodule:: ligandparam.recipes.LazyLigand
    :members:
    :undoc-members:
    :show-inheritance:

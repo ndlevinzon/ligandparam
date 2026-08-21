@@ -3,15 +3,15 @@ from typing import Union
 
 from typing_extensions import override
 
-from ligandparam.parametrization import Recipe, configure_gaussian_recipe
-from ligandparam.recipes.common import (
+from ligandparam.Parametrization import Recipe, configure_gaussian_recipe
+from ligandparam.recipes.Common import (
     charge_update_parmchk_leap_stages,
     dp_high_resp_rotation_stages,
     init_normalize_center_stages,
     multi_resp_update_stages,
     rotation_label_for_recipe,
 )
-from ligandparam.recipes.dihed_options import append_dihed_twist_stage
+from ligandparam.recipes.DihedOptions import append_dihed_twist_stage
 from ligandparam.stages import DPMinimize
 
 

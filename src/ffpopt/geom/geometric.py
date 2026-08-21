@@ -166,7 +166,7 @@ def is_geomopt_not_converged(exc: BaseException) -> bool:
 
 def is_linear_torsion_error(exc: BaseException) -> bool:
     """True for geomeTRIC ``LinearTorsionError`` (re-export for callers)."""
-    from ffpopt.geom.linear_torsion import is_linear_torsion_error as _impl
+    from ffpopt.geom.LinearTorsion import is_linear_torsion_error as _impl
 
     return _impl(exc)
 
@@ -187,7 +187,7 @@ def calc_cache_key(los, struct) -> tuple:
     parm = struct.data.get("parm")
     qdpi_opt = None
     try:
-        from ffpopt.runtime.fast_wavefront import (
+        from ffpopt.runtime.FastWavefront import (
             is_qdpi2_model,
             qdpi2_opt_components,
         )
@@ -200,8 +200,8 @@ def calc_cache_key(los, struct) -> tuple:
 
 
 def _wrap_restrained(base, reslist):
-    """Wrap ``base`` with :class:`~ffpopt.ase.calculator.RestrainedCalculator`."""
-    from .ase.calculator import RestrainedCalculator
+    """Wrap ``base`` with :class:`~ffpopt.ase.Calculator.RestrainedCalculator`."""
+    from ffpopt.ase.Calculator import RestrainedCalculator
 
     return RestrainedCalculator(base, reslist)
 
@@ -224,7 +224,7 @@ def get_persistent_calc(los, struct, reslist=None):
     else:
         base = los.BuildCalc(struct)
         try:
-            from ffpopt.runtime.fast_wavefront import (
+            from ffpopt.runtime.FastWavefront import (
                 is_qdpi2_model,
                 qdpi2_opt_components,
             )
@@ -270,7 +270,7 @@ def refine_qdpi2_energy(los, struct):
 
     Returns ``None`` when refinement is disabled or the model is not QDpi2.
     """
-    from ffpopt.runtime.fast_wavefront import (
+    from ffpopt.runtime.FastWavefront import (
         is_qdpi2_model,
         qdpi2_refine_energy_after_opt,
     )
@@ -434,7 +434,7 @@ def _recovery_attempts(
     enforce: Optional[float],
 ) -> list[dict[str, Any]]:
     """Ordered recovery attempts for hard constrained optimizations."""
-    from ffpopt.runtime.fast_wavefront import fast_recovery_ladder
+    from ffpopt.runtime.FastWavefront import fast_recovery_ladder
 
     primary_conv = _normalize_converge(converge) or ["set", "GAU"]
     loose = ["set", "GAU_LOOSE"]

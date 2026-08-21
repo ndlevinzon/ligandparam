@@ -7,7 +7,7 @@ class Driver:
     """Base class for ordered stage pipelines.
 
     Subclasses populate :attr:`stages` and call :meth:`execute` to run them
-    in order. Recipes such as :class:`~ligandparam.parametrization.Recipe`
+    in order. Recipes such as :class:`~ligandparam.Parametrization.Recipe`
     inherit from this class.
 
     Attributes

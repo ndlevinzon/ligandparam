@@ -1,30 +1,26 @@
 from pathlib import Path
 from typing import Optional, Union, Any
 
-from ligandparam.stages.abstractstage import AbstractStage
+from ligandparam.stages.AbstractStage import AbstractStage
 from rdkit import Chem
 from typing_extensions import override
 
-from ligandparam.io.smiles import (
-    PDBFromSMILES,
-    normalize_to_reference as normalize_mol_to_reference,
-)
-from ligandparam.stages.utilsstages import set_atom_pdb_info
+from ligandparam.io.Smiles import normalize_to_reference as normalize_mol_to_reference
+from ligandparam.stages.StageUtils import set_atom_pdb_info
 
 
-class StageSmilesToPDB(AbstractStage):
-    """Stage for converting SMILES strings to PDB files."""
+class StagePdbNameFixer(AbstractStage):
+    """Fix PDB atom names and related metadata in ligand files."""
 
     @override
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
         super().__init__(stage_name, main_input, cwd, *args, **kwargs)
-        self.in_smiles = main_input
+        self.in_pdb = main_input
         self.out_pdb = Path(kwargs["out_pdb"])
         self.resname = kwargs.get("resname", "LIG")
         self.reduce = kwargs.get("reduce", True)
         self.add_conect = kwargs.get("add_conect", True)
         self.random_seed = kwargs.get("random_seed", None)
-        self.minimize = kwargs.get("minimize", False)
 
         try:
             self.reference_pdb = Path(kwargs["reference_pdb"]).resolve()
@@ -37,17 +33,11 @@ class StageSmilesToPDB(AbstractStage):
 
     def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         try:
-            builder = PDBFromSMILES(self.resname, self.in_smiles)
-            seed = self.random_seed if self.random_seed is not None else 0xF00D
-            mol = builder.build_embedded_mol(
-                seed,
-                minimize=self.minimize,
-                addHs=self.reduce,
-            )
+            mol = Chem.MolFromPDBFile(str(self.in_pdb), removeHs=False)
         except Exception as e:
             err_msg = (
-                f"Failed to generate an rdkit molecule from input SMILES "
-                f"{self.in_smiles}. Got exception: {e}"
+                f"Failed to generate an rdkit molecule from input PDB "
+                f"{self.in_pdb}. Got exception: {e}"
             )
             self.logger.error(err_msg)
             raise RuntimeError(err_msg) from e
@@ -59,12 +49,12 @@ class StageSmilesToPDB(AbstractStage):
                 mol,
                 self.reference_pdb,
                 align=self.align,
-                remove_hs=True,
+                remove_hs=False,
                 logger=self.logger,
             )
 
         flavor = 0 if self.add_conect else 2
-        self.logger.info(f"Writing {self.in_smiles} to {self.out_pdb}")
+        self.logger.info(f"Writing {self.in_pdb} to {self.out_pdb}")
 
         try:
             Chem.MolToPDBFile(mol, str(self.out_pdb), flavor=flavor)
@@ -72,4 +62,5 @@ class StageSmilesToPDB(AbstractStage):
             self.logger.error(f"Failed to write to  {self.out_pdb}. Got exception: {e}")
 
 
-StageSmilestoPDB = StageSmilesToPDB
+# Back-compat alias (CLI / older recipes).
+PDB_Name_Fixer = StagePdbNameFixer

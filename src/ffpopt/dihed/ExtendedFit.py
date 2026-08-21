@@ -279,7 +279,7 @@ def shape_match_chi2_extended(finp, caches) -> float:
     """Shape-match χ² over all systems/profiles using extended LL energies."""
     import numpy as np
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
-    from ffpopt.dihed.math import shape_match_delta
+    from ffpopt.dihed.DihedMath import shape_match_delta
 
     kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
     chisq = 0.0
@@ -438,7 +438,7 @@ def solve_extended_lbfgsb(args, finp, caches):
     from scipy.optimize import minimize
     import numpy as np
 
-    from ffpopt.affdo.log import print_affdo
+    from ffpopt.affdo.AffdoLog import print_affdo
 
     x0 = get_extended_params(finp)
     bounds = extended_bounds(finp, x0)

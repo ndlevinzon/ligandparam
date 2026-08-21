@@ -1,7 +1,7 @@
-ligandparam.stages.parmchk
+ligandparam.stages.ParmChk
 ==================================
 
-.. automodule:: ligandparam.stages.parmchk
+.. automodule:: ligandparam.stages.ParmChk
    :members:
    :undoc-members:
    :show-inheritance:

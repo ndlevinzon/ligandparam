@@ -1,7 +1,7 @@
-ligandparam.multiresp.endstate
+ligandparam.multiresp.EndState
 -------------------------------
 
-.. automodule:: ligandparam.multiresp.endstate
+.. automodule:: ligandparam.multiresp.EndState
    :members:
    :undoc-members:
    :show-inheritance:

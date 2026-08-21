@@ -1,6 +1,6 @@
 """Public ligand parameterization recipes.
 
-Exports are loaded lazily so importing ``ligandparam.recipes.dihed_options``
+Exports are loaded lazily so importing ``ligandparam.recipes.DihedOptions``
 (or ``registry``) does not pull every recipe and its stage graph.
 """
 
@@ -9,14 +9,14 @@ from __future__ import annotations
 from typing import Any
 
 _EXPORTS = {
-    "LazyLigand": ".lazyligand",
-    "LazierLigand": ".lazierligand",
-    "FreeLigand": ".freeligand",
-    "DPLigand": ".dplazyligand",
-    "DPFreeLigand": ".dpfreeligand",
-    "SQMLigand": ".optligand",
-    "available_recipes": ".registry",
-    "get_recipe": ".registry",
+    "LazyLigand": ".LazyLigand",
+    "LazierLigand": ".LazierLigand",
+    "FreeLigand": ".FreeLigand",
+    "DPLigand": ".DpLazyLigand",
+    "DPFreeLigand": ".DpFreeLigand",
+    "SQMLigand": ".OptLigand",
+    "available_recipes": ".Registry",
+    "get_recipe": ".Registry",
 }
 
 __all__ = list(_EXPORTS)

@@ -10,19 +10,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from ligandparam.stages.abstractstage import AbstractStage
+from ligandparam.stages.AbstractStage import AbstractStage
 
 
 def coerce_fragment_config(value: Any):
     """Normalize ``fragment_config`` to a FragmentConfig or ``None``.
 
-    Accepts ``None``, a :class:`scission.models.FragmentConfig`, or a dict
+    Accepts ``None``, a :class:`scission.Models.FragmentConfig`, or a dict
     for ``FragmentConfig.from_dict``.
     """
     if value is None:
         return None
     try:
-        from scission.models import FragmentConfig
+        from scission.Models import FragmentConfig
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "fragment_config requires the integrated scission package"
@@ -134,7 +134,7 @@ class StageDihedTwistCorrection(AbstractStage):
             self.out_frcmod,
             self.model,
         )
-        from ffpopt.affdo.log import describe_affdo_extras, log_affdo
+        from ffpopt.affdo.AffdoLog import describe_affdo_extras, log_affdo
 
         log_affdo(
             self.logger,

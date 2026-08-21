@@ -1,7 +1,7 @@
-ligandparam.multiresp.residueresp
+ligandparam.multiresp.ResidueResp
 ----------------------------------
 
-.. automodule:: ligandparam.multiresp.residueresp
+.. automodule:: ligandparam.multiresp.ResidueResp
    :members:
    :undoc-members:
    :show-inheritance:

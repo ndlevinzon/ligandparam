@@ -9,9 +9,9 @@ for more options than are currently used by the ligand-param project, so some of
 
 import sys
 
-from ligandparam.multiresp.endstate import EndState
-from ligandparam.multiresp.intermolequiv import IntermolEquiv
-from ligandparam.multiresp.functions import WriteFitSh
+from ligandparam.multiresp.EndState import EndState
+from ligandparam.multiresp.IntermolEquiv import IntermolEquiv
+from ligandparam.multiresp.Functions import WriteFitSh
 
 class ResidueResp(object):
     """ This class is used to perform a residue-based resp fit. """

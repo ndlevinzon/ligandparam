@@ -21,7 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **ffpopt layout** — domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import-redirect shims removed; callers use the canonical packages (``python -m ffpopt.geom.geometric``).
+- **ffpopt layout** — domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import-redirect shims removed; callers use the canonical packages (``python -m ffpopt.geom.Geometric``).
+- **PascalCase library modules** — snake_case ``src/`` modules renamed to descriptive PascalCase (``TwistHelpers``, ``AffdoLog``, ``LigandIo``, …) to match existing ffpopt domain files. Package directories stay lowercase. Hyphenated ``ffpopt.bin`` CLIs unchanged.
 
 ---
 
@@ -53,7 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **geomeTRIC constraint targets** — constraint files / enforce paths use the scan **target** dihedral (``force=False`` fill), not the post-twist ``force=True`` snapshot.
-- **Wavefront evaluate policy** — soft first-at-bin seeds spawn once; quiet min updates within threshold; hard replaces soft only if ``E_hard <= E_soft``; ``loose`` / ``*-loose`` recoveries treated as soft for spawn. Shared helper in ``ffpopt.scan.wavefront_mixins`` (1-D and N-D).
+- **Wavefront evaluate policy** — soft first-at-bin seeds spawn once; quiet min updates within threshold; hard replaces soft only if ``E_hard <= E_soft``; ``loose`` / ``*-loose`` recoveries treated as soft for spawn. Shared helper in ``ffpopt.scan.WavefrontMixins`` (1-D and N-D).
 - **HL/LL angle align** — GenDihedFit always angle-aligns profiles (not only when lengths differ); empty common-angle sets raise.
 - **Drop-mode frcmod merge** — fragment DIHE merge accumulates **all** ``itXX.frcmod`` in order so earlier survivors are kept unless a later file refits the same key.
 - **Dihedral fit chi^2 / solver** — objective is mean-centered shape match only (invariant to a constant LL offset); joint linear initial guess over all fitted torsions; ``lstsq`` / ``lsq_linear`` for fixed-geometry FC fits (replaces COBYLA); reopt mode uses L-BFGS-B.
@@ -63,7 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Package layout** — ``ffpopt.runtime/`` (console, progress boards, CPU budget, fast presets) and ``ffpopt.scan/`` (WaveFront engines + mixins); import the canonical packages (root ``WaveFront`` / ``WaveFrontND`` exist only as pickle-compat aliases). ligandparam: ``gaussian_io`` / ``leap_io`` / ``smiles_to_pdb``; recipe charge→parmchk→leap tail in ``recipes.common``.
 - **Docs** — Sphinx overview / installation / ffpopt / dihedrals / scission / CLI updated for 1.5 layout, wavefront policy, shape-match chi^2, cumulative merge, and the two supported test modules.
-- **Further DRY** — MCS/PDB atom-name helpers in ``ligandparam.io.smiles``; StageSmilesToPDB uses ``PDBFromSMILES``; ``MakeUniqueParams`` / ``Disang``; shared ``load_wavefront_pickle``; cpefit/Gaussian budgets via ``split_core_budget``; Reader owns ``FixParmedAtomicNumbers`` / ``ReadMol2``; UFF radius from ``constants``.
+- **Further DRY** — MCS/PDB atom-name helpers in ``ligandparam.io.Smiles``; StageSmilesToPDB uses ``PDBFromSMILES``; ``MakeUniqueParams`` / ``Disang``; shared ``load_wavefront_pickle``; cpefit/Gaussian budgets via ``split_core_budget``; Reader owns ``FixParmedAtomicNumbers`` / ``ReadMol2``; UFF radius from ``constants``.
 - ligandparam: lazy ``stages`` / ``recipes`` exports (incl. Sage/Build); ``recipes.registry.get_recipe``; ``deprecated/`` removed; deleted redundant ``gaussian_budget.py``.
 
 ---
@@ -91,7 +92,7 @@ Parallelism and ConfSearch follow-ons after the v1.4.0 ffpopt/scission merge.
 ### Reliability
 
 - Gaussian `call` uses unique submit scripts and env copies so concurrent jobs do not collide.
-- Windows-safe `ligandparam.utils` libc loading (no `ctypes.CDLL(None)` crash on import).
+- Windows-safe `ligandparam.Utils` libc loading (no `ctypes.CDLL(None)` crash on import).
 - **Non-daemon fragment/bond pools** — `_make_nondaemon_spawn_pool` no longer subclasses `ctx.Pool` (a factory method on Python 3.8+ / 3.14); uses `multiprocessing.pool.Pool` with a module-level non-daemon spawn `Process` so nested wavefront pools work on CHPC.
 - **Robust GeomOpt recovery** — on geomeTRIC `GeomOptNotConvergedError`, restart from the last `_optim.xyz` frame with a ladder: `GAU_LOOSE` + more iterations, alternate `dlc`/`hdlc` coordsys, then soft `converge maxiter`. ASE fallback tries BFGS → LBFGS → FIRE and soft-accepts near-converged `fmax`. Disable ladder with `FFPOPT_GEOMOPT_ROBUST=0`; tune soft ASE with `FFPOPT_ASE_LOOSE_FMAX`.
 - **`--geometric-opt` help** — corrected to match code (flag prefers geomeTRIC; default ASE-first).

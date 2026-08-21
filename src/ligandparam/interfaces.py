@@ -7,7 +7,7 @@ from typing_extensions import override
 import subprocess
 from pathlib import Path
 
-from ligandparam.log import get_logger
+from ligandparam.Log import get_logger
 
 
 class SimpleInterface:

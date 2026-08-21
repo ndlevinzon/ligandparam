@@ -18,8 +18,8 @@ def get_logger() -> logging.Logger:
 
 
 def set_stream_logger(logging_level: int = logging.INFO) -> logging.Logger:
-    """Attach stdout (INFO) / stderr (WARNING+) handlers via ``ffpopt.runtime.console``."""
-    from ffpopt.runtime.console import attach_console_handlers
+    """Attach stdout (INFO) / stderr (WARNING+) handlers via ``ffpopt.runtime.Console``."""
+    from ffpopt.runtime.Console import attach_console_handlers
 
     logger = logging.getLogger(__logging_name__)
     logger.setLevel(logging_level)
@@ -38,7 +38,7 @@ def set_file_logger(
     also_console: bool = True,
 ) -> logging.Logger:
     """Log to a file; optionally mirror to the console (Slurm-friendly)."""
-    from ffpopt.runtime.console import attach_console_handlers, console_formatter
+    from ffpopt.runtime.Console import attach_console_handlers, console_formatter
 
     if logname is None:
         logname = __logging_name__

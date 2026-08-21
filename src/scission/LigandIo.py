@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .models import Atom, Bond, InputBundle, Ligand
+from .Models import Atom, Bond, InputBundle, Ligand
 
 _ELEMENTS = {
     "H", "B", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I", "Si",

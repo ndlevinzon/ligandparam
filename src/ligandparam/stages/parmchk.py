@@ -9,9 +9,9 @@ from typing import Optional,  Union, Any
 from typing_extensions import override
 from pathlib import Path
 
-from ligandparam.stages.abstractstage import AbstractStage
-from ligandparam.interfaces import ParmChk
-from ligandparam.utils import find_word_and_get_line
+from ligandparam.stages.AbstractStage import AbstractStage
+from ligandparam.Interfaces import ParmChk
+from ligandparam.Utils import find_word_and_get_line
 
 
 class StageParmChk(AbstractStage):

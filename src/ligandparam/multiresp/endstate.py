@@ -7,7 +7,7 @@ from io import StringIO as StringIO
 
 
 from ligandparam.multiresp import parmhelper, mdinutils, respfunctions, functions
-from ligandparam.multiresp.intermolequiv import IntermolEquiv
+from ligandparam.multiresp.IntermolEquiv import IntermolEquiv
 
 class EndState(object):
     """ Class to handle the end state of a residue."""

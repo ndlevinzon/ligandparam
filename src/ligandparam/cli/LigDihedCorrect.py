@@ -19,9 +19,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ligandparam.io.amber_bundle import AmberLigandBundle, resolve_getparam_bundle
-from ligandparam.log import get_logger, set_file_logger, set_stream_logger
-from ligandparam.stages.ffpopt_dihed import StageDihedTwistCorrection
+from ligandparam.io.AmberBundle import AmberLigandBundle, resolve_getparam_bundle
+from ligandparam.Log import get_logger, set_file_logger, set_stream_logger
+from ligandparam.stages.FfpoptDihed import StageDihedTwistCorrection
 
 
 def _build_fit_cli_args(args) -> list[str]:
@@ -124,7 +124,7 @@ def run_dihed_correct(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-dihed-correct``."""
-    from ffpopt.runtime.console import print_startup_banner
+    from ffpopt.runtime.Console import print_startup_banner
 
     parser = argparse.ArgumentParser(
         description=(
@@ -300,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         bundle.lib,
         bundle.frcmod,
     )
-    from ffpopt.affdo.log import describe_affdo_extras, log_affdo
+    from ffpopt.affdo.AffdoLog import describe_affdo_extras, log_affdo
 
     log_affdo(
         logger,

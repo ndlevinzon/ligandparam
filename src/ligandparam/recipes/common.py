@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from ligandparam.io.orientations import N_ORIENTATIONS_SO3_N28, legacy_euler_kwargs
+from ligandparam.io.Orientations import N_ORIENTATIONS_SO3_N28, legacy_euler_kwargs
 from ligandparam.stages import (
     StageInitialize,
     StageNormalizeCharge,

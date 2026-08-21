@@ -301,7 +301,7 @@ class JobBoardWatcher:
 from contextlib import contextmanager
 from typing import Iterator
 
-from .console import attach_console_handlers, console_formatter, tee_stdio_to_file
+from .Console import attach_console_handlers, console_formatter, tee_stdio_to_file
 
 # Ordered stages used for display hints (unknown stages still render).
 KNOWN_FRAGMENT_STAGES = (

@@ -36,7 +36,7 @@ def generate_centroid_start_jsons(
     """
     from copy import deepcopy
 
-    from ffpopt.affdo.log import log_affdo, print_affdo
+    from ffpopt.affdo.AffdoLog import log_affdo, print_affdo
     from ffpopt.Struct import ListOfStruct
     from ffpopt.confsearch.ConfSearch import ConformerSearch
 

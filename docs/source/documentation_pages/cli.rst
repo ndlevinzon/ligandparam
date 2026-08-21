@@ -69,7 +69,7 @@ Notes
 * ``--fast`` enables coarser wavefront / looser geomeTRIC presets
   (``FFPOPT_FAST_WAVEFRONT=1``). Explicit non-default knobs still win.
 * Console logs use a single timestamp and hierarchical ``[tag]`` brackets
-  (``ffpopt.runtime.console``).
+  (``ffpopt.runtime.Console``).
 
 See :doc:`dihedrals` for models and file flow, and :doc:`examples/07_DihedCorrect`
 for a worked narrative.

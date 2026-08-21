@@ -767,7 +767,7 @@ def to_primitive_restraints(cons,k=1):
 
 def EnforceConstraintsFromOpt(atoms,cons,rests,k=1.):
     import numpy as np
-    from . ase.calculator import RestrainedCalculator, CartCalculator
+    from ffpopt.ase.Calculator import RestrainedCalculator, CartCalculator
     from ase.optimize import BFGS
     
     oatoms = atoms.copy()

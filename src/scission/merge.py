@@ -6,7 +6,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from .frcmod import FrcmodFile, _normalize_param_name_to_key, normalize_dihe_line
+from .Frcmod import FrcmodFile, _normalize_param_name_to_key, normalize_dihe_line
 
 _ITERATION_FRCMOD_RE = re.compile(r"it(\d+)\.frcmod$")
 _FRAGMENT_SUFFIX_RE = re.compile(r"(\d+)$")

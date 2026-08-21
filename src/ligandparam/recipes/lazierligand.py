@@ -3,8 +3,8 @@ from typing import Union
 
 from typing_extensions import override
 
-from ligandparam.parametrization import Recipe
-from ligandparam.recipes.common import charge_update_parmchk_leap_stages
+from ligandparam.Parametrization import Recipe
+from ligandparam.recipes.Common import charge_update_parmchk_leap_stages
 from ligandparam.stages import StageInitialize, StageParmChk, StageUpdate, StageNormalizeCharge
 
 

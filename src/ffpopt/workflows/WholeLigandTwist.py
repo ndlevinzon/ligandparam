@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from ffpopt.workflows.helpers import (
+from ffpopt.workflows.TwistHelpers import (
     PathLike,
     _as_path,
     _list_iteration_frcmods,
     _resolve_logger,
     _run_ffpopt_bin,
 )
-from ffpopt.workflows.twist import run_dihed_twist_workflow
+from ffpopt.workflows.DihedTwist import run_dihed_twist_workflow
 
 def run_whole_ligand_dihed_twist_workflow(
     *,
@@ -45,8 +45,8 @@ def run_whole_ligand_dihed_twist_workflow(
     """
     import shutil
 
-    from scission.io import load_ligand_from_mol2
-    from scission.torsions import find_rotatable_bonds
+    from scission.LigandIo import load_ligand_from_mol2
+    from scission.Torsions import find_rotatable_bonds
 
     log = _resolve_logger(logger)
     out_dir_path = _as_path(out_dir).resolve()
@@ -60,7 +60,7 @@ def run_whole_ligand_dihed_twist_workflow(
         else out_dir_path / f"{mol2_p.stem}.dihed.frcmod"
     )
 
-    from ffpopt.affdo.log import describe_affdo_extras, format_boltzmann_summary, log_affdo
+    from ffpopt.affdo.AffdoLog import describe_affdo_extras, format_boltzmann_summary, log_affdo
 
     log_affdo(
         log,
@@ -129,11 +129,11 @@ def run_whole_ligand_dihed_twist_workflow(
             "--boltzmann-charges needs --multi-centroid >= 2; skipping charge rewrite",
         )
     elif boltzmann_charges:
-        from ffpopt.affdo.charges import (
+        from ffpopt.affdo.BoltzmannCharges import (
             boltzmann_average_mol2_charges,
             update_lib_charges_from_mol2,
         )
-        from ffpopt.affdo.profiles import generate_centroid_start_jsons
+        from ffpopt.affdo.CentroidProfiles import generate_centroid_start_jsons
 
         log_affdo(
             log,

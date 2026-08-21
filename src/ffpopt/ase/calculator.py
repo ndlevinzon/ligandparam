@@ -160,7 +160,7 @@ class GenCalculator(Calculator):
             mlp = DPModel(model)
             self.calc = QDpi2Calculator(mlp,self.charge,**kwargs)
         elif self.mode == "XTB":
-            from .tblite_scf import make_tblite_calculator
+            from .TbliteScf import make_tblite_calculator
 
             self.calc = make_tblite_calculator(charge=self.charge)
         elif "MACE" in self.mode:
@@ -273,7 +273,7 @@ class GenCalculator(Calculator):
                 raise Exception(f"Expected ani1x, ani2x, ani1ccx, or ani1xbb but received {self.mode}")
 
         elif "FENNIX" in self.mode:
-            from . fennolase import FENNIXCalculator
+            from .FennolAse import FENNIXCalculator
             import importlib
             import importlib.resources
             lmode = self.mode.lower()
@@ -300,7 +300,7 @@ class GenCalculator(Calculator):
                            'PM6-DH2', 'PM6-DH2X', 'PM6-D3H4', 'PM6-D3H4X', 'PMEP', 'PM7',
                            'PM7-TS', 'RM1']:
             
-            from . mopac import MOPAC            
+            from .Mopac import MOPAC            
             self.calc = MOPAC(method=self.mode, charge=self.charge)
             
         elif self.mode == "PM6ML":
@@ -404,7 +404,7 @@ class GenCalculator(Calculator):
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)
         if self.mode == "XTB":
-            from .tblite_scf import run_tblite_with_scf_retries
+            from .TbliteScf import run_tblite_with_scf_retries
 
             energy, forces, self.calc = run_tblite_with_scf_retries(
                 atoms, self.calc
@@ -556,7 +556,7 @@ class QDpi2Calculator(Calculator):
     nolabel=True
     
     def __init__(self,dpmodel,charge,force_components="both",**kwargs):
-        from .tblite_scf import make_tblite_calculator
+        from .TbliteScf import make_tblite_calculator
 
         self.dpmodel = dpmodel
         self.charge = charge
@@ -571,7 +571,7 @@ class QDpi2Calculator(Calculator):
                   system_changes=all_changes):
         import numpy as np
         import ase
-        from .tblite_scf import run_tblite_with_scf_retries
+        from .TbliteScf import run_tblite_with_scf_retries
 
         if properties is None:
             properties = self.implemented_properties
@@ -786,7 +786,7 @@ class PM6MLCalculator(Calculator):
         super().__init__(**kwargs)
         
         import torch
-        from . mopac import MOPAC
+        from .Mopac import MOPAC
         from torchmdnet.models.model import load_model
         
         #self.parameters['charge'] = charge

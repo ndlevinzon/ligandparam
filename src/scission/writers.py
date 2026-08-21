@@ -8,10 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .capping import plan_caps
-from .graph import build_graph
-from .models import CandidateFragment, FragmentConfig, Ligand, SelectedFragment, TorsionDefinition
-from .screen import cap_direction, cap_site_scan_margin
+from .Capping import plan_caps
+from .Graph import build_graph
+from .Models import CandidateFragment, FragmentConfig, Ligand, SelectedFragment, TorsionDefinition
+from .Screen import cap_direction, cap_site_scan_margin
 
 try:
     from rdkit import Chem
@@ -65,8 +65,8 @@ def _load_fragment_rdkit_mol(mol2_path: Path) -> "Chem.Mol | None":
     if Chem is None:
         return None
 
-    from .io import parse_mol2
-    from .rdkit_mol import build_rdkit_mol
+    from .LigandIo import parse_mol2
+    from .RdkitMol import build_rdkit_mol
 
     _, atoms, bonds = parse_mol2(mol2_path)
     return build_rdkit_mol(atoms, bonds)

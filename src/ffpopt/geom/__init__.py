@@ -9,8 +9,8 @@ __all__ = [
     "Geometry",
     "Constraints",
     "Restraints",
-    "linear_torsion",
-    "geometric",
+    "LinearTorsion",
+    "Geometric",
 ]
 
 _LAZY = {name: f".{name}" for name in __all__}

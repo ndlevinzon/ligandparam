@@ -7,7 +7,7 @@ from typing_extensions import override
 
 from rdkit import Chem
 
-from ligandparam.stages.abstractstage import AbstractStage
+from ligandparam.stages.AbstractStage import AbstractStage
 from ligandparam.stages import set_atom_pdb_info
 
 

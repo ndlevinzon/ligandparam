@@ -1,7 +1,7 @@
-ligandparam.multiresp.functions
+ligandparam.multiresp.Functions
 --------------------------------
 
-.. automodule:: ligandparam.multiresp.functions
+.. automodule:: ligandparam.multiresp.Functions
    :members:
    :undoc-members:
    :show-inheritance:

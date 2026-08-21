@@ -1,7 +1,7 @@
-ligandparam.stages.initialize
+ligandparam.stages.Initialize
 ==================================
 
-.. automodule:: ligandparam.stages.initialize
+.. automodule:: ligandparam.stages.Initialize
    :members:
    :undoc-members:
    :show-inheritance:

@@ -230,7 +230,7 @@ if __name__ == "__main__":
 
     oldq = params.q[ m.paridxs ]
 
-    from ffpopt.cpefit.parallel_esp import (
+    from ffpopt.cpefit.ParallelEsp import (
         run_abinitio_esp_conformers,
         run_cosmo_harmonics_conformers,
     )

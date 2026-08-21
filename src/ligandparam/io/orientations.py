@@ -128,7 +128,7 @@ def minimum_pairwise_rotation_angle(quaternions: np.ndarray, degrees: bool = Tru
 
 
 def legacy_euler_kwargs() -> dict:
-    """Keyword arguments for :class:`~ligandparam.stages.gaussian.StageGaussianRotation` in legacy mode."""
+    """Keyword arguments for :class:`~ligandparam.stages.Gaussian.StageGaussianRotation` in legacy mode."""
     return {
         "orientation_protocol": "legacy_euler",
         "alpha": list(LEGACY_EULER_ALPHA),

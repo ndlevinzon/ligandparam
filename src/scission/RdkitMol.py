@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .models import Atom, Bond
+from .Models import Atom, Bond
 
 try:
     from rdkit import Chem

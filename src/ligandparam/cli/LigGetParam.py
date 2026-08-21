@@ -1,5 +1,8 @@
 """CLI entry point for batch ligand parameterization."""
 
+from __future__ import annotations
+
+import logging
 from pathlib import Path
 
 from ligandparam.stages import StagePdbNameFixer
@@ -28,7 +31,7 @@ def set_file_logger(
     logger : logging.Logger
         A configured logger instance that writes logs to the specified file.
     """
-    from ligandparam.log import set_file_logger as _set_file_logger
+    from ligandparam.Log import set_file_logger as _set_file_logger
 
     if logname is None:
         logname = Path(logfilename).stem
@@ -142,7 +145,7 @@ def worker(
 
 def recipe_selector(recipe_name: str, **kwargs):
     """Select and return the appropriate recipe class based on the recipe name."""
-    from ligandparam.recipes.registry import available_recipes, get_recipe
+    from ligandparam.recipes.Registry import available_recipes, get_recipe
 
     try:
         return get_recipe(recipe_name, **kwargs)
@@ -157,7 +160,7 @@ def main():
     """Parse command line arguments and execute the ligand parameterization worker."""
     import argparse
 
-    from ffpopt.runtime.console import print_startup_banner
+    from ffpopt.runtime.Console import print_startup_banner
 
     parser = argparse.ArgumentParser(description="Ligand parameterization CLI")
     parser.add_argument("-i", "--input", type=str, required=True, help="Input PDB file with ligand")

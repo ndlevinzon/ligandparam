@@ -3,8 +3,8 @@ from typing import Union
 
 from typing_extensions import override
 
-from ligandparam.parametrization import Recipe, configure_gaussian_recipe
-from ligandparam.recipes.common import (
+from ligandparam.Parametrization import Recipe, configure_gaussian_recipe
+from ligandparam.recipes.Common import (
     charge_update_parmchk_leap_stages,
     high_theory_lazy_resp_stages,
     init_normalize_center_stages,

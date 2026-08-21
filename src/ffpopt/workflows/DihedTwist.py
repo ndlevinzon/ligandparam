@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Callable, Optional
 
-from ffpopt.workflows.helpers import (
+from ffpopt.workflows.TwistHelpers import (
     PathLike,
     _apply_fit_and_prepare,
     _as_path,
@@ -35,14 +35,14 @@ def run_batched_dihed_twist_workflow(
 ) -> dict:
     """Run twist in sequential bond batches (coupled together, then apply).
 
-    Conservative packing (:mod:`ffpopt.workflows.bond_batches`): keep covalently nearby
+    Conservative packing (:mod:`ffpopt.workflows.BondBatches`): keep covalently nearby
     rotors in the same joint fit when possible; split oversized clusters into
     contiguous chunks of ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2) and update
     the MM between chunks so later batches see prior fits.
     """
     import shutil
 
-    from ffpopt.workflows.bond_batches import (
+    from ffpopt.workflows.BondBatches import (
         adjacency_from_parmed,
         pack_rotatable_bond_batches,
     )
@@ -209,7 +209,7 @@ def run_dihed_twist_workflow(
     2), covalently nearby rotors are packed into sequential batches via
     :func:`run_batched_dihed_twist_workflow` unless ``bond_batching=False``.
     """
-    from ffpopt.workflows.bond_batches import should_batch_bonds
+    from ffpopt.workflows.BondBatches import should_batch_bonds
 
     bonds_early = normalize_bond_pairs0(bond)
     do_batch = bond_batching
@@ -263,7 +263,7 @@ def run_dihed_twist_workflow(
     )
     budget_tot = max(1, int(budget_total if budget_total is not None else nproc))
 
-    from ffpopt.runtime.fast_wavefront import (
+    from ffpopt.runtime.FastWavefront import (
         apply_fast_wavefront_presets,
         fast_wavefront_enabled,
         prefer_wavefront_depth,
@@ -286,7 +286,7 @@ def run_dihed_twist_workflow(
         """Return cores for this scan phase (re-lease when a shared budget exists)."""
         if budget_path is None or not budget_owner:
             return nproc
-        from ffpopt.runtime.cpu_budget import CpuBudget
+        from ffpopt.runtime.CpuBudget import CpuBudget
 
         budget = CpuBudget(budget_path, budget_tot)
         leased = max(1, int(budget.lease(str(budget_owner))))
@@ -303,7 +303,7 @@ def run_dihed_twist_workflow(
         """Drop this fragment's lease during serial non-scan work so siblings grow."""
         if budget_path is None or not budget_owner:
             return
-        from ffpopt.runtime.cpu_budget import CpuBudget
+        from ffpopt.runtime.CpuBudget import CpuBudget
 
         try:
             CpuBudget(budget_path, budget_tot).release(str(budget_owner))
@@ -355,7 +355,7 @@ def run_dihed_twist_workflow(
                 standard_kwargs[key] = fast_knobs[key]
     prefer_depth = prefer_wavefront_depth(model=model, fast=fast_on)
 
-    from ffpopt.affdo.log import describe_affdo_extras, log_affdo
+    from ffpopt.affdo.AffdoLog import describe_affdo_extras, log_affdo
 
     affdo_line = describe_affdo_extras(
         multi_centroid=multi_centroid,

@@ -1,7 +1,7 @@
-ligandparam.io.orientations
+ligandparam.io.Orientations
 ---------------------------
 
-.. automodule:: ligandparam.io.orientations
+.. automodule:: ligandparam.io.Orientations
    :members:
    :undoc-members:
    :show-inheritance:

@@ -17,8 +17,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from ligandparam.io.amber_bundle import resolve_getparam_bundle
-from scission.cli import main as scission_main
+from ligandparam.io.AmberBundle import resolve_getparam_bundle
+from scission.Cli import main as scission_main
 
 
 def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
@@ -65,7 +65,7 @@ def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-scission`` / convenience wrapper."""
-    from ffpopt.runtime.console import print_startup_banner
+    from ffpopt.runtime.Console import print_startup_banner
 
     raw = list(sys.argv[1:] if argv is None else argv)
     if not any(a in ("-h", "--help") for a in raw):

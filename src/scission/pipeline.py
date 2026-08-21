@@ -13,12 +13,12 @@ try:
 except ImportError:  # pragma: no cover
     rdkit = None
 
-from .io import load_ligand
-from .models import FragmentConfig, FragmentationResult, InputBundle
-from .optimize import select_fragments
-from .parallel import screen_torsions, write_selected_fragments
-from .torsions import enumerate_torsions, match_central_bond_smarts
-from .writers import write_fragment_index, write_summary
+from .LigandIo import load_ligand
+from .Models import FragmentConfig, FragmentationResult, InputBundle
+from .Optimize import select_fragments
+from .Parallel import screen_torsions, write_selected_fragments
+from .Torsions import enumerate_torsions, match_central_bond_smarts
+from .Writers import write_fragment_index, write_summary
 
 
 def fragment_ligand(

@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Union
 from typing_extensions import override
 
-from ligandparam.driver import Driver
-from ligandparam.log import get_logger, set_stream_logger, set_file_logger
+from ligandparam.Driver import Driver
+from ligandparam.Log import get_logger, set_stream_logger, set_file_logger
 
 
 def fresh_recipe_defaults() -> dict[str, Any]:
@@ -103,7 +103,7 @@ def configure_gaussian_recipe(
         setattr(obj, opt, kwargs.pop(opt, None))
 
     if with_orientation:
-        from ligandparam.io.orientations import DEFAULT_ORIENTATION_PROTOCOL
+        from ligandparam.io.Orientations import DEFAULT_ORIENTATION_PROTOCOL
 
         obj.orientation_protocol = kwargs.pop(
             "orientation_protocol", DEFAULT_ORIENTATION_PROTOCOL
@@ -118,7 +118,7 @@ def configure_gaussian_recipe(
                 kwargs.pop(key, None)
 
     if with_dihed:
-        from ligandparam.recipes.dihed_options import apply_dihed_options
+        from ligandparam.recipes.DihedOptions import apply_dihed_options
 
         apply_dihed_options(obj, kwargs)
 
@@ -129,7 +129,7 @@ class Parametrization(Driver):
     """Base ligand parameterization workflow.
 
     Subclasses (or callers) populate ``self.stages`` and then call
-    :meth:`~ligandparam.driver.Driver.execute`. See :class:`Recipe` for the
+    :meth:`~ligandparam.Driver.Driver.execute`. See :class:`Recipe` for the
     thin alias used by the built-in recipe modules.
     """
 

@@ -962,7 +962,7 @@ class ListOfStruct(object):
         
             
     def BuildCalc(self,struct,calc=None):
-        from . ase.calculator import GenCalculator
+        from ffpopt.ase.Calculator import GenCalculator
 
         if calc is None:
             if self.calc is not None:
@@ -1051,14 +1051,14 @@ class ListOfStruct(object):
             res = s.restraints
             
         if res is not None:
-            from . ase.calculator import RestrainedCalculator
+            from ffpopt.ase.Calculator import RestrainedCalculator
             rcalc = RestrainedCalculator(calc,res)
             
         return rcalc
 
 
 
-from . ase.calculator import GenCalculator
+from ffpopt.ase.Calculator import GenCalculator
 from ase.calculators.calculator import Calculator,all_changes
 
 class RestCalculator(GenCalculator):

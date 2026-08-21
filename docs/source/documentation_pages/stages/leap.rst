@@ -1,7 +1,7 @@
-ligandparam.stages.leap
+ligandparam.stages.Leap
 ==================================
 
-.. automodule:: ligandparam.stages.leap
+.. automodule:: ligandparam.stages.Leap
    :members:
    :undoc-members:
    :show-inheritance:

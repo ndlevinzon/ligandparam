@@ -67,7 +67,7 @@ def _ase_optimizer_classes():
     Under fast wavefront mode, try LBFGS only (skip BFGS→FIRE ladder).
     """
     from ase.optimize import BFGS, FIRE, LBFGS
-    from ffpopt.runtime.fast_wavefront import fast_wavefront_enabled
+    from ffpopt.runtime.FastWavefront import fast_wavefront_enabled
 
     if fast_wavefront_enabled(None):
         return (("LBFGS", LBFGS),)
@@ -130,7 +130,7 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     origatoms = struct.GetASEAtoms()
     myatoms = struct.GetASEAtoms()
     try:
-        from ffpopt.geom.geometric import get_persistent_calc
+        from ffpopt.geom.Geometric import get_persistent_calc
 
         calc = get_persistent_calc(los, struct, reslist=reslist)
     except Exception:
@@ -233,7 +233,7 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     if accepted_how is not None:
         out.data["ase_opt_recovery"] = accepted_how
 
-    from ffpopt.runtime.fast_wavefront import geomopt_verbose
+    from ffpopt.runtime.FastWavefront import geomopt_verbose
 
     if geomopt_verbose():
         from ffpopt.geom.Constraints import FillConstraints
@@ -480,7 +480,7 @@ def GeomOpt_GEOMETRIC(
     """ Perform a geometry optimization using the GEOMETRIC program.
 
     By default runs geomeTRIC **in-process** with a persistent ASE calculator
-    cached on ``los`` (avoids spawning ``python -m ffpopt.geom.geometric``
+    cached on ``los`` (avoids spawning ``python -m ffpopt.geom.Geometric``
     per call). Set ``FFPOPT_GEOMETRIC_SUBPROCESS=1`` to restore the legacy
     subprocess + watchdog path.
 
@@ -521,13 +521,13 @@ def GeomOpt_GEOMETRIC(
     from ffpopt.geom.Restraints import RestraintList
     from ffpopt.geom.Constraints import ApplyConstraints, to_geometric
     from ffpopt.Struct import ListOfStruct
-    from ffpopt.geom.geometric import (
+    from ffpopt.geom.Geometric import (
         get_persistent_calc,
         read_last_optim_xyz,
         run_geometric_robust,
         use_geometric_subprocess,
     )
-    from ffpopt.geom.linear_torsion import has_near_linear_dihedral_bend
+    from ffpopt.geom.LinearTorsion import has_near_linear_dihedral_bend
     from tempfile import mkstemp
     from pathlib import Path
 
@@ -588,7 +588,7 @@ def GeomOpt_GEOMETRIC(
         myatoms = ApplyConstraints(myatoms, cons, graph=struct.GetGraph())
 
     if target_cons is not None and has_near_linear_dihedral_bend(myatoms, target_cons):
-        from ffpopt.geom.linear_torsion import log_linear_torsion
+        from ffpopt.geom.LinearTorsion import log_linear_torsion
 
         log_linear_torsion(
             "[ffpopt] near-linear bend in constrained torsion; "
@@ -705,7 +705,7 @@ def GeomOpt_GEOMETRIC(
     if isinstance(result, dict) and result.get("recovery"):
         out.data["geometric_recovery"] = result["recovery"]
 
-    from ffpopt.runtime.fast_wavefront import geomopt_verbose
+    from ffpopt.runtime.FastWavefront import geomopt_verbose
 
     if geomopt_verbose():
         from ffpopt.geom.Constraints import FillConstraints
@@ -927,13 +927,13 @@ def GeomOpt_LINEAR_TORSION(los, struct, constraints=None, restraints=None):
 
     from ffpopt.geom.Constraints import ApplyConstraints, ConstraintList
     from ffpopt.geom.Restraints import RestraintList
-    from ffpopt.geom.linear_torsion import (
+    from ffpopt.geom.LinearTorsion import (
         find_near_linear_bends,
         log_linear_torsion,
         run_linear_torsion_ase_opt,
         unkink_near_linear_bends,
     )
-    from ffpopt.geom.geometric import get_persistent_calc
+    from ffpopt.geom.Geometric import get_persistent_calc
 
     reslist = None
     if struct.restraints is not None and len(struct.restraints.rests) > 0:
@@ -1054,7 +1054,7 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
     ffpopt.Struct.Struct
         The optimized geometry with updated positions, forces, and energy
     """
-    from ffpopt.geom.linear_torsion import is_linear_torsion_error
+    from ffpopt.geom.LinearTorsion import is_linear_torsion_error
 
     if los.args.no_opt:
         out = GeomOpt_SinglePoint(los,struct,constraints,restraints)
@@ -1066,7 +1066,7 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
                 _geomopt_fallback_note("ASE", e, "linear-torsion")
                 out = GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
             else:
-                from ffpopt.runtime.fast_wavefront import fast_wavefront_enabled
+                from ffpopt.runtime.FastWavefront import fast_wavefront_enabled
 
                 # Under --fast, skip the expensive geomeTRIC ladder after ASE
                 # failure; try linear-torsion rescue then re-raise.

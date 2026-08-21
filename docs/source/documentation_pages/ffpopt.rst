@@ -25,7 +25,7 @@ Canonical imports:
 
    from ffpopt.workflows import run_fragmented_dihed_twist_workflow
    from ffpopt.scan.WaveFront import run_dihed_wavefront
-   from ffpopt.runtime.console import attach_console_handlers
+   from ffpopt.runtime.Console import attach_console_handlers
 
 Primary API
 -----------
@@ -60,7 +60,7 @@ Wavefront evaluate policy
 -------------------------
 
 Profile minima and neighbor spawn share one policy in
-``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum`` (1-D and N-D):
+``ffpopt.scan.WavefrontMixins.evaluate_wavefront_minimum`` (1-D and N-D):
 
 * Soft first-at-bin: store and **spawn once** (coverage seed).
 * Soft improves soft min: update; no spawn.
@@ -84,7 +84,7 @@ compatibility.
 ligandparam wrapper
 -------------------
 
-:class:`~ligandparam.stages.ffpopt_dihed.StageDihedTwistCorrection` and the
+:class:`~ligandparam.stages.FfpoptDihed.StageDihedTwistCorrection` and the
 ``lig-dihed-correct`` CLI wrap the fragmented workflow. Prefer those for
 everyday use after ``lig-getparam``.
 

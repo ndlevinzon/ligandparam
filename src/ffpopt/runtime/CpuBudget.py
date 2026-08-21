@@ -22,7 +22,7 @@ PathLike = str | Path
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    from .progress_board import atomic_write_text
+    from .ProgressBoard import atomic_write_text
 
     atomic_write_text(path, text)
 
@@ -31,7 +31,7 @@ class _DirLock:
     """Exclusive lock via ``mkdir`` (works on NFS / Windows without extras)."""
 
     def __init__(self, lock_dir: Path, *, timeout_sec: float = 30.0) -> None:
-        from .progress_board import DirLock
+        from .ProgressBoard import DirLock
 
         self._lock = DirLock(lock_dir, timeout_sec=timeout_sec)
 

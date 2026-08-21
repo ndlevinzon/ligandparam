@@ -40,8 +40,8 @@ What pulls the score **up**
   (``lig-getparam``, ``lig-dihed-correct``, ``lig-scission``).
 * **Recipe + stage pipeline:** workflows are ordered lists of stages.
   Recipes compose; stages do one job. Shared builders live in
-  :mod:`ligandparam.recipes.common`.
-* **Template method on stages:** :class:`~ligandparam.stages.abstractstage.AbstractStage`
+  :mod:`ligandparam.recipes.Common`.
+* **Template method on stages:** :class:`~ligandparam.stages.AbstractStage.AbstractStage`
   owns logging / setup / ``new_files`` tracking; thin stages implement
   ``_run``.
 * **Write-once helpers:** Gaussian recipe configure, wavefront mixins
@@ -62,7 +62,7 @@ What pulls the score **down**
 
 * **God modules** still dominate absolute size, especially
   ``ffpopt.dihed.Dihedrals``, ``ffpopt.scan.WaveFront*``,
-  ``ligandparam.multiresp.parmhelper``, and ``ffpopt.geom.GeomOpt``.
+  ``ligandparam.multiresp.ParmHelper``, and ``ffpopt.geom.GeomOpt``.
   Twist orchestration now lives in ``ffpopt.workflows`` (split by
   entry point). They are coherent domains, but they still raise
   change risk.
@@ -110,14 +110,14 @@ explosion.
 **O — Open/closed**
 
 * New parameterization workflows should **compose** stage builders in
-  :mod:`ligandparam.recipes.common` (or add a small builder) rather than
+  :mod:`ligandparam.recipes.Common` (or add a small builder) rather than
   copy-paste a 150-line ``setup()``.
-* New wavefront policy belongs in :mod:`ffpopt.scan.wavefront_mixins`
+* New wavefront policy belongs in :mod:`ffpopt.scan.WavefrontMixins`
   (or ``runtime/``), not duplicated in 1-D and N-D engines.
 
 **L — Liskov substitution**
 
-* Any :class:`~ligandparam.stages.abstractstage.AbstractStage` subclass
+* Any :class:`~ligandparam.stages.AbstractStage.AbstractStage` subclass
   must be runnable via ``Driver.execute`` / ``Recipe.execute``.
 * Stages that cannot use the base template must still honor the
   ``execute(dry_run=…, nproc=…, mem=…)`` contract.
@@ -139,10 +139,10 @@ explosion.
 DRY (Don't Repeat Yourself)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* Shared recipe chunks: :mod:`ligandparam.recipes.common`.
+* Shared recipe chunks: :mod:`ligandparam.recipes.Common`.
 * Shared recipe ``__init__``: ``configure_gaussian_recipe``.
 * Shared wavefront IPC / soft-opt / drain loop:
-  :mod:`ffpopt.scan.wavefront_mixins`.
+  :mod:`ffpopt.scan.WavefrontMixins`.
 * Shared console / CPU / pool helpers: ``ffpopt.runtime.*``.
 
 Write once. Prefer a slightly larger helper over three near-copies.
@@ -192,8 +192,8 @@ How to extend safely
 --------------------
 
 1. **New recipe:** register it; build ``setup()`` from
-   :mod:`ligandparam.recipes.common` builders; rely on
-   :class:`~ligandparam.parametrization.Recipe` ``execute`` logging.
+   :mod:`ligandparam.recipes.Common` builders; rely on
+   :class:`~ligandparam.Parametrization.Recipe` ``execute`` logging.
 2. **New stage:** subclass ``AbstractStage``, implement ``_run`` unless
    you need custom control flow; keep constructor kwargs explicit.
 3. **Wavefront behavior change:** change mixins / policy helpers first;

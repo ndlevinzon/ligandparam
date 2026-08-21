@@ -2,8 +2,8 @@ from abc import ABCMeta
 from pathlib import Path
 from typing import Optional, Union, Any
 
-from ligandparam.io.coordinates import Coordinates
-from ligandparam.log import get_logger
+from ligandparam.io.Coordinates import Coordinates
+from ligandparam.Log import get_logger
 import warnings
 
 

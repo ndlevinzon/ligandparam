@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ligandparam.io.smiles import PDBFromSMILES
+from ligandparam.io.Smiles import PDBFromSMILES
 
 
 def smiles_to_pdb(smiles: str, pdb_filename: str, resname: str = "LIG") -> None:

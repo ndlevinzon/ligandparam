@@ -1,8 +1,8 @@
 
-ligandparam.multiresp.mdinutils
+ligandparam.multiresp.MdinUtils
 --------------------------------
 
-.. automodule:: ligandparam.multiresp.mdinutils
+.. automodule:: ligandparam.multiresp.MdinUtils
    :members:
    :undoc-members:
    :show-inheritance:

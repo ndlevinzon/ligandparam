@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
-from ffpopt.runtime.nondaemon_pool import make_nondaemon_spawn_pool
+from ffpopt.runtime.NondaemonPool import make_nondaemon_spawn_pool
 
 
 _LOG = logging.getLogger("ffpopt.workflows")
@@ -52,7 +52,7 @@ def _resolve_logger(logger: logging.Logger | None) -> logging.Logger:
     log = logger if logger is not None else _LOG
     name = getattr(log, "name", "") or ""
     if name == "ffpopt" or name.startswith("ffpopt."):
-        from ffpopt.runtime.console import attach_console_handlers
+        from ffpopt.runtime.Console import attach_console_handlers
 
         attach_console_handlers(log, tag="ffpopt")
     return log
@@ -193,8 +193,8 @@ def _parent_paths_from_args(
 ) -> tuple[Path, Path, Path]:
     """Resolve parent mol2/lib/frcmod from paths or a duck-typed bundle.
 
-    Accepts :class:`~ligandparam.io.amber_bundle.AmberLigandBundle`
-    (``mol2`` / ``lib`` / ``frcmod``) or :class:`scission.models.InputBundle`
+    Accepts :class:`~ligandparam.io.AmberBundle.AmberLigandBundle`
+    (``mol2`` / ``lib`` / ``frcmod``) or :class:`scission.Models.InputBundle`
     (``mol2_path`` / ``lib_path`` / ``frcmod_path``).
     """
     if bundle is not None:
@@ -362,7 +362,7 @@ def _wf_kwargs_for_scan_model(model: str, wf_kwargs: dict) -> dict:
     default to ASE-first. Explicit ``geometric_opt=True`` in ``wf_kwargs``
     still wins.
     """
-    from ffpopt.runtime.fast_wavefront import (
+    from ffpopt.runtime.FastWavefront import (
         fast_wavefront_enabled,
         prefer_ase_first_model,
     )
@@ -470,7 +470,7 @@ def _run_one_scan(
 
 def _slim_scan_result(scan_result: Optional[dict]) -> Optional[dict]:
     """Drop heavy ``wf_run`` objects so bond-pool IPC stays picklable."""
-    from ffpopt.runtime.ipc_slim import slim_scan_result
+    from ffpopt.runtime.SlimIpc import slim_scan_result
 
     return slim_scan_result(scan_result)
 
@@ -545,8 +545,8 @@ def _execute_bond_scan_jobs(
     if not jobs:
         return []
 
-    from ffpopt.runtime.fast_wavefront import prefer_bond_pool_depth
-    from ffpopt.runtime.nondaemon_pool import in_spawn_worker
+    from ffpopt.runtime.FastWavefront import prefer_bond_pool_depth
+    from ffpopt.runtime.NondaemonPool import in_spawn_worker
     from ffpopt.scan.WaveFront import close_reused_wavefront_pool
 
     models = {str(j.get("model") or "") for j in jobs}
@@ -667,10 +667,10 @@ def _run_hl_and_orig_scans(
     n_cent = max(0, int(multi_centroid or 0))
 
     if n_cent >= 2:
-        from ffpopt.affdo.profiles import generate_centroid_start_jsons
-        from ffpopt.affdo.profiles import pick_smoothest_profile, promote_profile_files
+        from ffpopt.affdo.CentroidProfiles import generate_centroid_start_jsons
+        from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, promote_profile_files
 
-        from ffpopt.affdo.log import log_affdo
+        from ffpopt.affdo.AffdoLog import log_affdo
 
         cent_starts = generate_centroid_start_jsons(
             inp,
@@ -911,7 +911,7 @@ def _run_gendihedfit(
     log.info("[twist] GenDihedFit -> %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
     extra = list(fit_cli_args or [])
     if extra:
-        from ffpopt.affdo.log import log_affdo
+        from ffpopt.affdo.AffdoLog import log_affdo
 
         log_affdo(log, "GenDihedFit extra flags: %s", " ".join(str(x) for x in extra))
     _run_ffpopt_bin(

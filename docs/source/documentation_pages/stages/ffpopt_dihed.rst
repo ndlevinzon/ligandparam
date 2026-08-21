@@ -1,7 +1,7 @@
-ligandparam.stages.ffpopt_dihed
+ligandparam.stages.FfpoptDihed
 ===============================
 
-.. automodule:: ligandparam.stages.ffpopt_dihed
+.. automodule:: ligandparam.stages.FfpoptDihed
    :members:
    :undoc-members:
    :show-inheritance:

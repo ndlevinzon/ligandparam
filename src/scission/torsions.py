@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import networkx as nx
 
-from .graph import build_graph, heavy_neighbors, ring_bond_set
-from .models import Ligand, TorsionDefinition
+from .Graph import build_graph, heavy_neighbors, ring_bond_set
+from .Models import Ligand, TorsionDefinition
 
 try:
     from rdkit import Chem
 except ImportError:  # pragma: no cover
     Chem = None
 
-from .rdkit_mol import build_rdkit_mol
+from .RdkitMol import build_rdkit_mol
 
 
 def _is_single_bond(bond_type: str) -> bool:

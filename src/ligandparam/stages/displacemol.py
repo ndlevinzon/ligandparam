@@ -6,7 +6,7 @@ import MDAnalysis as mda
 
 from pathlib import Path
 
-from ligandparam.stages.abstractstage import AbstractStage
+from ligandparam.stages.AbstractStage import AbstractStage
 from MDAnalysis.topology.guessers import guess_masses
 from MDAnalysis.topology.guessers import guess_types
 

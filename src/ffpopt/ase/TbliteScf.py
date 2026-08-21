@@ -3,8 +3,8 @@
 Constrained dihedral steps often land on strained geometries where the
 default tblite SCC (250 cycles, 300 K, SAD guess) fails. This module
 provides stabler defaults and an escalating retry ladder used by
-:class:`~ffpopt.ase.calculator.GenCalculator` and
-:class:`~ffpopt.ase.calculator.QDpi2Calculator`.
+:class:`~ffpopt.ase.Calculator.GenCalculator` and
+:class:`~ffpopt.ase.Calculator.QDpi2Calculator`.
 """
 
 from __future__ import annotations

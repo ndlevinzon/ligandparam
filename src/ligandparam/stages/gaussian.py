@@ -9,17 +9,17 @@ import MDAnalysis as mda
 from pathlib import Path
 import shutil as sh
 
-from ligandparam.stages.abstractstage import AbstractStage
-from ligandparam.io.coordinates import Coordinates, SimpleXYZ, Mol2Writer
-from ligandparam.io.gaussian_io import GaussianWriter, GaussianInput, GaussianReader
-from ligandparam.io.orientations import (
+from ligandparam.stages.AbstractStage import AbstractStage
+from ligandparam.io.Coordinates import Coordinates, SimpleXYZ, Mol2Writer
+from ligandparam.io.GaussianIo import GaussianWriter, GaussianInput, GaussianReader
+from ligandparam.io.Orientations import (
     get_quaternion_pack,
     minimum_pairwise_rotation_angle,
     quaternion_to_matrix,
 )
-from ligandparam.interfaces import Gaussian, Antechamber
-from ligandparam.log import get_logger
-from ffpopt.runtime.fast_wavefront import split_core_budget as split_gaussian_job_budget
+from ligandparam.Interfaces import Gaussian, Antechamber
+from ligandparam.Log import get_logger
+from ffpopt.runtime.FastWavefront import split_core_budget as split_gaussian_job_budget
 
 #
 logger = logging.getLogger("ligandparam.gaussian")
@@ -118,7 +118,7 @@ def _orientation_id_from_paths(in_com: str | Path, out_log: str | Path) -> str:
 
 def _run_gaussian_rotation_job(payload: dict) -> dict:
     """Run one rotation ESP job (spawn-pool worker; must be picklable)."""
-    from ffpopt.runtime.progress_board import JobProgressStore
+    from ffpopt.runtime.ProgressBoard import JobProgressStore
 
     cwd = Path(payload["cwd"])
     in_com = payload["in_com"]
@@ -562,7 +562,7 @@ class StageGaussianRotation(AbstractStage):
       ``beta``, ``gamma`` lists)
 
     Output logs are named ``{out_gaussian_label}_rot_*.log`` so
-    :class:`~ligandparam.stages.resp.StageMultiRespFit` can discover them
+    :class:`~ligandparam.stages.Resp.StageMultiRespFit` can discover them
     regardless of protocol.
 
     Parameters
@@ -733,7 +733,7 @@ class StageGaussianRotation(AbstractStage):
         """
         import multiprocessing as mp
 
-        from ffpopt.runtime.progress_board import JobBoardWatcher, JobProgressStore
+        from ffpopt.runtime.ProgressBoard import JobBoardWatcher, JobProgressStore
 
         # Prefer self. so subclasses / tests can override or patch setup.
         self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)

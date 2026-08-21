@@ -14,7 +14,7 @@ from ffpopt.geom.GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_reco
 from ffpopt.geom.Constraints import Constraint
 from ffpopt.Struct import ListOfStruct, Struct
 
-from .wavefront_mixins import (
+from .WavefrontMixins import (
     apply_slim_node_result,
     atomic_pickle_dump,
     clear_los_calc,
@@ -55,14 +55,14 @@ def close_reused_wavefront_pool() -> None:
 
 
 def _pool_reuse_key(los: ListOfStruct, struct: Struct, nproc: int):
-    from ffpopt.geom.geometric import calc_cache_key
+    from ffpopt.geom.Geometric import calc_cache_key
 
     return (int(nproc),) + tuple(calc_cache_key(los, struct))
 
 
 def _acquire_wavefront_pool(nproc: int, los, con, struct):
     """Return ``(pool, owns_pool)``; reuse workers when model/parm match."""
-    from ffpopt.runtime.nondaemon_pool import make_wavefront_spawn_pool
+    from ffpopt.runtime.NondaemonPool import make_wavefront_spawn_pool
 
     key = _pool_reuse_key(los, struct, nproc)
     if _REUSED_POOL["pool"] is not None and _REUSED_POOL["key"] == key:
@@ -305,7 +305,7 @@ class WavefrontNode:
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 try:
-                    from ffpopt.geom.geometric import refine_qdpi2_energy
+                    from ffpopt.geom.Geometric import refine_qdpi2_energy
 
                     refined = refine_qdpi2_energy(self.los, self.opt_geom)
                     if refined is not None:
@@ -860,7 +860,7 @@ class Wavefront:
                     self.nproc, self.los, self.con, self.struct
                 )
 
-        from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
+        from ffpopt.runtime.FastWavefront import wf_checkpoint_every
         checkpoint_every = wf_checkpoint_every(self.nproc)
         run_mp_spawn_drain_loop(
             pending=pending,
@@ -1077,10 +1077,10 @@ class Wavefront:
     def _evaluate_node(self, node: WavefrontNode) -> None:
         """Update per-angle minima and set ``node.active`` (spawn) via shared policy.
 
-        See :func:`ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum`.
+        See :func:`ffpopt.scan.WavefrontMixins.evaluate_wavefront_minimum`.
         ``convergence_threshold`` is kcal/mol; node energies are eV.
         """
-        from ffpopt.scan.wavefront_mixins import (
+        from ffpopt.scan.WavefrontMixins import (
             evaluate_wavefront_minimum,
             kcal_threshold_to_ev,
         )

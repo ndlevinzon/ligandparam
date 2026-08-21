@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .models import CandidateFragment
+from .Models import CandidateFragment
 
 
 def _charge_penalty(candidate: CandidateFragment) -> float:

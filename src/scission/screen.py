@@ -6,9 +6,9 @@ from dataclasses import dataclass
 import networkx as nx
 import numpy as np
 
-from .capping import bond_type_to_order, heavy_cap_bond_length
-from .graph import build_graph, retained_distance_map
-from .models import CandidateFragment, ClashThresholds, Ligand, TorsionDefinition
+from .Capping import bond_type_to_order, heavy_cap_bond_length
+from .Graph import build_graph, retained_distance_map
+from .Models import CandidateFragment, ClashThresholds, Ligand, TorsionDefinition
 
 VDW_RADII = {
     "H": 1.20,

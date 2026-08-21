@@ -623,10 +623,10 @@ def argparse2geometric(jsonfname,args):
    asestr = ",".join( [ '"%s": "%s"'%(key,asek[key]) for key in asek ])
    asestr = "{%s}"%(asestr)
 
-   # Invoke via ffpopt.geom.geometric so constrained IC recovery cannot
+   # Invoke via ffpopt.geom.Geometric so constrained IC recovery cannot
    # abort on geomeTRIC's unsupported Cartesian fallback (see that module).
    import sys
-   cmds = [sys.executable, "-m", "ffpopt.geom.geometric",
+   cmds = [sys.executable, "-m", "ffpopt.geom.Geometric",
            "--engine", "ase",
            "--ase-class", "ffpopt.Struct.RestCalculator",
            "--ase-kwargs", asestr ] + geoopts

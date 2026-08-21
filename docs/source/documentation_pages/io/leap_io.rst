@@ -1,7 +1,7 @@
-ligandparam.io.leap_io
+ligandparam.io.LeapIo
 ======================
 
-.. automodule:: ligandparam.io.leap_io
+.. automodule:: ligandparam.io.LeapIo
    :members:
    :undoc-members:
    :show-inheritance:

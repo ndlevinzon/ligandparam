@@ -32,7 +32,7 @@ from ffpopt.geom.GeomOpt import (
 from ffpopt.geom.Constraints import ConstraintList
 from ffpopt.geom.Restraints import RestraintList
 
-from .wavefront_mixins import (
+from .WavefrontMixins import (
     apply_slim_node_result,
     atomic_pickle_dump,
     clear_los_calc,
@@ -306,7 +306,7 @@ class WavefrontNode(object):
                     )
                 self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
                 try:
-                    from ffpopt.geom.geometric import refine_qdpi2_energy
+                    from ffpopt.geom.Geometric import refine_qdpi2_energy
 
                     refined = refine_qdpi2_energy(self.los, self.opt_geom)
                     if refined is not None:
@@ -787,7 +787,7 @@ class Wavefront(object):
             if external is not None:
                 pool = external
             else:
-                from ffpopt.runtime.nondaemon_pool import make_wavefront_spawn_pool
+                from ffpopt.runtime.NondaemonPool import make_wavefront_spawn_pool
 
                 template = self.los.structs[0] if getattr(self.los, "structs", None) else None
                 if template is None:
@@ -804,7 +804,7 @@ class Wavefront(object):
                 )
                 owns_pool = True
 
-        from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
+        from ffpopt.runtime.FastWavefront import wf_checkpoint_every
         checkpoint_every = wf_checkpoint_every(self.nproc)
         run_mp_spawn_drain_loop(
             pending=pending,
@@ -902,7 +902,7 @@ class Wavefront(object):
         self._resume_queue = list(pending)
         self.save_checkpoint()
 
-        from ffpopt.runtime.fast_wavefront import wf_checkpoint_every
+        from ffpopt.runtime.FastWavefront import wf_checkpoint_every
 
         checkpoint_every = max(wf_checkpoint_every(max(size - 1, 1)), 1)
         run_mpi_spawn_drain_loop(
@@ -1111,9 +1111,9 @@ class Wavefront(object):
     def _evaluate_node(self, node: WavefrontNode) -> None:
         """Update per-bin minima and set ``node.active`` (spawn) via shared policy.
 
-        See :func:`ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum`.
+        See :func:`ffpopt.scan.WavefrontMixins.evaluate_wavefront_minimum`.
         """
-        from ffpopt.scan.wavefront_mixins import (
+        from ffpopt.scan.WavefrontMixins import (
             evaluate_wavefront_minimum,
             kcal_threshold_to_ev,
         )

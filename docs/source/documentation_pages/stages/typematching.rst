@@ -1,7 +1,7 @@
-ligandparam.stages.typematching
+ligandparam.stages.TypeMatching
 ==================================
 
-.. automodule:: ligandparam.stages.typematching
+.. automodule:: ligandparam.stages.TypeMatching
    :members:
    :undoc-members:
    :show-inheritance:

@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
-    "console",
-    "progress_board",
-    "cpu_budget",
-    "fast_wavefront",
+    "Console",
+    "ProgressBoard",
+    "CpuBudget",
+    "FastWavefront",
+    "NondaemonPool",
+    "SlimIpc",
 ]
 
 _LAZY = {name: f".{name}" for name in __all__}

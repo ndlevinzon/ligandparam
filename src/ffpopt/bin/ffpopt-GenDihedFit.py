@@ -83,8 +83,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.model="sander"
 
-    from ffpopt.affdo.log import print_affdo
-    from ffpopt.dihed.fit_ext import apply_fit_flags_to_args
+    from ffpopt.affdo.AffdoLog import print_affdo
+    from ffpopt.dihed.ExtendedFit import apply_fit_flags_to_args
 
     apply_fit_flags_to_args(args)
     print_affdo(

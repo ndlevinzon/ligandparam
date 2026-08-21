@@ -6,9 +6,9 @@ from typing import Any
 
 __all__ = [
     "Dihedrals",
-    "math",
-    "fit_ext",
-    "pucker",
+    "DihedMath",
+    "ExtendedFit",
+    "DeltaPuckerFit",
 ]
 
 _LAZY = {name: f".{name}" for name in __all__}

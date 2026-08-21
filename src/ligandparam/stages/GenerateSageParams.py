@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Union
 
-from ligandparam.stages.abstractstage import AbstractStage
+from ligandparam.stages.AbstractStage import AbstractStage
 
 try:
     from openff.interchange import Interchange

@@ -10,8 +10,8 @@ entrypoints, domain packages.
 
 | Path | Concern |
 |------|---------|
-| ``runtime/`` | ``console``, ``progress_board``, ``cpu_budget``, ``fast_wavefront`` |
-| ``scan/`` | ``WaveFront``, ``WaveFrontND``, ``wavefront_mixins``, ``ScanAnalysis`` |
+| ``runtime/`` | ``Console``, ``ProgressBoard``, ``CpuBudget``, ``FastWavefront`` |
+| ``scan/`` | ``WaveFront``, ``WaveFrontND``, ``WavefrontMixins``, ``ScanAnalysis`` |
 | ``workflows/`` | Twist, fragmented, whole-ligand orchestration + bond batches |
 | ``dihed/`` | GenDihedFit types/solvers, ``math``, extended fit, pucker |
 | ``geom/`` | ``GeomOpt``, constraints/restraints, geomeTRIC driver, linear-torsion |
@@ -52,8 +52,8 @@ LEaP → mol2+lib+frcmod). ffpopt owns **post-hoc torsion fitting**. Those are
 complementary, not duplicates.
 
 Shared helper (deduplicated): ``CopyParm`` lives in ``ffpopt.AmberParm`` and is
-re-exported from ``ligandparam.multiresp.parmhelper``. Core-budget splitting
-lives in ``ffpopt.runtime.fast_wavefront.split_core_budget``.
+re-exported from ``ligandparam.multiresp.ParmHelper``. Core-budget splitting
+lives in ``ffpopt.runtime.FastWavefront.split_core_budget``.
 
 See ``GLOSSARY.md`` for models and terminology. Runtime code lives in this
 ``src/ffpopt`` tree. The optional ``ffpopt-main/`` checkout (gitignored) is an
@@ -62,7 +62,7 @@ upstream reference only — not required after ``pip install``.
 ## Wavefront evaluate policy
 
 After each node finishes, profile minima and neighbor spawn follow a shared
-policy (``ffpopt.scan.wavefront_mixins.evaluate_wavefront_minimum``):
+policy (``ffpopt.scan.WavefrontMixins.evaluate_wavefront_minimum``):
 
 | Case | Profile min | Spawn? |
 |------|-------------|--------|

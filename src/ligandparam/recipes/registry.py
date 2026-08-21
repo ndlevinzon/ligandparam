@@ -7,12 +7,12 @@ from typing import Any, Callable
 RecipeFactory = Callable[..., Any]
 
 _REGISTRY: dict[str, str] = {
-    "lazyligand": "ligandparam.recipes.lazyligand:LazyLigand",
-    "lazierligand": "ligandparam.recipes.lazierligand:LazierLigand",
-    "freeligand": "ligandparam.recipes.freeligand:FreeLigand",
-    "dplazyligand": "ligandparam.recipes.dplazyligand:DPLigand",
-    "dpfreeligand": "ligandparam.recipes.dpfreeligand:DPFreeLigand",
-    "sqmligand": "ligandparam.recipes.optligand:SQMLigand",
+    "lazyligand": "ligandparam.recipes.LazyLigand:LazyLigand",
+    "lazierligand": "ligandparam.recipes.LazierLigand:LazierLigand",
+    "freeligand": "ligandparam.recipes.FreeLigand:FreeLigand",
+    "dplazyligand": "ligandparam.recipes.DpLazyLigand:DPLigand",
+    "dpfreeligand": "ligandparam.recipes.DpFreeLigand:DPFreeLigand",
+    "sqmligand": "ligandparam.recipes.OptLigand:SQMLigand",
 }
 
 

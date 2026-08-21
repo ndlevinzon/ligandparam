@@ -51,8 +51,8 @@ class AmberLigandBundle:
         return self.mol2.stem
 
     def to_scission_input(self, ligand_name: str | None = None):
-        """Map this bundle to :class:`scission.models.InputBundle`."""
-        from scission.models import InputBundle
+        """Map this bundle to :class:`scission.Models.InputBundle`."""
+        from scission.Models import InputBundle
 
         return InputBundle(
             mol2_path=self.mol2,

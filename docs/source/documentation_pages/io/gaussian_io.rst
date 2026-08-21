@@ -1,7 +1,7 @@
-ligandparam.io.gaussian_io
+ligandparam.io.GaussianIo
 =========================
 
-.. automodule:: ligandparam.io.gaussian_io
+.. automodule:: ligandparam.io.GaussianIo
    :members:
    :undoc-members:
    :show-inheritance:

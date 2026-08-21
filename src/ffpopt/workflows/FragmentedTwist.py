@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from ffpopt.runtime.nondaemon_pool import make_nondaemon_spawn_pool
-from ffpopt.workflows.helpers import (
+from ffpopt.runtime.NondaemonPool import make_nondaemon_spawn_pool
+from ffpopt.workflows.TwistHelpers import (
     PathLike,
     _LOG,
     _as_path,
@@ -18,7 +18,7 @@ from ffpopt.workflows.helpers import (
     _run_ffpopt_bin,
     bonds0_from_scission_fit_torsions,
 )
-from ffpopt.workflows.twist import run_dihed_twist_workflow
+from ffpopt.workflows.DihedTwist import run_dihed_twist_workflow
 
 def _load_existing_fragments(out_dir: Path):
     """ Build lightweight per-fragment records from a prior scission run.
@@ -101,7 +101,7 @@ def _build_structure_image_map(frag_dir: Path, fit_torsions: list) -> dict:
         except (json.JSONDecodeError, OSError):
             manifest_images = {}
 
-    from scission.writers import safe_name
+    from scission.Writers import safe_name
 
     out: dict = {}
     for t in fit_torsions:
@@ -198,7 +198,7 @@ def _split_fragment_nproc(
         possible; with ``prefer_depth=True`` keeps a minimum inner width
         (see :func:`ffpopt.fast_wavefront.split_nproc_for_items`).
     """
-    from ffpopt.runtime.fast_wavefront import split_nproc_for_items
+    from ffpopt.runtime.FastWavefront import split_nproc_for_items
 
     return split_nproc_for_items(
         nproc, n_fragments, prefer_depth=prefer_depth
@@ -207,7 +207,7 @@ def _split_fragment_nproc(
 
 def _slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
     """Drop heavy ``wf_run`` objects so fragment-pool IPC stays picklable."""
-    from ffpopt.runtime.ipc_slim import slim_twist_result
+    from ffpopt.runtime.SlimIpc import slim_twist_result
 
     return slim_twist_result(twist_result)
 
@@ -248,8 +248,8 @@ def _run_fragment_twist_job(job: dict) -> dict:
     """Worker entry: prepare + twist one fragment (picklable job dict)."""
     from types import SimpleNamespace
 
-    from ffpopt.runtime.cpu_budget import CpuBudget
-    from ffpopt.runtime.progress_board import (
+    from ffpopt.runtime.CpuBudget import CpuBudget
+    from ffpopt.runtime.ProgressBoard import (
         FragmentProgressStore,
         fragment_stdio_to_file,
         make_fragment_file_logger,
@@ -427,7 +427,7 @@ def run_fragmented_dihed_twist_workflow(
     with ``workdir=frag_dir`` (absolute paths + subprocess ``cwd``; no
     process-wide ``os.chdir``), then merges the per-fragment fitted
     DIHE terms back into a unified parent ``frcmod`` via
-    ``scission.merge.merge_fragment_frcmods``. Like
+    ``scission.Merge.merge_fragment_frcmods``. Like
     :func:`run_dihed_twist_workflow`, this must be called from inside an
     ``if __name__ == "__main__":`` guard - the wavefront uses ``spawn``-mode
     multiprocessing. See the ``Workflows`` RST page for the full on-disk
@@ -439,8 +439,8 @@ def run_fragmented_dihed_twist_workflow(
         Parent Amber triplet paths (``str`` or :class:`~pathlib.Path`).
         Required unless ``bundle`` is provided.
     bundle
-        Optional :class:`~ligandparam.io.amber_bundle.AmberLigandBundle` or
-        :class:`scission.models.InputBundle`. When set, overrides ``mol2`` /
+        Optional :class:`~ligandparam.io.AmberBundle.AmberLigandBundle` or
+        :class:`scission.Models.InputBundle`. When set, overrides ``mol2`` /
         ``lib`` / ``frcmod``.
     out_dir
         Directory where per-fragment subdirs are written, resolved to an
@@ -518,14 +518,14 @@ def run_fragmented_dihed_twist_workflow(
         skipped because a prior run already existed), ``fragments`` (list
         of per-fragment records with ``fragment_id``, ``dir``, ``bonds``,
         ``twist_result``), ``merge_report`` (the report from
-        ``scission.merge.merge_fragment_frcmods``), and ``merged_frcmod``
+        ``scission.Merge.merge_fragment_frcmods``), and ``merged_frcmod``
         (path to the final merged parent frcmod).
     """
     try:
         from dataclasses import replace as _dc_replace
 
         from scission import FragmentConfig, InputBundle, fragment_ligand
-        from scission.merge import merge_fragment_frcmods
+        from scission.Merge import merge_fragment_frcmods
     except ImportError as e:
         raise ImportError(
             "run_fragmented_dihed_twist_workflow requires the integrated "
@@ -586,10 +586,10 @@ def run_fragmented_dihed_twist_workflow(
         fragments_iter = frag_result.selected_fragments
 
     # bytype is forced True here: the per-fragment fits are merged back into
-    # the parent frcmod via scission.merge.merge_fragment_frcmods, which can
+    # the parent frcmod via scission.Merge.merge_fragment_frcmods, which can
     # only map fragment-fit DIHE terms onto parent atoms by atom type - the
     # fragment's atom names don't exist in the parent topology.
-    from ffpopt.runtime.fast_wavefront import (
+    from ffpopt.runtime.FastWavefront import (
         apply_fast_wavefront_presets,
         fast_wavefront_enabled,
     )
@@ -642,7 +642,7 @@ def run_fragmented_dihed_twist_workflow(
         **standard_kwargs,
     )
 
-    from ffpopt.affdo.log import describe_affdo_extras, log_affdo
+    from ffpopt.affdo.AffdoLog import describe_affdo_extras, log_affdo
 
     if (
         int(multi_centroid or 0) >= 2
@@ -696,7 +696,7 @@ def run_fragmented_dihed_twist_workflow(
         prior_done_ids: set[str] = set()
         if prior_status_path.is_file():
             try:
-                from ffpopt.runtime.progress_board import FragmentProgressStore
+                from ffpopt.runtime.ProgressBoard import FragmentProgressStore
 
                 prior = FragmentProgressStore(prior_status_path).snapshot()
                 prior_done_ids = {
@@ -733,13 +733,13 @@ def run_fragmented_dihed_twist_workflow(
         runnable = pending
 
     budget_path = out_dir_path / ".cpu_budget.json"
-    from ffpopt.runtime.cpu_budget import CpuBudget
+    from ffpopt.runtime.CpuBudget import CpuBudget
 
     # Drop stale leases from a prior killed / timed-out parent so finished
     # owners cannot starve unfinished fragments on restart.
     CpuBudget(budget_path, nproc, clear_leases=True)
 
-    from ffpopt.runtime.progress_board import FragmentBoardWatcher, FragmentProgressStore
+    from ffpopt.runtime.ProgressBoard import FragmentBoardWatcher, FragmentProgressStore
 
     status_path = out_dir_path / ".frag_progress.json"
     board_path = out_dir_path / "FRAG_STATUS.txt"
@@ -775,7 +775,7 @@ def run_fragmented_dihed_twist_workflow(
             len(already_done),
         )
     else:
-        from ffpopt.runtime.fast_wavefront import prefer_fragment_pool_depth
+        from ffpopt.runtime.FastWavefront import prefer_fragment_pool_depth
 
         prefer_depth = prefer_fragment_pool_depth(
             model=str(model),

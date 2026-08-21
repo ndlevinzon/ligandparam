@@ -53,7 +53,7 @@ before averaging charges. The default ``so3_n28`` protocol uses a fixed
 Euler alpha/beta grid (``legacy_euler``). Both protocols keep the same job
 count and feed the same multi-RESP → ``parmchk2`` → LEaP path.
 
-See :mod:`ligandparam.io.orientations` and the :doc:`recipes` / :doc:`examples`
+See :mod:`ligandparam.io.Orientations` and the :doc:`recipes` / :doc:`examples`
 sections for details.
 
 Optional dihedral corrections

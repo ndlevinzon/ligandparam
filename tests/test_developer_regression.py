@@ -48,7 +48,7 @@ def _require_rdkit(test: unittest.TestCase) -> None:
 
 class TestRecipeRegistry(unittest.TestCase):
     def test_available_recipes_matches_registry_keys(self):
-        from ligandparam.recipes.registry import _REGISTRY, available_recipes
+        from ligandparam.recipes.Registry import _REGISTRY, available_recipes
 
         self.assertEqual(available_recipes(), sorted(_REGISTRY))
         for expected in (
@@ -62,7 +62,7 @@ class TestRecipeRegistry(unittest.TestCase):
             self.assertIn(expected, _REGISTRY)
 
     def test_unknown_recipe_raises(self):
-        from ligandparam.recipes.registry import get_recipe
+        from ligandparam.recipes.Registry import get_recipe
 
         with self.assertRaises(ValueError) as ctx:
             get_recipe("not-a-recipe")
@@ -87,7 +87,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
         self.assertEqual(types[-1], StageLeap)
 
     def test_freeligand_setup(self):
-        from ligandparam.recipes.freeligand import FreeLigand
+        from ligandparam.recipes.FreeLigand import FreeLigand
         from ligandparam.stages import (
             StageInitialize,
             StageMultiRespFit,
@@ -107,13 +107,13 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self.assertEqual(recipe.net_charge, 0)
 
     def test_freeligand_missing_net_charge(self):
-        from ligandparam.recipes.freeligand import FreeLigand
+        from ligandparam.recipes.FreeLigand import FreeLigand
 
         with self.assertRaises(KeyError):
             FreeLigand("ligand.pdb", "out_dir")
 
     def test_freeligand_bad_orientation_protocol(self):
-        from ligandparam.recipes.freeligand import FreeLigand
+        from ligandparam.recipes.FreeLigand import FreeLigand
 
         with self.assertRaises(ValueError):
             FreeLigand(
@@ -124,7 +124,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             )
 
     def test_lazyligand_setup(self):
-        from ligandparam.recipes.lazyligand import LazyLigand
+        from ligandparam.recipes.LazyLigand import LazyLigand
         from ligandparam.stages import StageInitialize, StageLazyResp
 
         with tempfile.TemporaryDirectory() as td:
@@ -137,7 +137,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self._assert_tail_parmchk_leap(recipe.stages)
 
     def test_lazierligand_setup(self):
-        from ligandparam.recipes.lazierligand import LazierLigand
+        from ligandparam.recipes.LazierLigand import LazierLigand
         from ligandparam.stages import StageInitialize, StageNormalizeCharge
 
         with tempfile.TemporaryDirectory() as td:
@@ -150,7 +150,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self._assert_tail_parmchk_leap(recipe.stages)
 
     def test_dpligand_setup_includes_dpminimize(self):
-        from ligandparam.recipes.dplazyligand import DPLigand
+        from ligandparam.recipes.DpLazyLigand import DPLigand
         from ligandparam.stages import DPMinimize, StageInitialize
 
         with tempfile.TemporaryDirectory() as td:
@@ -163,7 +163,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self._assert_tail_parmchk_leap(recipe.stages)
 
     def test_dpfreeligand_setup(self):
-        from ligandparam.recipes.dpfreeligand import DPFreeLigand
+        from ligandparam.recipes.DpFreeLigand import DPFreeLigand
         from ligandparam.stages import DPMinimize, StageInitialize, StageMultiRespFit
 
         with tempfile.TemporaryDirectory() as td:
@@ -177,9 +177,9 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self._assert_tail_parmchk_leap(recipe.stages)
 
     def test_sqmligand_setup(self):
-        from ligandparam.recipes.optligand import SQMLigand
+        from ligandparam.recipes.OptLigand import SQMLigand
         from ligandparam.stages import StageInitialize, StageLazyResp
-        from ligandparam.stages.deepmd import DPMinimize
+        from ligandparam.stages.DeepMd import DPMinimize
 
         with tempfile.TemporaryDirectory() as td:
             inp, cwd = self._tmp_recipe_args(td)
@@ -193,7 +193,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
 
     def test_lazierligand_execute_forwards_overrides(self):
         """LazierLigand must forward dry_run/nproc/mem (not hardcode 1/1)."""
-        from ligandparam.recipes.lazierligand import LazierLigand
+        from ligandparam.recipes.LazierLigand import LazierLigand
 
         with tempfile.TemporaryDirectory() as td:
             inp, cwd = self._tmp_recipe_args(td)
@@ -214,8 +214,8 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self.assertTrue(all(t == (True, 8, 16) for t in seen))
 
     def test_dihed_correct_appends_twist_stage(self):
-        from ligandparam.recipes.freeligand import FreeLigand
-        from ligandparam.stages.ffpopt_dihed import StageDihedTwistCorrection
+        from ligandparam.recipes.FreeLigand import FreeLigand
+        from ligandparam.stages.FfpoptDihed import StageDihedTwistCorrection
 
         with tempfile.TemporaryDirectory() as td:
             inp, cwd = self._tmp_recipe_args(td)
@@ -237,7 +237,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
 
     def test_dry_run_execute_invokes_each_stage(self):
         """Driver.execute(dry_run=True) must call every stage.execute."""
-        from ligandparam.recipes.lazierligand import LazierLigand
+        from ligandparam.recipes.LazierLigand import LazierLigand
 
         with tempfile.TemporaryDirectory() as td:
             inp, cwd = self._tmp_recipe_args(td)
@@ -254,14 +254,14 @@ class TestRecipeSetupGraphs(unittest.TestCase):
 
     def test_every_registry_recipe_uses_common_builders(self):
         """Each registry entry builds stages via recipes.common (smoke)."""
-        from ligandparam.recipes.registry import _REGISTRY, get_recipe
+        from ligandparam.recipes.Registry import _REGISTRY, get_recipe
 
         for name, path_cls in _REGISTRY.items():
             mod_path = path_cls.split(":")[0]
             mod = importlib.import_module(mod_path)
             src = Path(mod.__file__).read_text(encoding="utf-8")
             self.assertIn(
-                "ligandparam.recipes.common",
+                "ligandparam.recipes.Common",
                 src,
                 f"{name} should import recipes.common builders",
             )
@@ -286,7 +286,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
 
 class TestStageChargeNormalize(unittest.TestCase):
     def _stage(self, net_charge=0, precision=0.001, decimals=3):
-        from ligandparam.stages.charge import StageNormalizeCharge
+        from ligandparam.stages.Charge import StageNormalizeCharge
 
         st = StageNormalizeCharge.__new__(StageNormalizeCharge)
         st.net_charge = net_charge
@@ -318,7 +318,7 @@ class TestStageChargeNormalize(unittest.TestCase):
 class TestCommonRecipeTail(unittest.TestCase):
     def test_charge_update_parmchk_leap_order(self):
         _require_rdkit(self)
-        from ligandparam.recipes.common import charge_update_parmchk_leap_stages
+        from ligandparam.recipes.Common import charge_update_parmchk_leap_stages
         from ligandparam.stages import StageLeap, StageParmChk, StageUpdate
 
         recipe = SimpleNamespace(cwd=Path("."), net_charge=0, logger=None, kwargs={})
@@ -337,7 +337,7 @@ class TestCommonRecipeTail(unittest.TestCase):
 
     def test_init_normalize_center_and_gaussian_kwargs(self):
         _require_rdkit(self)
-        from ligandparam.recipes.common import (
+        from ligandparam.recipes.Common import (
             gaussian_runtime_kwargs,
             init_normalize_center_stages,
             rotation_stage_kwargs,
@@ -379,7 +379,7 @@ class TestCommonRecipeTail(unittest.TestCase):
 
 class TestAbstractStageTemplate(unittest.TestCase):
     def test_execute_calls_run_and_tracks_new_files(self):
-        from ligandparam.stages.abstractstage import AbstractStage
+        from ligandparam.stages.AbstractStage import AbstractStage
 
         class _Tiny(AbstractStage):
             def _run(self, dry_run=False, nproc=None, mem=None):
@@ -399,7 +399,7 @@ class TestAbstractStageTemplate(unittest.TestCase):
 
 class TestWavefrontMixinHelpers(unittest.TestCase):
     def test_precheck_geometry_clash_reports_error(self):
-        from ffpopt.scan.wavefront_mixins import precheck_geometry_clash
+        from ffpopt.scan.WavefrontMixins import precheck_geometry_clash
 
         def boom():
             raise RuntimeError("bad geom")
@@ -409,7 +409,7 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
         self.assertIn("precheck_error", err)
 
     def test_replace_node_with_pickle_noop_when_missing(self):
-        from ffpopt.scan.wavefront_mixins import replace_node_with_pickle
+        from ffpopt.scan.WavefrontMixins import replace_node_with_pickle
 
         node = SimpleNamespace(node_pkl=Path("definitely-missing-node.pkl"), node_id=1, los="keep")
         replace_node_with_pickle(node)
@@ -418,8 +418,8 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
 
 class TestScissionHelpers(unittest.TestCase):
     def test_safe_name_and_param_key(self):
-        from scission.frcmod import _normalize_param_name_to_key
-        from scission.writers import safe_name
+        from scission.Frcmod import _normalize_param_name_to_key
+        from scission.Writers import safe_name
 
         self.assertEqual(safe_name("foo/bar"), "foo_bar")
         self.assertIsNone(_normalize_param_name_to_key("not_a_dihe"))
@@ -434,19 +434,19 @@ class TestScissionHelpers(unittest.TestCase):
 
 class TestLoggingContracts(unittest.TestCase):
     def setUp(self):
-        from ffpopt.runtime import console as console_mod
+        from ffpopt.runtime import Console as console_mod
 
         console_mod._BANNER_PRINTED = False
         os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
 
     def tearDown(self):
-        from ffpopt.runtime import console as console_mod
+        from ffpopt.runtime import Console as console_mod
 
         console_mod._BANNER_PRINTED = False
         os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
 
     def test_format_console_line_peels_scopes(self):
-        from ffpopt.runtime.console import format_console_line
+        from ffpopt.runtime.Console import format_console_line
 
         line = format_console_line("[frag-twist] hello", tag="ffpopt:fragment_1")
         self.assertRegex(line, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ")
@@ -456,7 +456,7 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertTrue(line.endswith("\n"))
 
     def test_affdo_scope_peels_on_console(self):
-        from ffpopt.runtime.console import format_console_line
+        from ffpopt.runtime.Console import format_console_line
 
         line = format_console_line("[affdo] extras: whole_ligand=True", tag="ffpopt")
         self.assertIn("[ffpopt]", line)
@@ -464,7 +464,7 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertIn("extras: whole_ligand=True", line)
 
     def test_attach_console_handlers_idempotent(self):
-        from ffpopt.runtime.console import attach_console_handlers
+        from ffpopt.runtime.Console import attach_console_handlers
 
         logger = logging.getLogger("test.dev.console")
         logger.handlers.clear()
@@ -475,7 +475,7 @@ class TestLoggingContracts(unittest.TestCase):
         logger.handlers.clear()
 
     def test_set_stream_logger_tags_ligandparam(self):
-        from ligandparam.log import set_stream_logger
+        from ligandparam.Log import set_stream_logger
 
         logger = set_stream_logger()
         markers = [
@@ -484,7 +484,7 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertTrue(any(m and "ligandparam" in m for m in markers if m))
 
     def test_banner_not_from_attach(self):
-        from ffpopt.runtime import console as console_mod
+        from ffpopt.runtime import Console as console_mod
 
         logger = logging.getLogger("test.dev.banner")
         logger.handlers.clear()
@@ -500,7 +500,7 @@ class TestLoggingContracts(unittest.TestCase):
 
 class TestAffdoLogging(unittest.TestCase):
     def test_describe_affdo_extras_default_and_full(self):
-        from ffpopt.affdo.log import describe_affdo_extras
+        from ffpopt.affdo.AffdoLog import describe_affdo_extras
 
         default = describe_affdo_extras()
         self.assertIn("whole_ligand=False", default)
@@ -526,7 +526,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("jax", full)
 
     def test_format_boltzmann_summary(self):
-        from ffpopt.affdo.log import format_boltzmann_summary
+        from ffpopt.affdo.AffdoLog import format_boltzmann_summary
 
         lines = format_boltzmann_summary(
             {
@@ -551,7 +551,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("equal weights", eq)
 
     def test_print_affdo_stdout(self):
-        from ffpopt.affdo.log import print_affdo
+        from ffpopt.affdo.AffdoLog import print_affdo
 
         buf = io.StringIO()
         with patch("sys.stdout", buf):
@@ -559,7 +559,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertEqual(buf.getvalue(), "[affdo] soft restraint on\n")
 
     def test_pick_smoothest_profile_logs_details(self):
-        from ffpopt.affdo.profiles import pick_smoothest_profile, score_profile_details
+        from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, score_profile_details
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -590,7 +590,7 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertTrue(__import__("math").isfinite(d0["fourier"]))
 
     def test_boltzmann_average_summary_fields(self):
-        from ffpopt.affdo.charges import boltzmann_average_mol2_charges
+        from ffpopt.affdo.BoltzmannCharges import boltzmann_average_mol2_charges
 
         def _mol2(charges):
             lines = [
@@ -622,7 +622,7 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertGreater(info["rms_vs_first"], 0.0)
 
     def test_format_extended_params(self):
-        from ffpopt.dihed.fit_ext import format_extended_params
+        from ffpopt.dihed.ExtendedFit import format_extended_params
 
         prim = SimpleNamespace(fc=1.25, phase=180.0, per=2)
         finp = SimpleNamespace(
@@ -653,7 +653,7 @@ class TestAmberBundleIO(unittest.TestCase):
         (work_dir / f"{stem}.frcmod").write_text("Remark line\n", encoding="utf-8")
 
     def test_resolve_explicit_paths(self):
-        from ligandparam.io.amber_bundle import AmberLigandBundle, resolve_getparam_bundle
+        from ligandparam.io.AmberBundle import AmberLigandBundle, resolve_getparam_bundle
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -668,7 +668,7 @@ class TestAmberBundleIO(unittest.TestCase):
             self.assertEqual(bundle.work_dir, root.resolve())
 
     def test_resolve_getparam_layout_with_label(self):
-        from ligandparam.io.amber_bundle import resolve_getparam_bundle
+        from ligandparam.io.AmberBundle import resolve_getparam_bundle
 
         with tempfile.TemporaryDirectory() as td:
             cwd = Path(td)
@@ -682,7 +682,7 @@ class TestAmberBundleIO(unittest.TestCase):
             self.assertEqual(bundle.work_dir, work.resolve())
 
     def test_missing_triplet_raises(self):
-        from ligandparam.io.amber_bundle import resolve_getparam_bundle
+        from ligandparam.io.AmberBundle import resolve_getparam_bundle
 
         with tempfile.TemporaryDirectory() as td:
             cwd = Path(td)
@@ -693,7 +693,7 @@ class TestAmberBundleIO(unittest.TestCase):
                 )
 
     def test_to_scission_input(self):
-        from ligandparam.io.amber_bundle import resolve_getparam_bundle
+        from ligandparam.io.AmberBundle import resolve_getparam_bundle
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -716,7 +716,7 @@ class TestAmberBundleIO(unittest.TestCase):
 
 class TestDihedOptionsAndBonds(unittest.TestCase):
     def test_pop_and_apply_dihed_options(self):
-        from ligandparam.recipes.dihed_options import apply_dihed_options, pop_dihed_options
+        from ligandparam.recipes.DihedOptions import apply_dihed_options, pop_dihed_options
 
         kwargs = {
             "dihed_correct": True,
@@ -734,8 +734,8 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
         self.assertEqual(kwargs, {"keep": 1})
 
     def test_coerce_fragment_config(self):
-        from ligandparam.recipes.dihed_options import coerce_fragment_config
-        from scission.models import FragmentConfig
+        from ligandparam.recipes.DihedOptions import coerce_fragment_config
+        from scission.Models import FragmentConfig
 
         self.assertIsNone(coerce_fragment_config(None))
         cfg = coerce_fragment_config({"angle_step": 15, "cap_strategy": "hydrogen"})
@@ -774,7 +774,7 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
 class TestScissionFunctions(unittest.TestCase):
     def _butane_like_ligand(self):
         """Linear C4 chain with hydrogens — rotatable C–C bonds."""
-        from scission.models import Atom, Bond, Ligand
+        from scission.Models import Atom, Bond, Ligand
 
         atoms = []
         coords = [
@@ -816,7 +816,7 @@ class TestScissionFunctions(unittest.TestCase):
         )
 
     def test_find_rotatable_bonds_and_enumerate_torsions(self):
-        from scission.torsions import enumerate_torsions, find_rotatable_bonds
+        from scission.Torsions import enumerate_torsions, find_rotatable_bonds
 
         lig = self._butane_like_ligand()
         rots = find_rotatable_bonds(lig)
@@ -828,7 +828,7 @@ class TestScissionFunctions(unittest.TestCase):
             self.assertEqual(len(t.bond), 2)
 
     def test_fragment_config_defaults_and_from_dict(self):
-        from scission.models import FragmentConfig
+        from scission.Models import FragmentConfig
 
         cfg = FragmentConfig()
         self.assertTrue(hasattr(cfg, "angle_step") or hasattr(cfg, "cap_strategy"))
@@ -836,9 +836,9 @@ class TestScissionFunctions(unittest.TestCase):
         self.assertEqual(cfg2.angle_step, 15)
 
     def test_write_fragment_index_and_merge_accumulate(self):
-        from scission.merge import _load_fragment_update
-        from scission.models import SelectedFragment
-        from scission.writers import write_fragment_index
+        from scission.Merge import _load_fragment_update
+        from scission.Models import SelectedFragment
+        from scission.Writers import write_fragment_index
 
         frag = SelectedFragment(
             fragment_id="frag_0001",
@@ -883,7 +883,7 @@ class TestScissionFunctions(unittest.TestCase):
 
     def test_merge_dihe_empty_later_iteration_keeps_earlier(self):
         """An empty later itXX.frcmod must not wipe earlier DIHE accumulation."""
-        from scission.merge import _load_fragment_update
+        from scission.Merge import _load_fragment_update
 
         def _frcmod(lines):
             return (
@@ -906,7 +906,7 @@ class TestScissionFunctions(unittest.TestCase):
         """bytype collisions: keep first scanned fragment, do not abort."""
         import warnings
 
-        from scission.merge import MergeWarning, merge_fragment_frcmods
+        from scission.Merge import MergeWarning, merge_fragment_frcmods
 
         def _frcmod(lines):
             return (
@@ -978,7 +978,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_is_soft_opt_and_evaluate_policy(self):
         from ffpopt.geom.GeomOpt import is_soft_opt_recovery
-        from ffpopt.scan.wavefront_mixins import evaluate_wavefront_minimum
+        from ffpopt.scan.WavefrontMixins import evaluate_wavefront_minimum
 
         self.assertTrue(is_soft_opt_recovery("loose"))
         self.assertFalse(is_soft_opt_recovery("primary"))
@@ -1002,7 +1002,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.skipTest("ase required")
         import numpy as np
         from ffpopt.geom.Constraints import Constraint
-        from ffpopt.geom.linear_torsion import (
+        from ffpopt.geom.LinearTorsion import (
             find_near_linear_bends,
             has_near_linear_dihedral_bend,
             is_linear_torsion_error,
@@ -1055,7 +1055,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_wavefront_policy_matrix(self):
         """Lock spawn / update decisions for soft and hard incumbents."""
-        from ffpopt.scan.wavefront_mixins import evaluate_wavefront_minimum
+        from ffpopt.scan.WavefrontMixins import evaluate_wavefront_minimum
 
         cases = [
             # energy, soft, has, inc_e, inc_soft, thr, reason, update, active
@@ -1085,9 +1085,9 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 self.assertEqual(d["active"], act)
 
     def test_dihed_math_reexported_and_ipc_slim(self):
-        from ffpopt.dihed import math as dihed_math
+        from ffpopt.dihed import DihedMath as dihed_math
         from ffpopt.dihed.Dihedrals import shape_match_delta
-        from ffpopt.runtime.ipc_slim import slim_scan_result, slim_twist_result
+        from ffpopt.runtime.SlimIpc import slim_scan_result, slim_twist_result
 
         self.assertIs(shape_match_delta, dihed_math.shape_match_delta)
         self.assertIsNone(slim_scan_result(None))
@@ -1132,7 +1132,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(len(ahl.structs), len(all_.structs))
 
     def test_fast_wavefront_enabled(self):
-        from ffpopt.runtime.fast_wavefront import fast_wavefront_enabled
+        from ffpopt.runtime.FastWavefront import fast_wavefront_enabled
 
         self.assertTrue(fast_wavefront_enabled(explicit=True))
         self.assertFalse(fast_wavefront_enabled(explicit=False))
@@ -1143,15 +1143,15 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertFalse(fast_wavefront_enabled())
 
     def test_cpu_budget_fair_share(self):
-        from ffpopt.runtime.cpu_budget import fair_share_leases
+        from ffpopt.runtime.CpuBudget import fair_share_leases
 
         leases = fair_share_leases(8, ["a", "b", "c"])
         self.assertEqual(sum(leases.values()), 8)
         self.assertEqual(len(leases), 3)
 
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
-        from ffpopt.workflows.helpers import _is_sander_ll_model, _wf_kwargs_for_scan_model
-        from ffpopt.runtime.fast_wavefront import (
+        from ffpopt.workflows.TwistHelpers import _is_sander_ll_model, _wf_kwargs_for_scan_model
+        from ffpopt.runtime.FastWavefront import (
             prefer_ase_first_model,
             prefer_bond_pool_depth,
             prefer_fragment_pool_depth,
@@ -1199,7 +1199,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertEqual(qdpi2_opt_components(), "both")
 
     def test_cpu_budget_clear_leases_on_init(self):
-        from ffpopt.runtime.cpu_budget import CpuBudget
+        from ffpopt.runtime.CpuBudget import CpuBudget
 
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / ".cpu_budget.json"
@@ -1229,7 +1229,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
     def test_read_last_optim_xyz_warm_start_helper(self):
         """Interrupted geomopt leaves ``_optim.xyz``; helper reads last frame."""
         import numpy as np
-        from ffpopt.geom.geometric import read_last_optim_xyz, write_plain_xyz
+        from ffpopt.geom.Geometric import read_last_optim_xyz, write_plain_xyz
 
         try:
             import ase
@@ -1249,7 +1249,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             np.testing.assert_allclose(last[1, 2], 0.90)
 
     def test_pack_rotatable_bond_batches_conservative(self):
-        from ffpopt.workflows.bond_batches import (
+        from ffpopt.workflows.BondBatches import (
             adjacency_from_topology_bonds,
             pack_rotatable_bond_batches,
             should_batch_bonds,
@@ -1277,7 +1277,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(sum(len(b) for b in far), 2)
 
     def test_split_nproc_for_items(self):
-        from ffpopt.runtime.fast_wavefront import split_nproc_for_items
+        from ffpopt.runtime.FastWavefront import split_nproc_for_items
 
         n_outer, n_inner = split_nproc_for_items(8, 4)
         # Flattened: never nest both axes; product may be < nproc.
@@ -1289,7 +1289,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(n_outer2 * n_inner2, 8)
 
     def test_pickle_compat_alias(self):
-        from ffpopt.scan.wavefront_mixins import register_wavefront_pickle_aliases
+        from ffpopt.scan.WavefrontMixins import register_wavefront_pickle_aliases
         from ffpopt.scan.WaveFront import Wavefront
 
         register_wavefront_pickle_aliases()
@@ -1312,7 +1312,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
 class TestRecipeDefaultsIsolation(unittest.TestCase):
     def test_fresh_defaults_not_shared(self):
-        from ligandparam.parametrization import fresh_recipe_defaults
+        from ligandparam.Parametrization import fresh_recipe_defaults
 
         a = fresh_recipe_defaults()
         b = fresh_recipe_defaults()

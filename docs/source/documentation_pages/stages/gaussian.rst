@@ -1,7 +1,7 @@
-ligandparam.stages.gaussian
+ligandparam.stages.Gaussian
 ==================================
 
-.. automodule:: ligandparam.stages.gaussian
+.. automodule:: ligandparam.stages.Gaussian
    :members:
    :undoc-members:
    :show-inheritance:

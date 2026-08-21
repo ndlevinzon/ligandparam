@@ -7,7 +7,7 @@ bonded atoms to build a SMARTS pattern suitable for the fragmentation pipeline's
 central bond atoms with atom-map numbers ``:1`` and ``:2`` and supports an
 adjustable environment radius so the pattern can be dialed from broad (a class
 of bonds) to unique (a single bond). The live match count is computed with the
-library's own matcher, :func:`scission.torsions.match_central_bond_smarts`, so
+library's own matcher, :func:`scission.Torsions.match_central_bond_smarts`, so
 it reflects exactly what the fragmentation step would select.
 
 RDKit is required; it is an optional ``chem`` extra of this package. The CLI
@@ -23,8 +23,8 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .io import load_ligand_from_mol2
-from .torsions import _build_rdkit_mol, match_central_bond_smarts
+from .LigandIo import load_ligand_from_mol2
+from .Torsions import _build_rdkit_mol, match_central_bond_smarts
 
 try:
     from rdkit import Chem

@@ -20,22 +20,22 @@ When to use which entry point
 
 from __future__ import annotations
 
-from ffpopt.workflows.helpers import (
+from ffpopt.workflows.TwistHelpers import (
     bonds0_from_scission_fit_torsions,
     normalize_bond_pairs0,
 )
-from ffpopt.workflows.twist import (
+from ffpopt.workflows.DihedTwist import (
     run_batched_dihed_twist_workflow,
     run_dihed_twist_workflow,
 )
-from ffpopt.workflows.fragmented import (
+from ffpopt.workflows.FragmentedTwist import (
     clear_fragment_twist_done,
     fragment_twist_done_path,
     is_fragment_twist_done,
     mark_fragment_twist_done,
     run_fragmented_dihed_twist_workflow,
 )
-from ffpopt.workflows.whole_ligand import run_whole_ligand_dihed_twist_workflow
+from ffpopt.workflows.WholeLigandTwist import run_whole_ligand_dihed_twist_workflow
 
 __all__ = [
     "bonds0_from_scission_fit_torsions",

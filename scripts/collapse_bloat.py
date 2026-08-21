@@ -186,7 +186,7 @@ def main() -> None:
             f.unlink()
             print("  deleted", f.relative_to(ROOT))
     fix_init(pkg, "twist")
-    facade(FF / "Workflows.py", "ffpopt.workflows.twist")
+    facade(FF / "Workflows.py", "ffpopt.workflows.DihedTwist")
 
     # dihedrals
     pkg = FF / "dihedrals"

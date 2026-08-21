@@ -1,7 +1,7 @@
 Creating New Recipes
 ====================
 
-Recipes subclass :class:`~ligandparam.parametrization.Recipe`, populate
+Recipes subclass :class:`~ligandparam.Parametrization.Recipe`, populate
 ``self.stages`` in ``setup()``, and run them with ``execute()``. Built-in
 examples include :class:`~ligandparam.recipes.LazyLigand` and
 :class:`~ligandparam.recipes.FreeLigand`.
@@ -14,7 +14,7 @@ For a single script, construct a ``Recipe`` and assign stages directly:
 .. code-block:: python
 
     from pathlib import Path
-    from ligandparam.parametrization import Recipe
+    from ligandparam.Parametrization import Recipe
     from ligandparam.stages import StageInitialize, StageNormalizeCharge
 
     cwd = Path("output")
@@ -52,7 +52,7 @@ For a workflow you will reuse, subclass ``Recipe`` and implement ``setup``:
     from pathlib import Path
     from typing import Union
 
-    from ligandparam.parametrization import Recipe
+    from ligandparam.Parametrization import Recipe
     from ligandparam.stages import StageInitialize, StageNormalizeCharge
 
 

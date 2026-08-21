@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Pure scan/fit math lives in dihed_math (re-exported here for API stability).
-from ffpopt.dihed.math import (  # noqa: F401
+from ffpopt.dihed.DihedMath import (  # noqa: F401
     AngularStdDev,
     _angle_map_from_los,
     _normalize_scan_angle,
@@ -1858,7 +1858,7 @@ def NonlinearSolve(args,finp):
     """
     from scipy.optimize import minimize, lsq_linear
     import numpy as np
-    from ffpopt.dihed.fit_ext import (
+    from ffpopt.dihed.ExtendedFit import (
         configure_fit_input,
         count_extended_params,
         enrich_cache_with_14,
@@ -1880,7 +1880,7 @@ def NonlinearSolve(args,finp):
             build_fixed_geometry_ll_cache(s, args) for s in finp.systems
         ]
         if getattr(finp, "opt_scee_scnb", False):
-            from ffpopt.affdo.log import print_affdo
+            from ffpopt.affdo.AffdoLog import print_affdo
 
             print_affdo(
                 "stripping scaled 1-4 elec/vdw from LL cache; "

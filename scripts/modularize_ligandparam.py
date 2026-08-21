@@ -207,12 +207,12 @@ from typing import Any, Callable
 RecipeFactory = Callable[..., Any]
 
 _REGISTRY: dict[str, str] = {
-    "lazyligand": "ligandparam.recipes.lazyligand:LazyLigand",
-    "lazierligand": "ligandparam.recipes.lazierligand:LazierLigand",
-    "freeligand": "ligandparam.recipes.freeligand:FreeLigand",
-    "dplazyligand": "ligandparam.recipes.dplazyligand:DPLigand",
-    "dpfreeligand": "ligandparam.recipes.dpfreeligand:DPFreeLigand",
-    "sqmligand": "ligandparam.recipes.optligand:SQMLigand",
+    "lazyligand": "ligandparam.recipes.LazyLigand:LazyLigand",
+    "lazierligand": "ligandparam.recipes.LazierLigand:LazierLigand",
+    "freeligand": "ligandparam.recipes.FreeLigand:FreeLigand",
+    "dplazyligand": "ligandparam.recipes.DpLazyLigand:DPLigand",
+    "dpfreeligand": "ligandparam.recipes.DpFreeLigand:DPFreeLigand",
+    "sqmligand": "ligandparam.recipes.OptLigand:SQMLigand",
 }
 
 
@@ -248,12 +248,12 @@ def get_recipe(name: str, **kwargs):
     # Thin CLI recipe_selector
     cli = LP / "cli" / "ligandparam_getparam.py"
     cli_text = cli.read_text(encoding="utf-8")
-    if "from ligandparam.recipes.registry import get_recipe" not in cli_text:
+    if "from ligandparam.recipes.Registry import get_recipe" not in cli_text:
         cli_text = re.sub(
             r"def recipe_selector\(recipe_name: str, \*\*kwargs\):.*?return SQMLigand\(\*\*kwargs\).*?raise ValueError\([\s\S]*?\)\n",
             "def recipe_selector(recipe_name: str, **kwargs):\n"
             '    """Select and return the appropriate recipe class based on the recipe name."""\n'
-            "    from ligandparam.recipes.registry import available_recipes, get_recipe\n\n"
+            "    from ligandparam.recipes.Registry import available_recipes, get_recipe\n\n"
             "    try:\n"
             "        return get_recipe(recipe_name, **kwargs)\n"
             "    except ValueError as exc:\n"
