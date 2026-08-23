@@ -115,7 +115,7 @@ Fragmented twist remains the default. For whole-ligand / AFFDO-like runs::
 | ``--multi-centroid N`` | ConfSearch starts; pick smoothest HL profile (Fourier + roughness). Centroid-0 + ``orig`` share one CPU pool; extra starts only if Fourier RMSE exceeds ``FFPOPT_CENTROID_FOURIER_MAX`` (default 0.5 kcal). |
 | ``--soft-dihed-restraint`` | Harmonic dihedral spring (500 kcal/mol/rad², ±0.5°) via geomeTRIC + ASE |
 | ``--fit-full`` / ``--fit-mode`` | FC + phase + period + scee/scnb (default remains barrier-only) |
-| ``--fit-backend jax`` | L-BFGS-B with JAX autodiff (``pip install 'ligandparam[jax]'``) |
+| ``--fit-backend jax`` | L-BFGS-B with JAX autodiff (``pip install -e '.[jax]'`` from the clone; conda-forge ``jax`` on HPC) |
 | ``--boltzmann-charges`` | Average centroid mol2 charges (when available) |
 
 Wavefront sampling is unchanged when these are off.

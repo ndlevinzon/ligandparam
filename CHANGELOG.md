@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - ``--soft-dihed-restraint`` — harmonic dihedral spring (500 kcal/mol/rad², ±0.5°) with geomeTRIC
   - ``--fit-full`` / ``--fit-mode`` / ``--fit-backend {lsq,lbfgsb,jax}`` — phase, period, scee/scnb (or barrier-only)
   - ``--boltzmann-charges`` — Boltzmann-average charges over centroid mol2s
-  - Optional extra: ``pip install 'ligandparam[jax]'``
+  - Optional extra: from the clone, ``pip install -e '.[jax]'`` (not PyPI ``ligandparam[jax]``, which is 1.0.0)
   - Tagged stdout ``[affdo]`` lines for extras, centroid ConfSearch, profile scores, Boltzmann weights, soft-restraint fallbacks, and extended-fit chi^2 / parameters
 
 ### Changed
@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Layout-relative imports** — ``ffpopt.geom.Constraints`` imported ``AmberParm`` as a sibling (``ffpopt.geom.AmberParm``); ``FindFuncGrps`` still imported ``ffpopt.Dihedrals``. Both now use the canonical modules. A developer test walks ``src/`` import graphs so this class of miss does not ship again.
 - **Broken-geometry abort** — whole-ligand wavefront nodes that already have crushed/dissociated covalent bonds (or huge starting forces) skip the optimizer instead of spending minutes watching hydrogens/carbons fly off. Mid-opt ASE/geomeTRIC steps abort on the same check.
 - **geomeTRIC scratch cleanup** — ``.nsf`` logs, ``{prefix}.tmp`` dirs, and other geomeTRIC sidecars are removed after each opt, when a completed node is folded into the checkpoint, and when a scan/fragment is resumed or skipped. Incomplete nodes keep ``_optim.xyz`` so a killed opt can still warm-start.
-- **``--fit-backend jax`` without jax** — fall back to SciPy L-BFGS-B with an ``[affdo]`` note instead of aborting GenDihedFit. Install ``ligandparam[jax]`` if autodiff is actually wanted.
+- **``--fit-backend jax`` without jax** — fall back to SciPy L-BFGS-B with an ``[affdo]`` note instead of aborting GenDihedFit. From the clone, ``pip install -e '.[jax]'`` (PyPI ``ligandparam[jax]`` is 1.0.0).
 
 ---
 

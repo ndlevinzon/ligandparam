@@ -257,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         "--fit-backend",
         choices=("lsq", "lbfgsb", "jax"),
         default=None,
-        help="GenDihedFit solver (jax needs ligandparam[jax])",
+        help="GenDihedFit solver (jax: pip install -e '.[jax]' from the clone, not PyPI)",
     )
     parser.add_argument("--fit-full", action="store_true", help="Fit FC+phase+period+scee/scnb")
     parser.add_argument("--barrier-only", action="store_true", help="Force FC-only fit")

@@ -54,7 +54,8 @@ def _note_jax_fallback(requested: str, used: str) -> None:
 
     print_affdo(
         f"fit_backend={requested} requested but jax is not installed; "
-        f"falling back to {used} (pip install 'ligandparam[jax]' to enable jax)"
+        f"falling back to {used} "
+        f"(from the clone: pip install -e '.[jax]', or conda-forge jax/jaxlib)"
     )
 
 
@@ -344,8 +345,10 @@ def _jax_objective_factory(finp, caches):
         import jax.numpy as jnp
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "fit_backend=jax requires jax; install with pip install 'ligandparam[jax]' "
-            "(or omit --fit-backend jax to use SciPy L-BFGS-B)"
+            "fit_backend=jax requires jax; from the clone run pip install -e '.[jax]' "
+            "or conda install -c conda-forge jax jaxlib "
+            "(do not pip install ligandparam[jax] from PyPI; that is 1.0.0). "
+            "Omit --fit-backend jax to use SciPy L-BFGS-B."
         ) from exc
 
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT

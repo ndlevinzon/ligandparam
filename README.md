@@ -86,13 +86,25 @@ python -m unittest tests.test_install_validation tests.test_developer_regression
 
 ### Optional extras
 
+Run these **from the clone** (the extra is on this tree, not the PyPI ``1.0.0`` wheel):
+
 ```bash
-pip install ".[tblite]" # GFN2-xTB for lig-dihed-correct --model xtb
-pip install ".[dihed]"  # ndfes + geometric (geomeTRIC) for lig-dihed-correct
-pip install ".[ml]"     # DeepMD (install TensorFlow via conda on HPC)
-pip install ".[sage]"   # OpenFF Sage conversion
-pip install ".[docs]"   # Sphinx documentation build
-pip install ".[all]"    # everything above (still needs TF from conda on many HPCs)
+pip install -e ".[tblite]" # GFN2-xTB for lig-dihed-correct --model xtb
+pip install -e ".[dihed]"  # ndfes + geometric (geomeTRIC) for lig-dihed-correct
+pip install -e ".[ml]"     # DeepMD (install TensorFlow via conda on HPC)
+pip install -e ".[jax]"    # JAX autodiff for --fit-backend jax
+pip install -e ".[sage]"   # OpenFF Sage conversion
+pip install -e ".[docs]"   # Sphinx documentation build
+pip install -e ".[all]"    # everything above (still needs TF from conda on many HPCs)
+```
+
+``pip install 'ligandparam[jax]'`` (no ``-e``, no ``.``) pulls **PyPI 1.0.0** and
+can uninstall a local 1.5.x install. On CHPC / Python 3.14, prefer conda-forge
+for JAX itself, then keep the editable tree:
+
+```bash
+conda install -c conda-forge jax jaxlib
+pip install -e .
 ```
 
 Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) and
