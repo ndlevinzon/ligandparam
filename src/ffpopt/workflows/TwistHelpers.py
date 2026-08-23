@@ -440,6 +440,11 @@ def _run_one_scan(
     out_path = str(_in_workdir(workdir, out))
     if skip_existing and Path(out_path).exists():
         log.info("[twist] %s exists - skipping.", out_path)
+        from ffpopt.geom.Geometric import sweep_geometric_scratch_dir
+
+        n = sweep_geometric_scratch_dir(Path(out_path).parent, recursive=True)
+        if n:
+            log.info("[twist] removed %s leftover geomeTRIC scratch path(s)", n)
         return None
 
     dihed_str = ",".join(str(i) for i in dihed_idxs)

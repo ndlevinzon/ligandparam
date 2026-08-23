@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **``_split_fragment_nproc``** — bond-scan pooling in ``TwistHelpers`` called a helper that stayed behind in ``FragmentedTwist`` after the workflow split (``NameError`` on ``lig-dihed-correct --whole-ligand``).
 - **Layout-relative imports** — ``ffpopt.geom.Constraints`` imported ``AmberParm`` as a sibling (``ffpopt.geom.AmberParm``); ``FindFuncGrps`` still imported ``ffpopt.Dihedrals``. Both now use the canonical modules. A developer test walks ``src/`` import graphs so this class of miss does not ship again.
 - **Broken-geometry abort** — whole-ligand wavefront nodes that already have crushed/dissociated covalent bonds (or huge starting forces) skip the optimizer instead of spending minutes watching hydrogens/carbons fly off. Mid-opt ASE/geomeTRIC steps abort on the same check.
+- **geomeTRIC scratch cleanup** — ``.nsf`` logs, ``{prefix}.tmp`` dirs, and other geomeTRIC sidecars are removed after each opt, when a completed node is folded into the checkpoint, and when a scan/fragment is resumed or skipped. Incomplete nodes keep ``_optim.xyz`` so a killed opt can still warm-start.
 
 ---
 

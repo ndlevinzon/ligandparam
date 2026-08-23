@@ -29,6 +29,7 @@ from .WavefrontMixins import (
     run_mp_spawn_drain_loop,
     slim_node_result,
     write_node_pickle,
+    cleanup_wavefront_geometric_scratch,
 )
 
 
@@ -329,11 +330,19 @@ class WavefrontNode:
         write_node_pickle(self)
 
     def cleanup(self) -> None:
-        """Clean up the node's pickle file."""
+        """Remove the node pickle and geomeTRIC scratch for this node."""
         filename = Path(f"{self.node_pkl}")
         if Path.is_file(filename):
             print("Cleaning up node pickle file:", self.node_pkl)
             os.remove(filename)
+        from ffpopt.geom.Geometric import (
+            cleanup_geometric_scratch,
+            geometric_prefix_from_node_pkl,
+        )
+
+        cleanup_geometric_scratch(
+            geometric_prefix_from_node_pkl(self.node_pkl), keep_optim=False
+        )
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
         mark_node_failed(self, reason, error, where=self.angle)
@@ -854,6 +863,7 @@ class Wavefront:
 
         self._resume_queue = list(pending)
         self.save_checkpoint()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
 
         pool = None
         owns_pool = False
@@ -885,6 +895,7 @@ class Wavefront:
         self._resume_queue = []
         self.save_checkpoint()
         self._cleanup_completed()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
         self._print_progress(0, 0)
         results = self.sort_results()
         print("[wavefront] finished this scan "

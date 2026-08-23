@@ -490,3 +490,47 @@ def run_mpi_spawn_drain_loop(
     finally:
         for worker in range(1, size):
             comm.send(None, dest=worker, tag=tag_stop)
+
+
+def cleanup_wavefront_geometric_scratch(
+    wavefront, *, keep_incomplete_optim: bool = False
+) -> None:
+    """Remove leftover geomeTRIC ``.nsf`` / ``.tmp`` scratch for a wavefront.
+
+    On checkpoint resume, pass ``keep_incomplete_optim=True`` so unfinished
+    nodes keep ``_optim.xyz`` for warm-start. Completed nodes drop everything.
+    """
+    from ffpopt.geom.Geometric import (
+        cleanup_geometric_scratch,
+        geometric_prefix_from_node_pkl,
+        sweep_geometric_scratch_dir,
+    )
+
+    keep = []
+    for level in getattr(wavefront, "levels", []) or []:
+        for node in getattr(level, "nodes", []) or []:
+            pkl = getattr(node, "node_pkl", None)
+            if not pkl:
+                continue
+            prefix = geometric_prefix_from_node_pkl(pkl)
+            keep_opt = bool(
+                keep_incomplete_optim and not getattr(node, "complete", False)
+            )
+            cleanup_geometric_scratch(prefix, keep_optim=keep_opt)
+            if keep_opt:
+                keep.append(prefix)
+
+    workdir = getattr(wavefront, "workdir", None)
+    if not workdir:
+        ckpt = getattr(wavefront, "checkpoint", None)
+        if ckpt:
+            workdir = str(Path(ckpt).resolve().parent)
+    if not workdir:
+        return
+    n = sweep_geometric_scratch_dir(
+        workdir, keep_optim_prefixes=keep, recursive=False
+    )
+    if n:
+        print(
+            f"[ffpopt] removed {n} leftover geomeTRIC scratch path(s) in {workdir}"
+        )

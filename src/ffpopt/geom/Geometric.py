@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> None:
 
 # --- in-process driver (was geometric_inprocess.py) ---
 
+import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Union
@@ -428,6 +430,133 @@ def read_last_optim_xyz(prefix: PathLike) -> Optional[np.ndarray]:
         return np.asarray(last.get_positions(), dtype=float)
     except Exception:
         return None
+
+
+def geometric_prefix_from_node_pkl(node_pkl: PathLike) -> str:
+    """Wavefront node pickle ``foo_node.pckl`` -> geomeTRIC prefix ``foo_node_geom``."""
+    return str(Path(node_pkl).with_suffix("")) + "_geom"
+
+
+def _rm_path(path: Path) -> bool:
+    """Unlink a file or ``rmtree`` a directory. Returns True if something was removed."""
+    try:
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+            return True
+        if path.is_dir():
+            shutil.rmtree(path)
+            return True
+    except OSError:
+        return False
+    return False
+
+
+def cleanup_geometric_scratch(prefix: PathLike, *, keep_optim: bool = False) -> int:
+    """Remove geomeTRIC sidecars for one opt prefix.
+
+    Deletes ``{prefix}.tmp/``, ``{prefix}.nsf`` / ``.log`` / ``.xyz`` / ``.json``
+    / ``.cons.inp``, recovery-ladder ``{prefix}.r*`` paths, and (unless
+    ``keep_optim``) ``{prefix}_optim.xyz``. Does **not** touch a shared
+    ``log.nsf`` in the parent directory — that is handled by
+    :func:`sweep_geometric_scratch_dir` when no workers are running.
+    """
+    prefix = os.path.normpath(str(prefix))
+    n = 0
+    if _rm_path(Path(prefix + ".tmp")):
+        n += 1
+    for suf in (".log", ".nsf", ".xyz", ".json", ".cons.inp"):
+        if _rm_path(Path(prefix + suf)):
+            n += 1
+    if not keep_optim and _rm_path(Path(prefix + "_optim.xyz")):
+        n += 1
+    parent = Path(prefix).parent
+    stem = Path(prefix).name
+    if parent.is_dir():
+        try:
+            for p in parent.iterdir():
+                name = p.name
+                if not name.startswith(stem + ".r"):
+                    continue
+                if keep_optim and p.is_file() and name.endswith("_optim.xyz"):
+                    continue
+                if _rm_path(p):
+                    n += 1
+        except OSError:
+            pass
+    return n
+
+
+def sweep_geometric_scratch_dir(
+    directory: PathLike,
+    *,
+    keep_optim_prefixes: Optional[Sequence[PathLike]] = None,
+    recursive: bool = True,
+) -> int:
+    """Remove leftover geomeTRIC ``.nsf`` logs, ``*.tmp`` dirs, and ``*_geom*`` sidecars.
+
+    ``keep_optim_prefixes`` retains ``{prefix}_optim.xyz`` (and recovery
+    ``{prefix}.r*_optim.xyz``) so an incomplete node can warm-start.
+    """
+    directory = Path(directory)
+    if not directory.is_dir():
+        return 0
+    keep = {os.path.normpath(str(p)) for p in (keep_optim_prefixes or [])}
+    n = 0
+
+    def _keep_optim_file(path: Path) -> bool:
+        if not path.name.endswith("_optim.xyz"):
+            return False
+        pref = os.path.normpath(str(path)[: -len("_optim.xyz")])
+        if pref in keep:
+            return True
+        # recovery: {prefix}.r2_optim.xyz
+        name = path.name
+        if ".r" in name and name.endswith("_optim.xyz"):
+            stem = name[: -len("_optim.xyz")]
+            for k in keep:
+                if stem.startswith(Path(k).name + ".r"):
+                    return True
+        return False
+
+    for root, dirs, files in os.walk(directory, topdown=True):
+        root_p = Path(root)
+        next_dirs = []
+        for d in dirs:
+            dp = root_p / d
+            if d.endswith(".tmp"):
+                if _rm_path(dp):
+                    n += 1
+                continue
+            if d == "tmpfiles":
+                try:
+                    for child in dp.iterdir():
+                        if child.name.startswith("tmp."):
+                            if _rm_path(child):
+                                n += 1
+                except OSError:
+                    pass
+                continue
+            if recursive:
+                next_dirs.append(d)
+        dirs[:] = next_dirs
+
+        for f in files:
+            fp = root_p / f
+            if f.endswith(".nsf"):
+                if _rm_path(fp):
+                    n += 1
+                continue
+            if "_geom" not in f:
+                continue
+            if _keep_optim_file(fp):
+                continue
+            if f.endswith((".log", ".xyz", ".json", ".cons.inp", ".nsf")):
+                if _rm_path(fp):
+                    n += 1
+
+        if not recursive:
+            break
+    return n
 
 
 def _recovery_attempts(

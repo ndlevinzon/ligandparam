@@ -592,6 +592,7 @@ def GeomOpt_GEOMETRIC(
     from ffpopt.geom.Constraints import ApplyConstraints, to_geometric
     from ffpopt.Struct import ListOfStruct
     from ffpopt.geom.Geometric import (
+        cleanup_geometric_scratch,
         get_persistent_calc,
         read_last_optim_xyz,
         run_geometric_robust,
@@ -699,75 +700,79 @@ def GeomOpt_GEOMETRIC(
                 fh.write("%s\n" % (line))
 
     result = None
-    if use_geometric_subprocess():
-        # Legacy path: spawn geom.geometric + watchdog.
-        ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
-        mystruct = copy.deepcopy(struct)
-        if conslist is not None:
-            mystruct.constraints = None
-            mystruct.data["constraints"] = []
-        if reslist is not None:
-            mystruct.restraints = reslist
-            mystruct.data["restraints"] = reslist.to_list_of_dict()
-        mylos = ListOfStruct([mystruct])
-        mylos.save(tmpjson)
-        cmds = argparse2geometric(tmpjson, los.args)
-        cmds.append(tmpxyz)
-        if conslist is not None:
-            cmds.append(tmpcons)
-        _run_geometric_with_watchdog(cmds, tmplog, activity_dir=tmpdir)
-        if not os.path.exists(tmpopt):
-            log_hint = ""
-            try:
-                if os.path.exists(tmplog):
-                    with open(tmplog, "r", errors="replace") as fh:
-                        tail = fh.read()[-2000:]
-                    if tail.strip():
-                        log_hint = f"\n--- tail of {tmplog} ---\n{tail}"
-            except OSError:
-                pass
-            raise Exception(
-                f"File not found: {tmpopt} (geomeTRIC did not write an "
-                f"optimized geometry; often a constrained-IC recovery failure)."
-                f"{log_hint}"
-            )
-        out_atoms = ase.io.read(tmpopt, index="-1", parallel=False)
-        out_atoms.set_initial_charges(myatoms.get_initial_charges())
-        keys = [key for key in out_atoms.info]
-        ene = float(keys[-1]) / AU_PER_ELECTRON_VOLT()
-        crd = out_atoms.get_positions()
-        frc = None
-    else:
-        calc = get_persistent_calc(los, struct, reslist=reslist)
-        geo = GetStandardOptions(los.args).get("geometric", {})
-        log_ini = configure_geometric_logging(
-            getattr(los.args, "geometric_ini", None)
-        )
-        if getattr(los.args, "geometric_ini", None) is not None:
-            if len(str(los.args.geometric_ini)) == 0:
-                log_ini = ""
-        bonds, numbers, _ = _struct_bonds_numbers(struct)
-        result = run_geometric_robust(
-            myatoms,
-            calc,
-            prefix=tmpbase,
-            constraints_path=tmpcons if conslist is not None else None,
-            coordsys=geo.get("coordsys", "tric"),
-            maxiter=int(geo.get("maxiter", getattr(los.args, "geometric_maxiter", 500))),
-            converge=geo.get("converge", getattr(los.args, "geometric_converge", "set GAU")),
-            enforce=float(geo.get("enforce", getattr(los.args, "geometric_enforce", 0.0))),
-            log_ini=log_ini if log_ini else None,
-            geometry_bonds=bonds,
-            geometry_numbers=numbers,
-        )
-        crd = result["coords"]
-        if result["energy_ha"] is not None:
-            ene = result["energy_ha"] / AU_PER_ELECTRON_VOLT()
+    try:
+        if use_geometric_subprocess():
+            # Legacy path: spawn geom.geometric + watchdog.
+            ase.io.write(tmpxyz, myatoms, format="xyz", parallel=False)
+            mystruct = copy.deepcopy(struct)
+            if conslist is not None:
+                mystruct.constraints = None
+                mystruct.data["constraints"] = []
+            if reslist is not None:
+                mystruct.restraints = reslist
+                mystruct.data["restraints"] = reslist.to_list_of_dict()
+            mylos = ListOfStruct([mystruct])
+            mylos.save(tmpjson)
+            cmds = argparse2geometric(tmpjson, los.args)
+            cmds.append(tmpxyz)
+            if conslist is not None:
+                cmds.append(tmpcons)
+            _run_geometric_with_watchdog(cmds, tmplog, activity_dir=tmpdir)
+            if not os.path.exists(tmpopt):
+                log_hint = ""
+                try:
+                    if os.path.exists(tmplog):
+                        with open(tmplog, "r", errors="replace") as fh:
+                            tail = fh.read()[-2000:]
+                        if tail.strip():
+                            log_hint = f"\n--- tail of {tmplog} ---\n{tail}"
+                except OSError:
+                    pass
+                raise Exception(
+                    f"File not found: {tmpopt} (geomeTRIC did not write an "
+                    f"optimized geometry; often a constrained-IC recovery failure)."
+                    f"{log_hint}"
+                )
+            out_atoms = ase.io.read(tmpopt, index="-1", parallel=False)
+            out_atoms.set_initial_charges(myatoms.get_initial_charges())
+            keys = [key for key in out_atoms.info]
+            ene = float(keys[-1]) / AU_PER_ELECTRON_VOLT()
+            crd = out_atoms.get_positions()
+            frc = None
         else:
-            myatoms.set_positions(crd)
-            myatoms.calc = calc
-            ene = myatoms.get_potential_energy()
-        frc = None
+            calc = get_persistent_calc(los, struct, reslist=reslist)
+            geo = GetStandardOptions(los.args).get("geometric", {})
+            log_ini = configure_geometric_logging(
+                getattr(los.args, "geometric_ini", None)
+            )
+            if getattr(los.args, "geometric_ini", None) is not None:
+                if len(str(los.args.geometric_ini)) == 0:
+                    log_ini = ""
+            bonds, numbers, _ = _struct_bonds_numbers(struct)
+            result = run_geometric_robust(
+                myatoms,
+                calc,
+                prefix=tmpbase,
+                constraints_path=tmpcons if conslist is not None else None,
+                coordsys=geo.get("coordsys", "tric"),
+                maxiter=int(geo.get("maxiter", getattr(los.args, "geometric_maxiter", 500))),
+                converge=geo.get("converge", getattr(los.args, "geometric_converge", "set GAU")),
+                enforce=float(geo.get("enforce", getattr(los.args, "geometric_enforce", 0.0))),
+                log_ini=log_ini if log_ini else None,
+                geometry_bonds=bonds,
+                geometry_numbers=numbers,
+            )
+            crd = result["coords"]
+            if result["energy_ha"] is not None:
+                ene = result["energy_ha"] / AU_PER_ELECTRON_VOLT()
+            else:
+                myatoms.set_positions(crd)
+                myatoms.calc = calc
+                ene = myatoms.get_potential_energy()
+            frc = None
+    except BaseException:
+        cleanup_geometric_scratch(tmpbase, keep_optim=bool(stable_prefix))
+        raise
 
     clone = getattr(struct, "clone_geometry", None)
     if callable(clone):
@@ -805,25 +810,7 @@ def GeomOpt_GEOMETRIC(
         out.restraints = reslist
         out.data["restraints"] = out.restraints.to_list_of_dict()
 
-    for f in [tmpxyz,tmpopt,tmplog,tmpcons,tmpjson]:
-        if os.path.exists(f):
-            os.remove(f)
-
-    # Recovery ladder writes ``{tmpbase}.rN*`` sidecars; sweep them too.
-    import glob
-    import shutil
-    for f in glob.glob(tmpbase + ".r*"):
-        try:
-            if os.path.isdir(f):
-                shutil.rmtree(f)
-            elif os.path.isfile(f):
-                os.remove(f)
-        except OSError:
-            pass
-
-    if os.path.isdir(tmpdir):
-        shutil.rmtree(tmpdir)
-
+    cleanup_geometric_scratch(tmpbase, keep_optim=False)
     return out
 
 

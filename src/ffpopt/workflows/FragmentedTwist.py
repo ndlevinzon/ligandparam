@@ -251,6 +251,9 @@ def _run_fragment_twist_job(job: dict) -> dict:
 
     # Already complete from a prior run: report done without leasing CPUs.
     if job.get("skip_existing") and is_fragment_twist_done(frag_dir):
+        from ffpopt.geom.Geometric import sweep_geometric_scratch_dir
+
+        sweep_geometric_scratch_dir(frag_dir, recursive=True)
         _set(
             status="done",
             stage="finished",

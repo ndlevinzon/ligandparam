@@ -1261,6 +1261,60 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         lines = to_geometric([Constraint("dihed", [0, 1, 2, 3], value=45.0)])
         self.assertTrue(any("45.0" in ln and ln.startswith("dihedral") for ln in lines))
 
+    def test_cleanup_geometric_scratch_nsf_and_tmp(self):
+        import tempfile
+        from pathlib import Path
+        from ffpopt.geom.Geometric import (
+            cleanup_geometric_scratch,
+            geometric_prefix_from_node_pkl,
+            sweep_geometric_scratch_dir,
+        )
+        from ffpopt.scan.WavefrontMixins import cleanup_wavefront_geometric_scratch
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            pkl = td / "level_1_angle_0.0_id_0_node.pckl"
+            pkl.write_text("node")
+            prefix = geometric_prefix_from_node_pkl(pkl)
+            self.assertTrue(prefix.endswith("_geom"))
+            tmp = Path(prefix + ".tmp")
+            tmp.mkdir()
+            (tmp / "junk").write_text("x")
+            Path(prefix + ".nsf").write_text("geom log")
+            Path(prefix + ".log").write_text("log")
+            Path(prefix + "_optim.xyz").write_text("xyz")
+            Path(prefix + ".r1.tmp").mkdir()
+            (td / "log.nsf").write_text("cwd log")
+            (td / "orphan_geom.log").write_text("old")
+
+            n = cleanup_geometric_scratch(prefix, keep_optim=True)
+            self.assertGreater(n, 0)
+            self.assertFalse(tmp.exists())
+            self.assertFalse(Path(prefix + ".nsf").exists())
+            self.assertTrue(Path(prefix + "_optim.xyz").exists())
+
+            class _Node:
+                node_pkl = str(pkl)
+                complete = False
+
+            class _Level:
+                nodes = [_Node()]
+
+            class _WF:
+                levels = [_Level()]
+                workdir = str(td)
+                checkpoint = str(td / "checkpoint.pkl")
+
+            cleanup_wavefront_geometric_scratch(_WF(), keep_incomplete_optim=True)
+            self.assertTrue(Path(prefix + "_optim.xyz").exists())
+            self.assertFalse((td / "log.nsf").exists())
+
+            _Node.complete = True
+            cleanup_wavefront_geometric_scratch(_WF(), keep_incomplete_optim=False)
+            self.assertFalse(Path(prefix + "_optim.xyz").exists())
+            self.assertFalse((td / "orphan_geom.log").exists())
+            self.assertEqual(sweep_geometric_scratch_dir(td), 0)
+
     def test_is_soft_opt_and_evaluate_policy(self):
         from ffpopt.geom.GeomOpt import is_soft_opt_recovery
         from ffpopt.scan.WavefrontMixins import evaluate_wavefront_minimum

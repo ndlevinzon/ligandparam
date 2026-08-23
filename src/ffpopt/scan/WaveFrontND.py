@@ -48,6 +48,7 @@ from .WavefrontMixins import (
     run_mpi_spawn_drain_loop,
     slim_node_result,
     write_node_pickle,
+    cleanup_wavefront_geometric_scratch,
 )
 
 
@@ -332,7 +333,7 @@ class WavefrontNode(object):
         write_node_pickle(self, verbose=True)
 
     def cleanup(self) -> None:
-        """Clean up the node's pickle file."""
+        """Remove the node pickle and geomeTRIC scratch for this node."""
         filename = Path(f"{self.node_pkl}")
         if filename.is_file():
             try:
@@ -340,6 +341,14 @@ class WavefrontNode(object):
                 os.remove(filename)
             except Exception:
                 print(f"Failed to remove {self.node_pkl} because it disappeared")
+        from ffpopt.geom.Geometric import (
+            cleanup_geometric_scratch,
+            geometric_prefix_from_node_pkl,
+        )
+
+        cleanup_geometric_scratch(
+            geometric_prefix_from_node_pkl(self.node_pkl), keep_optim=False
+        )
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
         mark_node_failed(self, reason, error, where=self.rcs)
@@ -785,6 +794,7 @@ class Wavefront(object):
 
         self._resume_queue = list(pending)
         self.save_checkpoint()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
 
         pool = None
         owns_pool = False
@@ -829,6 +839,7 @@ class Wavefront(object):
         self._resume_queue = []
         self.save_checkpoint()
         self._cleanup_completed()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
         self._print_progress(0, 0)
         results = self.sort_results()
         print("[wavefront] finished this scan "
@@ -907,6 +918,7 @@ class Wavefront(object):
 
         self._resume_queue = list(pending)
         self.save_checkpoint()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
 
         from ffpopt.runtime.FastWavefront import wf_checkpoint_every
 
@@ -929,6 +941,7 @@ class Wavefront(object):
         self._resume_queue = []
         self.save_checkpoint()
         self._cleanup_completed()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
         self._print_progress(0, 0)
 
         results = self.sort_results()
