@@ -693,6 +693,31 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("--fit-full", full)
         self.assertIn("jax", full)
 
+    def test_fit_backend_jax_falls_back_without_jax(self):
+        from argparse import Namespace
+        from unittest.mock import patch
+        from ffpopt.dihed.ExtendedFit import apply_fit_flags_to_args, resolve_fit_backend
+
+        with patch("ffpopt.dihed.ExtendedFit.jax_is_available", return_value=False):
+            self.assertEqual(resolve_fit_backend("jax"), "lbfgsb")
+            args = Namespace(
+                fit_mode="full",
+                fit_backend="jax",
+                fit_full=True,
+                barrier_only=False,
+                fit_phases=False,
+                fit_periods=False,
+                fit_scee_scnb=False,
+                opt_phase=False,
+                opt_periods=False,
+                opt_scee_scnb=False,
+                scee=None,
+                scnb=None,
+            )
+            apply_fit_flags_to_args(args)
+            self.assertEqual(args.fit_backend, "lbfgsb")
+            self.assertEqual(args.fit_mode, "full")
+
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary
 

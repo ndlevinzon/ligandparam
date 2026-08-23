@@ -39,6 +39,40 @@ def fit_backend_from_env(default: str = "lsq") -> str:
     return default
 
 
+def jax_is_available() -> bool:
+    """True when the optional ``jax`` extra can be imported."""
+    try:
+        import jax  # noqa: F401
+        import jax.numpy  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _note_jax_fallback(requested: str, used: str) -> None:
+    from ffpopt.affdo.AffdoLog import print_affdo
+
+    print_affdo(
+        f"fit_backend={requested} requested but jax is not installed; "
+        f"falling back to {used} (pip install 'ligandparam[jax]' to enable jax)"
+    )
+
+
+def resolve_fit_backend(backend: str, *, allow_fallback: bool = True) -> str:
+    """Normalize a backend name; fall back if ``jax`` is missing."""
+    name = str(backend or "lsq").strip().lower()
+    if name in ("lsq_linear", "linear"):
+        name = "lsq"
+    if name in ("l-bfgs-b", "scipy"):
+        name = "lbfgsb"
+    if name in ("autodiff",):
+        name = "jax"
+    if name == "jax" and allow_fallback and not jax_is_available():
+        _note_jax_fallback("jax", "lbfgsb")
+        return "lbfgsb"
+    return name
+
+
 def apply_fit_flags_to_args(args) -> None:
     """Stamp extended-fit attributes onto an argparse / SimpleNamespace ``args``."""
     mode = getattr(args, "fit_mode", None) or fit_mode_from_env("barrier")
@@ -50,7 +84,7 @@ def apply_fit_flags_to_args(args) -> None:
         mode = "full"
 
     args.fit_mode = mode
-    args.fit_backend = backend
+    args.fit_backend = resolve_fit_backend(backend)
 
     opt_phase = bool(getattr(args, "fit_phases", False) or getattr(args, "opt_phase", False))
     opt_periods = bool(getattr(args, "fit_periods", False) or getattr(args, "opt_periods", False))
@@ -81,6 +115,7 @@ def apply_fit_flags_to_args(args) -> None:
 
     if (args.opt_phase or args.opt_periods or args.opt_scee_scnb) and args.fit_backend == "lsq":
         args.fit_backend = "lbfgsb"
+    args.fit_backend = resolve_fit_backend(args.fit_backend)
 
 
 def configure_fit_input(finp, args) -> None:
@@ -309,7 +344,8 @@ def _jax_objective_factory(finp, caches):
         import jax.numpy as jnp
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "fit_backend=jax requires jax; install with pip install 'ligandparam[jax]'"
+            "fit_backend=jax requires jax; install with pip install 'ligandparam[jax]' "
+            "(or omit --fit-backend jax to use SciPy L-BFGS-B)"
         ) from exc
 
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
@@ -443,7 +479,8 @@ def solve_extended_lbfgsb(args, finp, caches):
 
     x0 = get_extended_params(finp)
     bounds = extended_bounds(finp, x0)
-    backend = str(getattr(finp, "fit_backend", "lbfgsb"))
+    backend = resolve_fit_backend(str(getattr(finp, "fit_backend", "lbfgsb")))
+    finp.fit_backend = backend
     nparam = int(x0.size)
     chi0 = float(objective_extended(x0, finp, caches))
     print_affdo(
