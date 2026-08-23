@@ -408,6 +408,43 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
         self.assertIsNotNone(err)
         self.assertIn("precheck_error", err)
 
+    def test_covalent_geometry_error_flags_flying_hydrogen(self):
+        import numpy as np
+        from ffpopt.geom.Constraints import covalent_geometry_error
+
+        pos = np.array([[0.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
+        err = covalent_geometry_error(pos, [(0, 1)], numbers=[6, 1])
+        self.assertIsNotNone(err)
+        self.assertIn("flew off", err)
+
+        ok = covalent_geometry_error(
+            np.array([[0.0, 0.0, 0.0], [1.09, 0.0, 0.0]]),
+            [(0, 1)],
+            numbers=[6, 1],
+        )
+        self.assertIsNone(ok)
+
+        nan = covalent_geometry_error(
+            np.array([[0.0, 0.0, 0.0], [np.nan, 0.0, 0.0]]),
+            [(0, 1)],
+            numbers=[6, 1],
+        )
+        self.assertIn("non-finite", nan)
+
+    def test_precheck_skips_broken_covalent_bond(self):
+        import numpy as np
+        from ffpopt.scan.WavefrontMixins import precheck_geometry_clash
+
+        class _Atoms:
+            def get_positions(self):
+                return np.array([[0.0, 0.0, 0.0], [6.0, 0.0, 0.0]])
+
+            def get_atomic_numbers(self):
+                return np.array([6, 1])
+
+        err = precheck_geometry_clash(get_atoms=_Atoms, bonds=[(0, 1)])
+        self.assertEqual(err, "broken_geometry")
+
     def test_replace_node_with_pickle_noop_when_missing(self):
         from ffpopt.scan.WavefrontMixins import replace_node_with_pickle
 

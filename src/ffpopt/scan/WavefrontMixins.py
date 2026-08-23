@@ -328,22 +328,32 @@ def precheck_geometry_clash(
     bonds,
     min_dist: float = 0.8,
 ) -> Optional[str]:
-    """Shared clash precheck after constraints are applied.
+    """Shared clash / broken-bond precheck after constraints are applied.
 
     ``get_atoms`` should return an ASE atoms object with constraints applied.
+    Skips the optimizer when nonbonded atoms overlap or a covalent bond is
+    already crushed / dissociated (hydrogens or carbons flying off).
     """
     try:
-        from ffpopt.geom.Constraints import has_nonbonded_clash
+        from ffpopt.geom.Constraints import (
+            covalent_geometry_error,
+            has_nonbonded_clash,
+        )
 
         myatoms = get_atoms()
-        clashed, i, j, dist = has_nonbonded_clash(
-            myatoms.get_positions(), bonds, min_dist=min_dist
-        )
+        pos = myatoms.get_positions()
+        clashed, i, j, dist = has_nonbonded_clash(pos, bonds, min_dist=min_dist)
         if clashed:
             print(
                 f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Ang (< {min_dist} Ang)"
             )
             return "clash_precheck"
+        broken = covalent_geometry_error(
+            pos, bonds, myatoms.get_atomic_numbers()
+        )
+        if broken:
+            print(f"Precheck broken geometry: {broken}")
+            return "broken_geometry"
     except Exception as e:
         print(f"Precheck failed due to error: {e}")
         return f"precheck_error: {e}"

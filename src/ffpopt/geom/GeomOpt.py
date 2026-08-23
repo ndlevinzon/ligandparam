@@ -23,6 +23,49 @@ def _ase_loose_fmax(strict_tol: float) -> float:
     return max(3.0 * float(strict_tol), 0.05)
 
 
+def _struct_bonds_numbers(struct):
+    """Covalent bonds and atomic numbers from a Struct, if present."""
+    data = getattr(struct, "data", None) or {}
+    bonds = data.get("bonds") or []
+    getter = getattr(struct, "GetASEAtoms", None)
+    atoms = getter() if callable(getter) else None
+    numbers = None
+    if atoms is not None:
+        try:
+            numbers = atoms.get_atomic_numbers()
+        except Exception:
+            numbers = None
+    return bonds, numbers, atoms
+
+
+def _explode_fmax_limit() -> float:
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return float(env_float("FFPOPT_GEOM_EXPLODE_FMAX", 50.0))
+
+
+def _guard_covalent_geometry(positions, bonds, numbers=None, *, where="geometry"):
+    from ffpopt.geom.Constraints import assert_sane_covalent_geometry
+
+    assert_sane_covalent_geometry(positions, bonds, numbers, where=where)
+
+
+def _attach_ase_geometry_guard(optimizer, atoms, bonds, numbers=None):
+    """Abort an ASE optimizer as soon as a covalent bond explodes."""
+    from ffpopt.geom.Constraints import BrokenGeometryError, covalent_geometry_error
+
+    def _check():
+        err = covalent_geometry_error(atoms.get_positions(), bonds, numbers)
+        if err:
+            raise BrokenGeometryError(f"ASE step: {err}")
+
+    try:
+        optimizer.attach(_check, interval=1)
+    except Exception:
+        pass
+    _check()
+
+
 def opt_recovery_label(struct) -> str | None:
     """Return the GeomOpt recovery tag on ``struct``, if any."""
     if struct is None:
@@ -171,6 +214,25 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     myatoms.calc.reset()
     logfile = sys.stderr
 
+    bonds, numbers, _ = _struct_bonds_numbers(struct)
+    _guard_covalent_geometry(
+        myatoms.get_positions(), bonds, numbers, where="ASE pre-opt"
+    )
+    try:
+        f0 = _ase_fmax(myatoms)
+    except Exception as exc:
+        from ffpopt.geom.Constraints import BrokenGeometryError
+
+        raise BrokenGeometryError(f"ASE pre-opt forces failed: {exc}") from exc
+    explode = _explode_fmax_limit()
+    if f0 > explode:
+        from ffpopt.geom.Constraints import BrokenGeometryError
+
+        raise BrokenGeometryError(
+            f"ASE pre-opt fmax={f0:.3g} eV/Ang exceeds {explode:.3g} "
+            "(geometry will explode; skipping optimizer)"
+        )
+
     strict_tol = float(los.args.ase_opt_tol)
     loose_tol = _ase_loose_fmax(strict_tol)
     max_steps = int(los.args.geometric_maxiter)
@@ -178,14 +240,22 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     accepted = False
     accepted_how = None
 
+    from ffpopt.geom.Constraints import BrokenGeometryError
+
     for name, OptCls in _ase_optimizer_classes():
         try:
             myatoms.calc.reset()
         except Exception:
             pass
-        optimizer = OptCls(myatoms, logfile=logfile)
+        try:
+            optimizer = OptCls(myatoms, logfile=logfile, maxstep=0.2)
+        except TypeError:
+            optimizer = OptCls(myatoms, logfile=logfile)
+        _attach_ase_geometry_guard(optimizer, myatoms, bonds, numbers)
         try:
             converged = bool(optimizer.run(fmax=strict_tol, steps=max_steps))
+        except BrokenGeometryError:
+            raise
         except Exception as exc:
             from ffpopt.runtime.Console import ascii_for_stdio
 
@@ -676,6 +746,7 @@ def GeomOpt_GEOMETRIC(
         if getattr(los.args, "geometric_ini", None) is not None:
             if len(str(los.args.geometric_ini)) == 0:
                 log_ini = ""
+        bonds, numbers, _ = _struct_bonds_numbers(struct)
         result = run_geometric_robust(
             myatoms,
             calc,
@@ -686,6 +757,8 @@ def GeomOpt_GEOMETRIC(
             converge=geo.get("converge", getattr(los.args, "geometric_converge", "set GAU")),
             enforce=float(geo.get("enforce", getattr(los.args, "geometric_enforce", 0.0))),
             log_ini=log_ini if log_ini else None,
+            geometry_bonds=bonds,
+            geometry_numbers=numbers,
         )
         crd = result["coords"]
         if result["energy_ha"] is not None:
@@ -1054,13 +1127,22 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
     ffpopt.Struct.Struct
         The optimized geometry with updated positions, forces, and energy
     """
+    from ffpopt.geom.Constraints import BrokenGeometryError
     from ffpopt.geom.LinearTorsion import is_linear_torsion_error
+
+    bonds, numbers, atoms0 = _struct_bonds_numbers(struct)
+    if not los.args.no_opt:
+        pos0 = atoms0.get_positions() if atoms0 is not None else None
+        if pos0 is not None:
+            _guard_covalent_geometry(pos0, bonds, numbers, where="pre-opt")
 
     if los.args.no_opt:
         out = GeomOpt_SinglePoint(los,struct,constraints,restraints)
     elif not los.args.geometric_opt:
         try:
             out = GeomOpt_ASE(los,struct,constraints,restraints)
+        except BrokenGeometryError:
+            raise
         except Exception as e:
             if is_linear_torsion_error(e):
                 _geomopt_fallback_note("ASE", e, "linear-torsion")
@@ -1076,6 +1158,8 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
                         out = GeomOpt_LINEAR_TORSION(
                             los, struct, constraints, restraints
                         )
+                    except BrokenGeometryError:
+                        raise
                     except Exception:
                         raise e from e
                 else:
@@ -1088,6 +1172,8 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
             out = GeomOpt_GEOMETRIC(
                 los, struct, constraints, restraints, geom_prefix=geom_prefix
             )
+        except BrokenGeometryError:
+            raise
         except Exception as e:
             if is_linear_torsion_error(e):
                 _geomopt_fallback_note("geomeTRIC", e, "linear-torsion")
@@ -1099,6 +1185,8 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
                 _geomopt_fallback_note("geomeTRIC", e, "ASE")
                 try:
                     out = GeomOpt_ASE(los,struct,constraints,restraints)
+                except BrokenGeometryError:
+                    raise
                 except Exception as e2:
                     if is_linear_torsion_error(e2):
                         _geomopt_fallback_note("ASE", e2, "linear-torsion")
@@ -1107,6 +1195,13 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
                         )
                     else:
                         raise
+    if not los.args.no_opt:
+        getter = getattr(out, "GetASEAtoms", None)
+        atoms1 = getter() if callable(getter) else None
+        if atoms1 is not None:
+            _guard_covalent_geometry(
+                atoms1.get_positions(), bonds, numbers, where="post-opt"
+            )
     return out
 
 

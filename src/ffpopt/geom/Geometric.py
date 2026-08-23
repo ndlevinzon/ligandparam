@@ -358,6 +358,18 @@ def run_geometric_inprocess(
     from geometric.molecule import Molecule
     from geometric.optimize import run_optimizer
 
+    geometry_bonds = extra_kwargs.pop("geometry_bonds", None)
+    geometry_numbers = extra_kwargs.pop("geometry_numbers", None)
+    if geometry_bonds:
+        from ffpopt.geom.Constraints import wrap_calculator_geometry_guard
+
+        nums = (
+            geometry_numbers
+            if geometry_numbers is not None
+            else atoms.get_atomic_numbers()
+        )
+        calc = wrap_calculator_geometry_guard(calc, geometry_bonds, nums)
+
     prefix = str(prefix)
     Path(prefix).parent.mkdir(parents=True, exist_ok=True)
     xyz_path = prefix + ".xyz"
@@ -576,6 +588,10 @@ def run_geometric_robust(
             # Linear torsion is not cured by looser converge / coordsys — stop
             # the ladder so GeomOpt can run the dedicated ASE rescue.
             if is_linear_torsion_error(exc):
+                raise
+            from ffpopt.geom.Constraints import BrokenGeometryError
+
+            if isinstance(exc, BrokenGeometryError):
                 raise
             if i + 1 >= len(attempts):
                 break

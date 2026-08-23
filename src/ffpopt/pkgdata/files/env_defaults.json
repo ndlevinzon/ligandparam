@@ -72,6 +72,11 @@
   "FFPOPT_GEOMOPT_ROBUST": true,
   // Last ladder rung: treat maxiter as success and keep the best frame.
   "FFPOPT_GEOMOPT_SOFT_MAXITER": true,
+  // Abort opt if a covalent bond exceeds this multiple of Rcov_i+Rcov_j
+  // (flying H/C). Typical C-H ~1.09 Ang; 1.8 x Rcov is ~1.9 Ang.
+  "FFPOPT_GEOM_MAX_BOND_SCALE": 1.8,
+  // Abort before stepping if the starting fmax exceeds this (eV/Ang).
+  "FFPOPT_GEOM_EXPLODE_FMAX": 50.0,
 
   // --- ConfSearch / multi-centroid HL -------------------------------------
   // Conformer count at which RMS clustering uses the fast (align-to-first)

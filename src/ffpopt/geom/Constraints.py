@@ -690,6 +690,153 @@ def has_nonbonded_clash(positions, bonds, min_dist=0.8):
     return True, i, j, float(np.sqrt(d2[i, j]))
 
 
+class BrokenGeometryError(RuntimeError):
+    """Covalent bonds exploded, coordinates are non-finite, or forces blew up."""
+
+
+# Cordero 2008 covalent radii (Ang). Used to flag dissociated H/C without
+# converting the AU table in PeriodicTable.
+_RCOV_ANG = {
+    1: 0.31,
+    6: 0.76,
+    7: 0.71,
+    8: 0.66,
+    9: 0.57,
+    15: 1.07,
+    16: 1.05,
+    17: 1.02,
+    35: 1.20,
+    53: 1.39,
+}
+
+
+def _rcov_ang(z) -> float:
+    z = int(z)
+    if z in _RCOV_ANG:
+        return _RCOV_ANG[z]
+    try:
+        from ffpopt.constants.PeriodicTable import GetCovalentRadius
+        from ffpopt.constants.Conversions import AU_PER_ANGSTROM
+
+        r = float(GetCovalentRadius(z) or 0.0)
+        conv = float(AU_PER_ANGSTROM() or 0.0)
+        if r > 0.0 and conv > 0.0:
+            return r / conv
+    except Exception:
+        pass
+    return 0.77
+
+
+def covalent_geometry_error(
+    positions,
+    bonds,
+    numbers=None,
+    *,
+    max_scale: float | None = None,
+    min_scale: float = 0.4,
+    max_abs: float = 4.0,
+) -> str | None:
+    """Return a short error if covalent geometry is broken, else ``None``.
+
+    Catches hydrogens/carbons that have flown off (bond >> Rcov) and fused
+    atoms (bond << Rcov), plus non-finite coordinates. This is the complement
+    of :func:`has_nonbonded_clash` (too-close nonbonded pairs).
+    """
+    import numpy as np
+
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    pos = np.asarray(positions, dtype=float)
+    if pos.size == 0:
+        return None
+    if not np.isfinite(pos).all():
+        return "non-finite coordinates"
+    if not bonds:
+        return None
+    if max_scale is None:
+        max_scale = env_float("FFPOPT_GEOM_MAX_BOND_SCALE", 1.8)
+    radii = None
+    if numbers is not None:
+        radii = [_rcov_ang(z) for z in numbers]
+    for b in bonds:
+        i, j = int(b[0]), int(b[1])
+        d = float(np.linalg.norm(pos[i] - pos[j]))
+        if d > float(max_abs):
+            return f"covalent bond {i}-{j} = {d:.2f} Ang (atom flew off)"
+        if radii is not None:
+            expect = radii[i] + radii[j]
+            if expect > 0.2:
+                if d > float(max_scale) * expect:
+                    return (
+                        f"covalent bond {i}-{j} = {d:.2f} Ang "
+                        f"(>{max_scale:.2f} x Rcov={expect:.2f})"
+                    )
+                if d < float(min_scale) * expect:
+                    return f"covalent bond {i}-{j} = {d:.2f} Ang (crushed)"
+        elif d < 0.4:
+            return f"covalent bond {i}-{j} = {d:.2f} Ang (crushed)"
+    return None
+
+
+def assert_sane_covalent_geometry(positions, bonds, numbers=None, *, where="geometry"):
+    """Raise :class:`BrokenGeometryError` when covalent geometry is broken."""
+    err = covalent_geometry_error(positions, bonds, numbers)
+    if err:
+        raise BrokenGeometryError(f"{where}: {err}")
+
+
+def wrap_calculator_geometry_guard(calc, bonds, numbers=None):
+    """ASE calculator wrapper that aborts when a covalent bond explodes.
+
+    Checked on every energy/force evaluation so geomeTRIC/ASE cannot spend
+    hundreds of steps on a dissociated ligand.
+    """
+    if calc is None or not bonds:
+        return calc
+
+    class _GeometryGuard:
+        __slots__ = ("_inner", "_bonds", "_numbers")
+
+        def __init__(self, inner):
+            object.__setattr__(self, "_inner", inner)
+            object.__setattr__(self, "_bonds", bonds)
+            object.__setattr__(self, "_numbers", numbers)
+
+        def __getattr__(self, name):
+            return getattr(object.__getattribute__(self, "_inner"), name)
+
+        def __setattr__(self, name, value):
+            if name in _GeometryGuard.__slots__:
+                object.__setattr__(self, name, value)
+            else:
+                setattr(object.__getattribute__(self, "_inner"), name, value)
+
+        def _check(self, atoms):
+            if atoms is None:
+                return
+            err = covalent_geometry_error(
+                atoms.get_positions(),
+                object.__getattribute__(self, "_bonds"),
+                object.__getattribute__(self, "_numbers"),
+            )
+            if err:
+                raise BrokenGeometryError(err)
+
+        def get_potential_energy(self, atoms=None, **kwargs):
+            self._check(atoms)
+            return self._inner.get_potential_energy(atoms, **kwargs)
+
+        def get_forces(self, atoms=None, **kwargs):
+            self._check(atoms)
+            return self._inner.get_forces(atoms, **kwargs)
+
+        def calculate(self, atoms=None, *args, **kwargs):
+            self._check(atoms)
+            return self._inner.calculate(atoms, *args, **kwargs)
+
+    return _GeometryGuard(calc)
+
+
 
 
 ####################################
