@@ -756,6 +756,29 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertNotIn("disp", opts)
         self.assertEqual(opts["ftol"], 0.02)
 
+    def test_soft_dihed_skips_hard_twist_and_empty_scan_message(self):
+        from types import SimpleNamespace
+        from ffpopt.scan.WavefrontMixins import (
+            uses_soft_dihed_restraint,
+            empty_scan_error_message,
+        )
+
+        self.assertFalse(uses_soft_dihed_restraint(SimpleNamespace(args=None)))
+        self.assertFalse(
+            uses_soft_dihed_restraint(
+                SimpleNamespace(args=SimpleNamespace(soft_dihed_restraint=False))
+            )
+        )
+        self.assertTrue(
+            uses_soft_dihed_restraint(
+                SimpleNamespace(args=SimpleNamespace(soft_dihed_restraint=True))
+            )
+        )
+        wf = SimpleNamespace(levels=[SimpleNamespace(nodes=[])])
+        msg = empty_scan_error_message(wf, "xtb_0-1-2-3.json")
+        self.assertIn("0 accepted scan angles", msg)
+        self.assertIn("No seed nodes", msg)
+
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary
 

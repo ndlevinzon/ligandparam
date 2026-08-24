@@ -125,6 +125,51 @@ def atomic_pickle_dump(obj: Any, path) -> None:
     os.replace(tmp, path)
 
 
+def uses_soft_dihed_restraint(los) -> bool:
+    """True when wavefront should not hard-apply the scanned dihedral.
+
+    Whole-ligand bulky rotors (detergents) clash if the seed angle is snapped
+    with a hard IC before opt. ``--soft-dihed-restraint`` exists so the
+    optimizer can rotate under a harmonic; clash checks must use the current
+    coordinates, not a hard-twisted copy.
+    """
+    args = getattr(los, "args", None)
+    return bool(getattr(args, "soft_dihed_restraint", False))
+
+
+def empty_scan_error_message(wavefront, out_path) -> str:
+    """Human-readable reason when a wavefront stored no finite-energy angles."""
+    levels = getattr(wavefront, "levels", None) or []
+    n_nodes = sum(len(getattr(lv, "nodes", None) or []) for lv in levels)
+    failed = []
+    for lv in levels:
+        for node in getattr(lv, "nodes", None) or []:
+            err = getattr(node, "error", None)
+            ene = getattr(node, "energy", None)
+            if err or ene is None or not np.isfinite(ene):
+                failed.append(
+                    f"angle={getattr(node, 'angle', '?')} "
+                    f"id={getattr(node, 'node_id', '?')} error={err}"
+                )
+    lines = [
+        f"wavefront produced 0 accepted scan angles (nodes={n_nodes}, "
+        f"out={out_path}).",
+        "No finite energy was stored, so there is no .dat profile to fit.",
+    ]
+    if n_nodes == 0:
+        lines.append(
+            "No seed nodes were created: the hard-twist clash check rejected "
+            "every starting angle. --soft-dihed-restraint now skips that "
+            "snap-before-opt check on bulky whole-ligand torsions."
+        )
+    elif failed:
+        lines.append("Failed / nonfinite nodes:")
+        lines.extend(f"  {x}" for x in failed[:12])
+        if len(failed) > 12:
+            lines.append(f"  ... and {len(failed) - 12} more")
+    return "\n".join(lines)
+
+
 def mark_node_failed(
     node: Any,
     reason: str,

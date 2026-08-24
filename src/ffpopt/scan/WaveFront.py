@@ -355,8 +355,13 @@ class WavefrontNode:
         """
         def _atoms():
             from ffpopt.geom.Constraints import FillConstraints, ApplyConstraints
+            from ffpopt.scan.WavefrontMixins import uses_soft_dihed_restraint
 
             myatoms = self.struct.GetASEAtoms()
+            # Soft restraint: do not hard-snap the scanned dihedral; that
+            # clash-rejects bulky whole-ligand seeds before the optimizer runs.
+            if uses_soft_dihed_restraint(self.los):
+                return myatoms
             cons = FillConstraints(myatoms, copy.deepcopy(self.constraints))
             return ApplyConstraints(myatoms, cons)
 
@@ -673,6 +678,20 @@ class Wavefront:
                             workdir=self.workdir,
                         )
 
+        if not self.levels[0].nodes:
+            native = self.nearest_angle(self.min_geom_ang, self.delta) % 360
+            print(
+                "[wavefront] all seed angles failed the hard-twist clash "
+                f"check; seeding native angle {native} deg so the scan can start"
+            )
+            self.levels[0].add_node(
+                self.los,
+                self.struct,
+                self.con,
+                angle=native,
+                workdir=self.workdir,
+            )
+
     def init_conformer(self, struct: Struct, con: Constraint, extra_con_in: list[int], angle_increment: float, iter_count: int = 0) -> GeomOpt:
         """Initialize a conformer based on the initial geometry optimization.
         
@@ -753,6 +772,10 @@ class Wavefront:
             
         """
         from ffpopt.geom.Constraints import FillConstraints, ApplyConstraints
+        from ffpopt.scan.WavefrontMixins import uses_soft_dihed_restraint
+
+        if uses_soft_dihed_restraint(self.los):
+            return True
         myatoms = struct.GetASEAtoms()
         con = copy.deepcopy(con)
         con.value = angle
@@ -1609,11 +1632,17 @@ def run_dihed_wavefront(
         wf_run.theory_change(inps, stride=args.wf_theory_stride)
 
     wf_run.calculate()
+    wf_run.print_summary()
     angles, energies, structures = wf_run.sort_results()
+
+    if not angles:
+        from ffpopt.scan.WavefrontMixins import empty_scan_error_message
+
+        raise RuntimeError(empty_scan_error_message(wf_run, args.out))
 
     KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
     energies_noshift = [e * KCAL_PER_EV for e in energies]
-    energies = energies_noshift - np.amin(energies_noshift)
+    energies = np.asarray(energies_noshift, dtype=float) - np.amin(energies_noshift)
 
     structures.save(args.out)
 

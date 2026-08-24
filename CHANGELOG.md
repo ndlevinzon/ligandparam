@@ -43,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Incomplete skip_existing scans** — reuse requires the companion ``.dat`` and exactly ``360/delta`` frames. JSON-only leftovers (killed after JSON, before ``.dat``) are rescanned instead of later crashing ``np.loadtxt``.
 - **Missing centroid HL profiles** — if no centroid scan is scoreable, twist raises with the candidate paths instead of warning and then dying in HL/LL compare on ``xtb_<idxs>.dat``.
 - **Wavefront plot margins** — ``tight_layout`` UserWarning on dense angle/level grids is suppressed; plots still save with ``bbox_inches='tight'``.
+- **Empty wavefront ``np.amin`` crash** — a scan with no accepted angles (every seed clash-rejected, or every opt failed) raised ``ValueError: zero-size array``. It now prints the node summary and raises ``RuntimeError`` with the failed-node list.
+- **``--soft-dihed-restraint`` seed clash** — hard-twist clash checks no longer snap the scanned dihedral before opt (that rejected every bulky whole-ligand seed). If every seed still fails, a native-angle node is forced so the wavefront can start.
 
 ---
 

@@ -1678,6 +1678,11 @@ def run_dihed_wavefront(
     
     rcs, energies, structures = wf_run.sort_results()
 
+    if not rcs:
+        from ffpopt.scan.WavefrontMixins import empty_scan_error_message
+
+        raise RuntimeError(empty_scan_error_message(wf_run, args.out))
+
     KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
     energies_noshift = [e * KCAL_PER_EV for e in energies]
     emin = 0
