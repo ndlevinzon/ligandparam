@@ -14,7 +14,7 @@
 
 {
   // --- Fast wavefront / parallelism ---------------------------------------
-  // Cheap presets: delta=15, GAU_LOOSE, maxiter=200, milder energy threshold.
+  // Cheap presets: GAU_LOOSE, maxiter=200, milder energy threshold (delta stays 10).
   // Same as lig-dihed-correct --fast.
   "FFPOPT_FAST_WAVEFRONT": false,
 

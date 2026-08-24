@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
+import os
 
+# Pin JAX before any ffpopt import can `import jax`. CPU nodes often have a
+# CUDA driver but no GPU; jax_plugins.xla_cuda12 then fails in cuInit.
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
+os.environ.setdefault("JAX_ENABLE_X64", "true")
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-            
 if __name__ == "__main__":
     import argparse
     import numpy as np

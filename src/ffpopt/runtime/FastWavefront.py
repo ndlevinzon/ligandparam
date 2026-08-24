@@ -1,8 +1,9 @@
 """Fast wavefront presets and allocation helpers for dihedral scans.
 
 Enable with ``FFPOPT_FAST_WAVEFRONT=1`` or ``--fast`` on ``lig-dihed-correct``.
-Presets favor wall-time over ultra-tight converge: looser geomeTRIC criteria,
-fewer maxiters, slightly coarser angle steps. Depth vs breadth when splitting
+Presets favor wall-time over ultra-tight converge: looser geomeTRIC criteria
+and fewer maxiters. Scan ``delta`` stays at the library default (10 deg) so
+HL and LL share one angle grid. Depth vs breadth when splitting
 ``nproc`` is decided by :func:`prefer_wavefront_depth`,
 :func:`prefer_bond_pool_depth`, and :func:`prefer_fragment_pool_depth`
 (small fair-share leases prefer concurrent outer jobs).
@@ -27,7 +28,6 @@ LIBRARY_DEFAULTS: dict[str, Any] = {
 # Applied when fast mode is on and the corresponding knob is still at
 # LIBRARY_DEFAULTS (explicit user overrides always win).
 FAST_WAVEFRONT_PRESETS: dict[str, Any] = {
-    "delta": 15,
     "geometric_maxiter": 200,
     "geometric_converge": "set GAU_LOOSE",
     "wf_convergence_threshold": 0.05,

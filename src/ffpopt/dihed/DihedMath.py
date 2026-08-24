@@ -90,8 +90,100 @@ def angle_map_from_los(los):
 _angle_map_from_los = angle_map_from_los
 
 
+def _looks_like_full_scan(n: int) -> bool:
+    """True for a uniform 360/n grid with enough points to interpolate."""
+    return int(n) >= 12 and 360 % int(n) == 0
+
+
+def _circular_delta(a: float, b: float) -> float:
+    d = abs(float(a) - float(b)) % 360.0
+    return min(d, 360.0 - d)
+
+
+def _frame_energy(struct) -> float:
+    data = getattr(struct, "data", None) or {}
+    e = data.get("energy")
+    if e is None:
+        raise ValueError("scan frame missing energy; cannot interpolate profiles")
+    return float(e)
+
+
+def _periodic_interp(src_angles, src_values, tgt_angles):
+    """Linear interpolation of a periodic (0–360 deg) 1-D profile."""
+    a = np.asarray(src_angles, dtype=float)
+    v = np.asarray(src_values, dtype=float)
+    order = np.argsort(a)
+    a, v = a[order], v[order]
+    a_ext = np.concatenate([a[-1:] - 360.0, a, a[:1] + 360.0])
+    v_ext = np.concatenate([v[-1:], v, v[:1]])
+    tgt = np.asarray(
+        [normalize_scan_angle(x) for x in tgt_angles], dtype=float
+    )
+    return np.interp(tgt, a_ext, v_ext)
+
+
+def _clone_frame_with_energy(src, energy, angle):
+    import copy
+
+    clone = copy.deepcopy(src)
+    if hasattr(clone, "Update"):
+        clone.Update(
+            energy, clone.data.get("positions"), clone.data.get("forces")
+        )
+    else:
+        clone.data["energy"] = energy
+    clone.data["name"] = f"d{int(round(normalize_scan_angle(angle))):03d}"
+    return clone
+
+
+def _align_hl_interpolated_onto_ll(loshl, losll, hl_map, ll_map, common, hl_only, ll_only):
+    """Keep every LL geometry; fill HL energies by periodic interpolation.
+
+    Isolated / nonlinear fits re-evaluate MM at LL geometries, so those
+    frames must stay at their scanned angles. Interpolating the (usually
+    coarser) HL QM curve onto the LL grid is the safe mismatch fallback.
+    """
+    from ffpopt.Struct import ListOfStruct
+
+    tgt = sorted(ll_map)
+    hl_angs = sorted(hl_map)
+    hl_enes = [_frame_energy(hl_map[a]) for a in hl_angs]
+    interp_e = _periodic_interp(hl_angs, hl_enes, tgt)
+    hl_structs = []
+    for ang, energy in zip(tgt, interp_e):
+        if ang in hl_map:
+            hl_structs.append(hl_map[ang])
+            continue
+        nearest = min(hl_angs, key=lambda x, a=ang: _circular_delta(x, a))
+        hl_structs.append(
+            _clone_frame_with_energy(hl_map[nearest], float(energy), ang)
+        )
+    ll_structs = [ll_map[a] for a in tgt]
+    new_hl = ListOfStruct.from_structs_shared(
+        hl_structs, args=getattr(loshl, "args", None)
+    )
+    new_ll = ListOfStruct.from_structs_shared(
+        ll_structs, args=getattr(losll, "args", None)
+    )
+    info = {
+        "n_common": len(tgt),
+        "angles": tgt,
+        "hl_only": hl_only,
+        "ll_only": ll_only,
+        "interpolated": True,
+        "interp_onto": "ll",
+        "n_exact": len(common),
+    }
+    return new_hl, new_ll, info
+
+
 def align_scan_profiles(loshl, losll, *, hl_path="", ll_path="", min_points=3):
-    """Keep only HL/LL frames that share the same scan angles (sorted).
+    """Align HL/LL frames onto the same scan angles (sorted).
+
+    Matching angles are kept as-is. When both sides look like full 360/n
+    scans on different grids (e.g. leftover ``--fast`` 15 deg HL vs 10 deg
+    orig), HL energies are interpolated onto the LL angles so MM geometries
+    stay exact. Otherwise the intersection is used.
 
     Returns aligned ``ListOfStruct`` objects and a small diagnostic dict.
     """
@@ -102,6 +194,13 @@ def align_scan_profiles(loshl, losll, *, hl_path="", ll_path="", min_points=3):
     common = sorted(set(hl_map) & set(ll_map))
     hl_only = sorted(set(hl_map) - set(ll_map))
     ll_only = sorted(set(ll_map) - set(hl_map))
+
+    if (hl_only or ll_only) and _looks_like_full_scan(len(hl_map)) and _looks_like_full_scan(
+        len(ll_map)
+    ):
+        return _align_hl_interpolated_onto_ll(
+            loshl, losll, hl_map, ll_map, common, hl_only, ll_only
+        )
 
     if len(common) < int(min_points):
         raise Exception(
@@ -125,5 +224,6 @@ def align_scan_profiles(loshl, losll, *, hl_path="", ll_path="", min_points=3):
         "angles": common,
         "hl_only": hl_only,
         "ll_only": ll_only,
+        "interpolated": False,
     }
     return new_hl, new_ll, info

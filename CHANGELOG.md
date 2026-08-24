@@ -36,7 +36,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **geomeTRIC scratch cleanup** — ``.nsf`` logs, ``{prefix}.tmp`` dirs, and other geomeTRIC sidecars are removed after each opt, when a completed node is folded into the checkpoint, and when a scan/fragment is resumed or skipped. Incomplete nodes keep ``_optim.xyz`` so a killed opt can still warm-start.
 - **``--fit-backend jax`` without jax** — fall back to SciPy L-BFGS-B with an ``[affdo]`` note instead of aborting GenDihedFit. From the clone, ``pip install -e '.[jax]'`` (PyPI ``ligandparam[jax]`` is 1.0.0).
 - **JAX CPU/x64 for GenDihedFit** — default ``JAX_PLATFORMS=cpu`` and ``jax_enable_x64`` so CHPC CPU nodes do not load the CUDA plugin (``CUDA_ERROR_NO_DEVICE``) and kcal/mol residuals stay float64. Dropped SciPy ``disp`` (unknown to current L-BFGS-B).
-- **HL/LL scan-grid skip** — ``skip_existing`` no longer reuses a scan JSON whose frame count is a different uniform 360/n grid than the current ``delta`` (``--fast`` 15° HL vs leftover 10° orig).
+- **HL/LL scan-grid skip** — ``skip_existing`` no longer reuses a scan JSON whose frame count is a different uniform 360/n grid than the current ``delta``.
+- **``--fast`` keeps ``delta=10``** — coarser 15 deg HL vs leftover 10 deg orig was collapsing fits to 12 shared angles. Fast mode still loosens geomeTRIC / I/O, not the scan grid.
+- **Mismatched leftover scans** — if both files still look like full 360/n grids, GenDihedFit interpolates HL energies onto the LL angles (keeps MM geometries) instead of dropping to the intersection.
+- **JAX CPU before first import** — ``JAX_PLATFORMS=cpu`` / ``CUDA_VISIBLE_DEVICES=-1`` are set at GenDihedFit process start and in ``jax_is_available()``, not only inside the JAX objective factory.
 
 ---
 

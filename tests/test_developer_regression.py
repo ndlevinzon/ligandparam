@@ -1512,6 +1512,53 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         ahl, all_, info = align_scan_profiles(hl, ll)
         self.assertEqual(info["n_common"], 3)
         self.assertEqual(len(ahl.structs), len(all_.structs))
+        self.assertFalse(info.get("interpolated"))
+
+    def test_align_scan_profiles_interpolates_mismatched_full_grids(self):
+        from ffpopt.dihed.Dihedrals import align_scan_profiles
+        from ffpopt.Struct import ListOfStruct
+
+        def _frame(ang, e):
+            return SimpleNamespace(
+                data={
+                    "name": f"d{int(ang):03d}",
+                    "energy": e,
+                    "positions": [[0.0, 0.0, 0.0]],
+                    "constraints": [],
+                },
+                constraints=None,
+            )
+
+        hl_angs = list(range(0, 360, 15))
+        ll_angs = list(range(0, 360, 10))
+        hl = ListOfStruct.from_structs_shared(
+            [_frame(a, float(a)) for a in hl_angs]
+        )
+        ll = ListOfStruct.from_structs_shared(
+            [_frame(a, 0.0) for a in ll_angs]
+        )
+        ahl, all_, info = align_scan_profiles(hl, ll)
+        self.assertTrue(info.get("interpolated"))
+        self.assertEqual(info["n_common"], 36)
+        self.assertEqual(len(ahl.structs), 36)
+        self.assertEqual(len(all_.structs), 36)
+        e10 = next(
+            float(s.data["energy"])
+            for s in ahl.structs
+            if s.data["name"] == "d010"
+        )
+        self.assertAlmostEqual(e10, 10.0, places=5)
+
+    def test_fast_presets_keep_delta(self):
+        from ffpopt.runtime.FastWavefront import (
+            LIBRARY_DEFAULTS,
+            apply_fast_wavefront_presets,
+        )
+
+        knobs = dict(LIBRARY_DEFAULTS)
+        applied = apply_fast_wavefront_presets(knobs, enabled=True)
+        self.assertNotIn("delta", applied)
+        self.assertEqual(knobs["delta"], 10)
 
     def test_fast_wavefront_enabled(self):
         from ffpopt.runtime.FastWavefront import fast_wavefront_enabled

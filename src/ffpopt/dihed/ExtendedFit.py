@@ -41,6 +41,7 @@ def fit_backend_from_env(default: str = "lsq") -> str:
 
 def jax_is_available() -> bool:
     """True when the optional ``jax`` extra can be imported."""
+    _prepare_jax_runtime()
     try:
         import jax  # noqa: F401
         import jax.numpy  # noqa: F401
@@ -343,13 +344,17 @@ def _prepare_jax_runtime() -> None:
 
     CHPC CPU allocations have no GPU; the CUDA plugin otherwise raises
     ``CUDA_ERROR_NO_DEVICE``. Float64 is required so kcal/mol residuals
-    are not truncated to float32. Override with ``JAX_PLATFORMS`` if a
-    GPU node is actually intended.
+    are not truncated to float32. Override with ``JAX_PLATFORMS`` /
+    ``CUDA_VISIBLE_DEVICES`` if a GPU node is actually intended.
     """
     import os
 
     os.environ.setdefault("JAX_PLATFORMS", "cpu")
     os.environ.setdefault("JAX_ENABLE_X64", "true")
+    # Slurm GPU jobs usually set this; CPU nodes often have a CUDA driver
+    # but no device, and jax_plugins.xla_cuda12 then fails in cuInit.
+    if "CUDA_VISIBLE_DEVICES" not in os.environ:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
 def _lbfgsb_options(args) -> dict:

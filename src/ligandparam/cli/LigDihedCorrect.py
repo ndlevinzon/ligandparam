@@ -202,8 +202,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Faster wavefront defaults: looser geomeTRIC converge, lower "
-            "maxiter, delta=15, shorter recovery ladder, less checkpoint I/O; "
-            "for xtb prefer wavefront depth over fragment breadth. "
+            "maxiter, shorter recovery ladder, less checkpoint I/O; "
+            "scan delta stays 10 deg so HL/LL share one grid. "
             "Same as FFPOPT_FAST_WAVEFRONT=1. Explicit --delta / "
             "--geometric-* overrides still win when not at library defaults."
         ),

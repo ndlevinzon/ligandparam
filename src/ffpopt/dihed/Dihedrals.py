@@ -871,7 +871,16 @@ class ProfileType(object):
                 f"Profile '{self.name}': HL/LL scans share no common angles "
                 f"(HL={n_hl}, LL={n_ll}); cannot fit."
             )
-        if (
+        if info.get("interpolated"):
+            import sys
+
+            sys.stderr.write(
+                f"[ffpopt] Profile '{self.name}': interpolated HL energies onto "
+                f"{n_common} LL scan angles "
+                f"(input HL={n_hl}, LL={n_ll}; kept LL geometries; "
+                f"exact matches={info.get('n_exact', 0)}).\n"
+            )
+        elif (
             n_hl != n_ll
             or info.get("hl_only")
             or info.get("ll_only")
