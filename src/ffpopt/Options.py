@@ -79,6 +79,16 @@ def AddGeomOptOptions(parser):
         type=float)
 
    parser.add_argument \
+       ("--soft-dihed-kmax",
+        help=(
+            "Cap for k-doubling when the soft dihedral is out of band "
+            "(kcal/mol/rad^2). Default: 8000. After kmax, one hard-IC opt "
+            "starts from the last soft coordinates."
+        ),
+        default=8000.0,
+        type=float)
+
+   parser.add_argument \
        ("--soft-dihed-tol",
         help="Soft dihedral tolerance band in degrees. Default: 0.5",
         default=0.5,

@@ -68,6 +68,7 @@ def run_dihed_correct(
     boltzmann_charges: bool = False,
     soft_dihed_restraint: bool = False,
     soft_dihed_k: float | None = None,
+    soft_dihed_kmax: float | None = None,
     soft_dihed_tol: float | None = None,
     fit_cli_args: list[str] | None = None,
     logger=None,
@@ -115,6 +116,7 @@ def run_dihed_correct(
         boltzmann_charges=boltzmann_charges,
         soft_dihed_restraint=soft_dihed_restraint,
         soft_dihed_k=soft_dihed_k,
+        soft_dihed_kmax=soft_dihed_kmax,
         soft_dihed_tol=soft_dihed_tol,
         fit_cli_args=fit_cli_args or [],
         logger=logger,
@@ -242,6 +244,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Soft dihedral k in kcal/mol/rad^2 (default 500)",
     )
     parser.add_argument(
+        "--soft-dihed-kmax",
+        type=float,
+        default=None,
+        help=(
+            "Cap for k-doubling when the soft dihedral is out of band "
+            "(kcal/mol/rad^2, default 8000). Then one hard-IC opt from last coords."
+        ),
+    )
+    parser.add_argument(
         "--soft-dihed-tol",
         type=float,
         default=None,
@@ -311,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             boltzmann_charges=args.boltzmann_charges,
             soft_dihed_restraint=args.soft_dihed_restraint,
             soft_dihed_k=args.soft_dihed_k,
+            soft_dihed_kmax=args.soft_dihed_kmax,
             soft_dihed_tol=args.soft_dihed_tol,
             fit_cli_args=_build_fit_cli_args(args),
         ),
@@ -333,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
         boltzmann_charges=args.boltzmann_charges,
         soft_dihed_restraint=args.soft_dihed_restraint,
         soft_dihed_k=args.soft_dihed_k,
+        soft_dihed_kmax=args.soft_dihed_kmax,
         soft_dihed_tol=args.soft_dihed_tol,
         fit_cli_args=_build_fit_cli_args(args),
         logger=logger,

@@ -137,6 +137,147 @@ def uses_soft_dihed_restraint(los) -> bool:
     return bool(getattr(args, "soft_dihed_restraint", False))
 
 
+SOFT_DIHED_K_DEFAULT = 500.0
+SOFT_DIHED_KMAX_DEFAULT = 8000.0
+SOFT_DIHED_TOL_DEFAULT = 0.5
+
+
+def soft_dihed_k_schedule(k0, kmax, *, max_steps: int = 8) -> list[float]:
+    """``k0, 2 k0, 4 k0, ...`` up to ``kmax`` (inclusive when reachable)."""
+    k = float(k0)
+    cap = float(kmax)
+    if k <= 0.0:
+        k = SOFT_DIHED_K_DEFAULT
+    if cap < k:
+        cap = k
+    seq = [k]
+    for _ in range(int(max_steps)):
+        nxt = seq[-1] * 2.0
+        if nxt > cap + 1e-9:
+            break
+        seq.append(nxt)
+    if seq[-1] < cap - 1e-9:
+        seq.append(cap)
+    return seq
+
+
+def _struct_from_opt_geom(seed, opt_geom):
+    """Topology of ``seed`` with coordinates from a completed ``GeomOpt``."""
+    coords = np.asarray(opt_geom.data["positions"], dtype=float)
+    ene = opt_geom.data.get("energy", 0.0)
+    frcs = opt_geom.data.get("forces")
+    return clone_struct_geometry(
+        seed, coords, ene=0.0 if ene is None else ene, frcs=frcs
+    )
+
+
+def run_soft_dihed_opt(
+    los,
+    struct,
+    constraints,
+    idxs,
+    angle,
+    geom_prefix,
+    *,
+    node_id=None,
+    opt_fn=None,
+):
+    """Soft harmonic dihedral opt with k-doubling, then one warm-started hard IC.
+
+    Each failed band check re-opts from the last coordinates at ``2k`` (up to
+    ``soft_dihed_kmax`` / ``FFPOPT_SOFT_DIHED_KMAX``, default 8000). If the
+    torsion is still out of band, a single hard-IC opt starts from those
+    coords rather than the original seed.
+    """
+    from ffpopt.geom.Restraints import HarmonicDihedRestraint
+
+    if opt_fn is None:
+        from ffpopt.geom.GeomOpt import GeomOpt as opt_fn
+
+    args = getattr(los, "args", None)
+    k0 = float(getattr(args, "soft_dihed_k", None) or SOFT_DIHED_K_DEFAULT)
+    tol = float(getattr(args, "soft_dihed_tol", None) or SOFT_DIHED_TOL_DEFAULT)
+    kmax_arg = getattr(args, "soft_dihed_kmax", None) if args is not None else None
+    if kmax_arg is None:
+        from ffpopt.runtime.EnvDefaults import env_float
+
+        kmax = float(env_float("FFPOPT_SOFT_DIHED_KMAX", SOFT_DIHED_KMAX_DEFAULT))
+    else:
+        kmax = float(kmax_arg)
+
+    tag = f"Node {node_id}" if node_id is not None else "soft-dihed"
+    ks = soft_dihed_k_schedule(k0, kmax)
+    start = struct
+    last_geom = None
+    last_z = None
+
+    for i, k in enumerate(ks):
+        rest = HarmonicDihedRestraint(
+            k, list(idxs), float(angle), tol_deg=tol
+        )
+        try:
+            last_geom = opt_fn(
+                los,
+                start,
+                constraints=None,
+                restraints=[rest],
+                geom_prefix=geom_prefix,
+            )
+        except Exception as exc:
+            if last_geom is None:
+                raise
+            print(
+                f"[affdo] {tag}: soft opt at k={k:g} failed "
+                f"({type(exc).__name__}: {exc}); warm-starting hard IC",
+                flush=True,
+            )
+            break
+        crds = last_geom.data["positions"]
+        try:
+            ok = rest.within_tolerance(crds)
+            last_z = float(rest.GetCrdValue(crds))
+        except Exception:
+            ok = True
+            last_z = None
+        if ok:
+            if i > 0:
+                print(
+                    f"[affdo] {tag}: soft dihedral held at k={k:g} "
+                    f"kcal/mol/rad^2",
+                    flush=True,
+                )
+            return last_geom
+        ztxt = f"{last_z:.2f}" if last_z is not None else "?"
+        more = i + 1 < len(ks)
+        if more:
+            print(
+                f"[affdo] {tag}: soft dihedral {ztxt} deg outside "
+                f"+/-{tol:g} deg of target {angle} at k={k:g}; "
+                f"ramping k -> {ks[i + 1]:g}",
+                flush=True,
+            )
+            start = _struct_from_opt_geom(struct, last_geom)
+        else:
+            print(
+                f"[affdo] {tag}: soft dihedral {ztxt} deg still outside "
+                f"+/-{tol:g} deg of target {angle} after kmax={kmax:g}; "
+                f"falling back to hard IC (warm start)",
+                flush=True,
+            )
+
+    hard_start = (
+        _struct_from_opt_geom(struct, last_geom)
+        if last_geom is not None
+        else struct
+    )
+    return opt_fn(
+        los,
+        hard_start,
+        constraints=constraints,
+        geom_prefix=geom_prefix,
+    )
+
+
 def empty_scan_error_message(wavefront, out_path) -> str:
     """Human-readable reason when a wavefront stored no finite-energy angles."""
     levels = getattr(wavefront, "levels", None) or []

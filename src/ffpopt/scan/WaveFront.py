@@ -254,45 +254,18 @@ class WavefrontNode:
                 geom_prefix = str(Path(self.node_pkl).with_suffix("")) + "_geom"
                 soft = bool(getattr(self.los.args, "soft_dihed_restraint", False))
                 if soft:
-                    from ffpopt.geom.Restraints import HarmonicDihedRestraint
+                    from ffpopt.scan.WavefrontMixins import run_soft_dihed_opt
 
                     con0 = self.constraints[0]
-                    k = float(getattr(self.los.args, "soft_dihed_k", 500.0))
-                    tol = float(getattr(self.los.args, "soft_dihed_tol", 0.5))
-                    rest = HarmonicDihedRestraint(
-                        k, list(con0.idxs), float(self.angle), tol_deg=tol
-                    )
-                    self.opt_geom = GeomOpt(
+                    self.opt_geom = run_soft_dihed_opt(
                         self.los,
                         self.struct,
-                        constraints=None,
-                        restraints=[rest],
-                        geom_prefix=geom_prefix,
+                        self.constraints,
+                        list(con0.idxs),
+                        float(self.angle),
+                        geom_prefix,
+                        node_id=self.node_id,
                     )
-                    try:
-                        ok = rest.within_tolerance(
-                            self.opt_geom.data["positions"]
-                        )
-                    except Exception:
-                        ok = True
-                    if not ok:
-                        z = None
-                        try:
-                            z = float(rest.GetCrdValue(self.opt_geom.data["positions"]))
-                        except Exception:
-                            pass
-                        ztxt = f"{z:.2f}" if z is not None else "?"
-                        print(
-                            f"[affdo] Node {self.node_id}: soft dihedral "
-                            f"{ztxt} deg outside +/-{tol} deg of target "
-                            f"{self.angle}; falling back to hard IC"
-                        )
-                        self.opt_geom = GeomOpt(
-                            self.los,
-                            self.struct,
-                            constraints=self.constraints,
-                            geom_prefix=geom_prefix,
-                        )
                 else:
                     self.opt_geom = GeomOpt(
                         self.los,
@@ -1544,10 +1517,12 @@ def run_dihed_wavefront(
 
     if std.get("soft_dihed_restraint"):
         k = std.get("soft_dihed_k", 500.0)
+        kmax = std.get("soft_dihed_kmax", 8000.0)
         tol = std.get("soft_dihed_tol", 0.5)
         print(
             f"[affdo] wavefront soft harmonic dihedral: k={k:g} kcal/mol/rad^2 "
-            f"tol={tol:g} deg (hard IC fallback if out of band) dihed={dihed}",
+            f"kmax={kmax:g} (double until in-band, then hard IC from last coords) "
+            f"tol={tol:g} deg dihed={dihed}",
             flush=True,
         )
 

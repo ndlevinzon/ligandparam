@@ -6,9 +6,9 @@
 
 **Amber ligand parameterization made modular**
 
-Code originally written by York Lab (Rutgers) and compiled by Cheatham Lab (UofU)
+Code originally written by York Lab (Rutgers), then in collaboration with Cheatham Lab (UofU)
 
-`ligandparam` is a Python toolkit for generating force-field parameters for nonstandard ligands and residues. It wraps familiar Amber / Gaussian tools behind a stage-based pipeline so you can run a full RESP workflow (or swap individual steps) without rewriting shell scripts.
+`ligandparam` is a Python toolkit for generating force field parameters for nonstandard ligands and residues. It wraps familiar Amber / Gaussian tools behind a stage-based pipeline so you can run a full RESP workflow (or swap individual steps) without rewriting shell scripts.
 
 **Docs:** [ligandparam.readthedocs.io](https://ligandparam.readthedocs.io/en/latest/)  
 **Repo:** [github.com/piskulichz/ligandparam](https://github.com/piskulichz/ligandparam)
@@ -99,7 +99,7 @@ pip install -e ".[all]"    # everything above (still needs TF from conda on many
 ```
 
 ``pip install 'ligandparam[jax]'`` (no ``-e``, no ``.``) pulls **PyPI 1.0.0** and
-can uninstall a local 1.5.x install. On CHPC / Python 3.14, prefer conda-forge
+can uninstall a local 1.5.x install. On HPC, prefer conda-forge
 for JAX itself, then keep the editable tree:
 
 ```bash

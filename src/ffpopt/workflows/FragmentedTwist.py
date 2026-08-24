@@ -633,6 +633,7 @@ def run_fragmented_dihed_twist_workflow(
                 multi_centroid=multi_centroid,
                 soft_dihed_restraint=bool(standard_kwargs.get("soft_dihed_restraint")),
                 soft_dihed_k=standard_kwargs.get("soft_dihed_k"),
+                soft_dihed_kmax=standard_kwargs.get("soft_dihed_kmax"),
                 soft_dihed_tol=standard_kwargs.get("soft_dihed_tol"),
                 fit_cli_args=fit_cli_args,
             ),

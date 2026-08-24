@@ -689,6 +689,7 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("multi_centroid=5", full)
         self.assertIn("boltzmann_charges=True", full)
         self.assertIn("k=400", full)
+        self.assertIn("kmax=8000", full)
         self.assertIn("tol=0.25 deg", full)
         self.assertIn("--fit-full", full)
         self.assertIn("jax", full)
@@ -778,6 +779,110 @@ class TestAffdoLogging(unittest.TestCase):
         msg = empty_scan_error_message(wf, "xtb_0-1-2-3.json")
         self.assertIn("0 accepted scan angles", msg)
         self.assertIn("No seed nodes", msg)
+
+    def test_soft_dihed_k_schedule_and_warm_start_hard_ic(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import numpy as np
+        from ffpopt.scan.WavefrontMixins import (
+            soft_dihed_k_schedule,
+            run_soft_dihed_opt,
+        )
+
+        self.assertEqual(
+            soft_dihed_k_schedule(500, 8000),
+            [500.0, 1000.0, 2000.0, 4000.0, 8000.0],
+        )
+        self.assertEqual(soft_dihed_k_schedule(500, 500), [500.0])
+        self.assertEqual(soft_dihed_k_schedule(500, 600), [500.0, 600.0])
+
+        seed_pos = np.zeros((4, 3))
+        last_soft_pos = np.ones((4, 3))
+
+        class Seed:
+            def __init__(self, pos):
+                self.data = {
+                    "positions": np.asarray(pos, float),
+                    "elements": ["C"] * 4,
+                }
+
+            def clone_geometry(self, coords=None, ene=None, frcs=None):
+                return Seed(seed_pos if coords is None else coords)
+
+            def Update(self, ene, coords, frcs):
+                self.data["positions"] = np.asarray(coords, float)
+
+        class Geom:
+            def __init__(self, pos):
+                self.data = {"positions": np.asarray(pos, float), "energy": 0.0}
+
+        calls = []
+
+        def fake_opt(los, struct, constraints=None, restraints=None, geom_prefix=None):
+            pos = np.array(struct.data["positions"], dtype=float, copy=True)
+            if restraints:
+                k = float(restraints[0].k_kcal)
+                calls.append(("soft", k, pos.copy()))
+                return Geom(last_soft_pos)
+            calls.append(("hard", None, pos.copy()))
+            return Geom(pos)
+
+        los = SimpleNamespace(
+            args=SimpleNamespace(
+                soft_dihed_k=500.0,
+                soft_dihed_kmax=2000.0,
+                soft_dihed_tol=0.5,
+            )
+        )
+
+        with patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.within_tolerance",
+            lambda self, crds: False,
+        ), patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.GetCrdValue",
+            lambda self, crds: 90.0,
+        ):
+            out = run_soft_dihed_opt(
+                los,
+                Seed(seed_pos),
+                ["hard"],
+                [0, 1, 2, 3],
+                0.0,
+                "x",
+                node_id=1,
+                opt_fn=fake_opt,
+            )
+
+        kinds = [c[0] for c in calls]
+        ks = [c[1] for c in calls if c[0] == "soft"]
+        self.assertEqual(ks, [500.0, 1000.0, 2000.0])
+        self.assertEqual(kinds[-1], "hard")
+        np.testing.assert_allclose(calls[-1][2], last_soft_pos)
+        np.testing.assert_allclose(out.data["positions"], last_soft_pos)
+
+        calls.clear()
+
+        def fake_opt_hold(los, struct, constraints=None, restraints=None, geom_prefix=None):
+            calls.append(float(restraints[0].k_kcal) if restraints else None)
+            return Geom(last_soft_pos)
+
+        with patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.within_tolerance",
+            lambda self, crds: self.k_kcal >= 1000.0,
+        ), patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.GetCrdValue",
+            lambda self, crds: 0.1,
+        ):
+            run_soft_dihed_opt(
+                los,
+                Seed(seed_pos),
+                ["hard"],
+                [0, 1, 2, 3],
+                0.0,
+                "x",
+                opt_fn=fake_opt_hold,
+            )
+        self.assertEqual(calls, [500.0, 1000.0])
 
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary

@@ -30,6 +30,7 @@ def describe_affdo_extras(
     boltzmann_charges: bool = False,
     soft_dihed_restraint: bool = False,
     soft_dihed_k: Optional[float] = None,
+    soft_dihed_kmax: Optional[float] = None,
     soft_dihed_tol: Optional[float] = None,
     fit_cli_args: Optional[Sequence[str]] = None,
 ) -> str:
@@ -43,8 +44,10 @@ def describe_affdo_extras(
     ]
     if soft_dihed_restraint:
         k = 500.0 if soft_dihed_k is None else float(soft_dihed_k)
+        kmax = 8000.0 if soft_dihed_kmax is None else float(soft_dihed_kmax)
         tol = 0.5 if soft_dihed_tol is None else float(soft_dihed_tol)
         parts.append(f"k={k:g} kcal/mol/rad^2")
+        parts.append(f"kmax={kmax:g}")
         parts.append(f"tol={tol:g} deg")
     extra = [str(x) for x in (fit_cli_args or []) if str(x).strip()]
     parts.append("fit_flags=" + (" ".join(extra) if extra else "(barrier / default)"))

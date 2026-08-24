@@ -361,6 +361,7 @@ def run_dihed_twist_workflow(
         multi_centroid=multi_centroid,
         soft_dihed_restraint=bool(std.get("soft_dihed_restraint")),
         soft_dihed_k=std.get("soft_dihed_k"),
+        soft_dihed_kmax=std.get("soft_dihed_kmax"),
         soft_dihed_tol=std.get("soft_dihed_tol"),
         fit_cli_args=fit_cli_args,
     )

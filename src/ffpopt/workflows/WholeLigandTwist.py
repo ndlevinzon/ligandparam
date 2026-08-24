@@ -79,6 +79,7 @@ def run_whole_ligand_dihed_twist_workflow(
             boltzmann_charges=boltzmann_charges,
             soft_dihed_restraint=bool(standard_kwargs.get("soft_dihed_restraint")),
             soft_dihed_k=standard_kwargs.get("soft_dihed_k"),
+            soft_dihed_kmax=standard_kwargs.get("soft_dihed_kmax"),
             soft_dihed_tol=standard_kwargs.get("soft_dihed_tol"),
             fit_cli_args=fit_cli_args,
         ),

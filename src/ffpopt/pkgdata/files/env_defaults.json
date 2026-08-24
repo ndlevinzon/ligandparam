@@ -86,6 +86,10 @@
   // extra ConfSearch starts only for jagged torsions. null = always scan all.
   "FFPOPT_CENTROID_FOURIER_MAX": 0.5,
 
+  // Soft-dihedral k-doubling cap (kcal/mol/rad^2). After this, one hard-IC
+  // opt starts from the last soft coordinates instead of the original seed.
+  "FFPOPT_SOFT_DIHED_KMAX": 8000.0,
+
   // --- Dihedral fit -------------------------------------------------------
   // Legacy GeomOpt-per-iteration fit (slow). Default is fixed-geometry lsq.
   "FFPOPT_DIHED_FIT_REOPT": false,

@@ -110,6 +110,7 @@ class StageDihedTwistCorrection(AbstractStage):
         self.boltzmann_charges = bool(kwargs.get("boltzmann_charges", False))
         self.soft_dihed_restraint = bool(kwargs.get("soft_dihed_restraint", False))
         self.soft_dihed_k = kwargs.get("soft_dihed_k")
+        self.soft_dihed_kmax = kwargs.get("soft_dihed_kmax")
         self.soft_dihed_tol = kwargs.get("soft_dihed_tol")
         self.fit_cli_args = list(kwargs.get("fit_cli_args") or [])
         self.add_required(self.in_mol2)
@@ -145,6 +146,7 @@ class StageDihedTwistCorrection(AbstractStage):
                 boltzmann_charges=self.boltzmann_charges,
                 soft_dihed_restraint=self.soft_dihed_restraint,
                 soft_dihed_k=self.soft_dihed_k,
+                soft_dihed_kmax=self.soft_dihed_kmax,
                 soft_dihed_tol=self.soft_dihed_tol,
                 fit_cli_args=self.fit_cli_args,
             ),
@@ -191,6 +193,8 @@ class StageDihedTwistCorrection(AbstractStage):
             extra["soft_dihed_restraint"] = True
             if self.soft_dihed_k is not None:
                 extra["soft_dihed_k"] = float(self.soft_dihed_k)
+            if self.soft_dihed_kmax is not None:
+                extra["soft_dihed_kmax"] = float(self.soft_dihed_kmax)
             if self.soft_dihed_tol is not None:
                 extra["soft_dihed_tol"] = float(self.soft_dihed_tol)
 
