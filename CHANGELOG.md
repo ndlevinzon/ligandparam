@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Whole-ligand logs** — ``--whole-ligand`` / AFFDO runs now use the same identity pattern as fragment jobs: ``TIMESTAMP [ffpopt:torsion_batch_XX] [whole-twist]``. Per-batch ``whole-twist.log``, live ``WHOLE_STATUS.txt``, and an ASCII run card under the startup logo.
 - **Env defaults JSON** — all user ``FFPOPT_*`` knobs live in ``ffpopt/pkgdata/files/env_defaults.json`` (commented JSONC; this is the store the code reads). Overlay with ``FFPOPT_DEFAULTS=/path.json``; per-key ``export FFPOPT_*=`` still wins.
 - **Multi-centroid HL pooling** — centroid-0 HL and ``orig`` share one job queue; extra ConfSearch starts run only for jagged torsions (Fourier RMSE vs ``FFPOPT_CENTROID_FOURIER_MAX``, default 0.5 kcal) and those centroid×bond jobs share one pool.
+- **Whole-ligand core use** — ``--whole-ligand --fast`` no longer serializes 2-bond batches behind a 1×nproc wavefront. Top-level twist keeps a nested bond×wavefront split (e.g. 8×5 on 44 cores). Fragment spawn workers still flatten to one axis. Pack size is ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8).
 
 ### Fixed
 
@@ -46,7 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Wavefront plot margins** — ``tight_layout`` UserWarning on dense angle/level grids is suppressed; plots still save with ``bbox_inches='tight'``.
 - **Empty wavefront ``np.amin`` crash** — a scan with no accepted angles (every seed clash-rejected, or every opt failed) raised ``ValueError: zero-size array``. It now prints the node summary and raises ``RuntimeError`` with the failed-node list.
 - **``--soft-dihed-restraint`` seed clash** — hard-twist clash checks no longer snap the scanned dihedral before opt (that rejected every bulky whole-ligand seed). If every seed still fails, a native-angle node is forced so the wavefront can start.
-- **Soft-dihedral k-doubling + always-on hard IC** — if the harmonic misses the ``+/-tol`` band, ``k`` doubles up to ``--soft-dihed-kmax`` / ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000 kcal/mol/rad^2) from the last coordinates. A hard-IC opt then always runs from those coords (in-band or not) so stored energies are constrained minima at ``φ0``, not ``E(φ*)``.
+- **Soft-dihedral k-doubling + selective hard IC** — if the harmonic misses the ``+/-tol`` band, ``k`` doubles up to ``--soft-dihed-kmax`` / ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000 kcal/mol/rad^2) from the last coordinates. A hard-IC opt then runs from those coords unless the restrained min is already within 0.05 deg of ``φ0`` (bias then ~0.003 kcal/mol).
 - **``--fit-full`` duplicate periodicity** — rounding optimized Fourier periods onto the same integer made ParmEd reject ``DihedralTypeList.append`` (``Cannot add two DihedralType instances with the same periodicity``). Same-``n`` terms are now merged (phase 0 vs 180 subtracts; same phase sums) before frcmod / parm7 write.
 
 ---

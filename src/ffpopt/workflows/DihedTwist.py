@@ -62,13 +62,15 @@ def run_batched_dihed_twist_workflow(
 
     Conservative packing (:mod:`ffpopt.workflows.BondBatches`): keep covalently nearby
     rotors in the same joint fit when possible; split oversized clusters into
-    contiguous chunks of ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2) and update
-    the MM between chunks so later batches see prior fits.
+    contiguous chunks of ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2; whole-ligand
+    uses ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8) and update the MM
+    between chunks so later batches see prior fits.
     """
     import shutil
 
     from ffpopt.workflows.BondBatches import (
         adjacency_from_parmed,
+        max_bonds_per_twist_batch,
         pack_rotatable_bond_batches,
     )
     from ffpopt.Struct import ListOfStruct
@@ -87,7 +89,11 @@ def run_batched_dihed_twist_workflow(
     los = ListOfStruct.from_file(str(inp_path))
     mol = los.structs[0].ReadAmberParm()
     adj = adjacency_from_parmed(mol)
-    batches = pack_rotatable_bond_batches(bonds0, adj)
+    batches = pack_rotatable_bond_batches(
+        bonds0,
+        adj,
+        max_batch=max_bonds_per_twist_batch(whole=is_whole),
+    )
 
     def _run_one_batch(
         *,
@@ -410,7 +416,8 @@ def run_dihed_twist_workflow(
     full phase narrative.
 
     When more than ``FFPOPT_MAX_BONDS_PER_TWIST`` bonds are requested (default
-    2), covalently nearby rotors are packed into sequential batches via
+    2; whole-ligand ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8), covalently
+    nearby rotors are packed into sequential batches via
     :func:`run_batched_dihed_twist_workflow` unless ``bond_batching=False``.
     """
     from ffpopt.workflows.BondBatches import should_batch_bonds

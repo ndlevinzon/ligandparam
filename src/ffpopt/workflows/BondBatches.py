@@ -11,7 +11,9 @@ Physical policy (rigor-preserving):
 * Distant coupling components are separate batches (also sequential).
 
 Defaults favor small batches (``max_batch=2``) once a fragment has more than
-two fit bonds. Override with ``FFPOPT_MAX_BONDS_PER_TWIST`` /
+two fit bonds. Whole-ligand jobs default to 8 concurrent rotors
+(``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``). Override with
+``FFPOPT_MAX_BONDS_PER_TWIST`` / ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` /
 ``FFPOPT_BOND_COUPLE_RADIUS`` / ``FFPOPT_BOND_BATCH=0``.
 """
 
@@ -31,8 +33,15 @@ def bond_batching_enabled() -> bool:
     return env_bool("FFPOPT_BOND_BATCH")
 
 
-def max_bonds_per_twist_batch() -> int:
-    """Max bonds per joint twist job (default from env JSON)."""
+def max_bonds_per_twist_batch(*, whole: bool = False) -> int:
+    """Max bonds per joint twist job (default from env JSON).
+
+    Whole-ligand jobs use ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8) so
+    a 44-core node can scan several rotors at once. Fragment jobs keep the
+    smaller ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2).
+    """
+    if whole:
+        return max(1, env_int("FFPOPT_WHOLE_MAX_BONDS_PER_TWIST"))
     return max(1, env_int("FFPOPT_MAX_BONDS_PER_TWIST"))
 
 

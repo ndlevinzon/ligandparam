@@ -1,9 +1,9 @@
 """Spawn Pool whose workers are non-daemon (may nest child pools).
 
-Prefer a single parallelism axis (fragment **or** bond **or** wavefront) via
+Prefer a single parallelism axis inside a fragment spawn worker via
 :func:`ffpopt.runtime.FastWavefront.split_nproc_for_items` with
-``flatten_nested=True``. Nested non-daemon pools remain available when a
-parent worker must open a child wavefront pool.
+``flatten_nested=True``. Top-level whole-ligand twist may nest bond workers
+that each open a wavefront pool (``flatten_nested=False``).
 """
 
 from __future__ import annotations

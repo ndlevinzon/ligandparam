@@ -56,6 +56,10 @@
   "FFPOPT_BOND_BATCH": true,
   // Max bonds per joint twist job once a fragment exceeds this count.
   "FFPOPT_MAX_BONDS_PER_TWIST": 2,
+  // Whole-ligand (--whole-ligand) pack size. Larger than the fragment default
+  // so a 44-core node scans several rotors concurrently (MM still updates
+  // between sequential batches).
+  "FFPOPT_WHOLE_MAX_BONDS_PER_TWIST": 8,
   // Graph distance (bonds) at which two rotatable bonds are treated as coupled.
   "FFPOPT_BOND_COUPLE_RADIUS": 2,
 

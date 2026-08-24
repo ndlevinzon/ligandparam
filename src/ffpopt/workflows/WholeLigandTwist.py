@@ -117,13 +117,20 @@ def run_whole_ligand_dihed_twist_workflow(
     try:
         from ffpopt.workflows.BondBatches import (
             adjacency_from_parmed,
+            max_bonds_per_twist_batch,
             pack_rotatable_bond_batches,
         )
         from ffpopt.Struct import ListOfStruct
 
         los = ListOfStruct.from_file(str(start_json))
         mol = los.structs[0].ReadAmberParm()
-        n_batches = len(pack_rotatable_bond_batches(bonds, adjacency_from_parmed(mol)))
+        n_batches = len(
+            pack_rotatable_bond_batches(
+                bonds,
+                adjacency_from_parmed(mol),
+                max_batch=max_bonds_per_twist_batch(whole=True),
+            )
+        )
     except Exception:
         n_batches = None
 

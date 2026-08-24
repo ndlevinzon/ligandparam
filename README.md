@@ -6,7 +6,7 @@
 
 **Amber ligand parameterization made modular**
 
-Code originally written by York Lab (Rutgers), then in collaboration with Cheatham Lab (UofU)
+Code originally written by York Lab (Rutgers), then in collaboration with Cheatham Lab (Utah)
 
 `ligandparam` is a Python toolkit for generating force field parameters for nonstandard ligands and residues. It wraps familiar Amber / Gaussian tools behind a stage-based pipeline so you can run a full RESP workflow (or swap individual steps) without rewriting shell scripts.
 

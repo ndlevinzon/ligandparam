@@ -159,7 +159,10 @@ def split_nproc_for_items(
 
     When ``flatten_nested`` is True (default), never return both outer and
     inner greater than 1. Nested ``spawn`` pools (bond workers that each open
-    a wavefront pool) dominate bootstrap cost; pick one axis of parallelism.
+    a wavefront pool) dominate bootstrap cost inside an already-spawned
+    fragment worker. Bond-scan callers that are *not* nested should pass
+    ``flatten_nested=False`` with ``prefer_depth=True`` so a 2-bond batch on
+    44 cores is ``2 x 22``, not a serial ``1 x 44`` wavefront that cannot fill.
     """
     nproc = max(1, int(nproc))
     n_items = max(1, int(n_items))

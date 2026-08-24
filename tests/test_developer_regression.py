@@ -943,6 +943,25 @@ class TestAffdoLogging(unittest.TestCase):
             )
         self.assertEqual(calls, [500.0, 1000.0, None])
 
+        calls.clear()
+        with patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.within_tolerance",
+            lambda self, crds: self.k_kcal >= 1000.0,
+        ), patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.GetCrdValue",
+            lambda self, crds: 0.01,
+        ):
+            run_soft_dihed_opt(
+                los,
+                Seed(seed_pos),
+                ["hard"],
+                [0, 1, 2, 3],
+                0.0,
+                "x",
+                opt_fn=fake_opt_hold,
+            )
+        self.assertEqual(calls, [500.0, 1000.0])
+
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary
 
@@ -1869,6 +1888,11 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertTrue(n_outer == 1 or n_inner == 1)
         n_outer_d, n_inner_d = split_nproc_for_items(8, 4, prefer_depth=True)
         self.assertTrue(n_outer_d == 1 or n_inner_d == 1)
+        # Top-level twist (not already in a spawn worker) keeps a 2-D split.
+        n_o, n_i = split_nproc_for_items(
+            44, 2, prefer_depth=True, flatten_nested=False
+        )
+        self.assertEqual((n_o, n_i), (2, 22))
         self.assertTrue(prefer_ase_first_model("xtb", fast=True))
         self.assertFalse(prefer_ase_first_model("xtb", fast=False))
         with patch.dict(os.environ, {"FFPOPT_FAST_WAVEFRONT": "1"}):
@@ -1954,6 +1978,21 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         )
         self.assertEqual(sum(len(b) for b in far), 2)
 
+    def test_whole_ligand_max_bonds_per_twist_batch(self):
+        from ffpopt.runtime.EnvDefaults import clear_defaults_cache
+        from ffpopt.workflows.BondBatches import max_bonds_per_twist_batch
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FFPOPT_MAX_BONDS_PER_TWIST", None)
+            os.environ.pop("FFPOPT_WHOLE_MAX_BONDS_PER_TWIST", None)
+            os.environ.pop("FFPOPT_DEFAULTS", None)
+            clear_defaults_cache()
+            try:
+                self.assertEqual(max_bonds_per_twist_batch(whole=False), 2)
+                self.assertEqual(max_bonds_per_twist_batch(whole=True), 8)
+            finally:
+                clear_defaults_cache()
+
     def test_split_nproc_for_items(self):
         from ffpopt.runtime.FastWavefront import split_nproc_for_items
         from ffpopt.workflows.TwistHelpers import _split_fragment_nproc
@@ -1967,6 +2006,18 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             8, 4, flatten_nested=False
         )
         self.assertEqual(n_outer2 * n_inner2, 8)
+        n_o, n_i = split_nproc_for_items(
+            8, 4, prefer_depth=True, flatten_nested=False
+        )
+        self.assertGreater(n_o, 1)
+        self.assertGreater(n_i, 1)
+        self.assertEqual(n_o * n_i, 8)
+        self.assertEqual(
+            _split_fragment_nproc(
+                44, 2, prefer_depth=True, flatten_nested=False
+            ),
+            (2, 22),
+        )
 
     def test_pickle_compat_alias(self):
         from ffpopt.scan.WavefrontMixins import register_wavefront_pickle_aliases

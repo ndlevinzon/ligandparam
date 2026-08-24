@@ -140,6 +140,9 @@ def uses_soft_dihed_restraint(los) -> bool:
 SOFT_DIHED_K_DEFAULT = 500.0
 SOFT_DIHED_KMAX_DEFAULT = 8000.0
 SOFT_DIHED_TOL_DEFAULT = 0.5
+# Skip the extra hard-IC opt when the restrained min is already this close
+# to φ0. At k=8000 kcal/mol/rad², 0.05° residual is ~0.003 kcal/mol.
+SOFT_DIHED_HARD_IC_SKIP_DEG = 0.05
 
 
 def soft_dihed_k_schedule(k0, kmax, *, max_steps: int = 8) -> list[float]:
@@ -171,6 +174,12 @@ def _struct_from_opt_geom(seed, opt_geom):
     )
 
 
+def _wrapped_dihed_delta_deg(observed, target) -> float:
+    """Absolute wrapped dihedral difference in degrees."""
+    d = (float(observed) - float(target) + 180.0) % 360.0 - 180.0
+    return abs(d)
+
+
 def run_soft_dihed_opt(
     los,
     struct,
@@ -182,12 +191,13 @@ def run_soft_dihed_opt(
     node_id=None,
     opt_fn=None,
 ):
-    """Soft harmonic dihedral opt with k-doubling, then one warm-started hard IC.
+    """Soft harmonic dihedral opt with k-doubling, then a hard IC if needed.
 
     Each failed band check re-opts from the last coordinates at ``2k`` (up to
-    ``soft_dihed_kmax`` / ``FFPOPT_SOFT_DIHED_KMAX``, default 8000). A single
-    hard-IC opt always starts from those last coords (in-band or not) so the
-    stored energy is the constrained minimum at ``φ0``, not ``E(φ*)``.
+    ``soft_dihed_kmax`` / ``FFPOPT_SOFT_DIHED_KMAX``, default 8000). A hard-IC
+    opt then runs from those coords unless the restrained min is already
+    within ``SOFT_DIHED_HARD_IC_SKIP_DEG`` of ``φ0`` (bias is then far below
+    DFT noise).
     """
     from ffpopt.geom.Restraints import HarmonicDihedRestraint
 
@@ -210,6 +220,7 @@ def run_soft_dihed_opt(
     start = struct
     last_geom = None
     last_z = None
+    skip_hard = False
 
     for i, k in enumerate(ks):
         rest = HarmonicDihedRestraint(
@@ -246,11 +257,25 @@ def run_soft_dihed_opt(
                     f"kcal/mol/rad^2",
                     flush=True,
                 )
-            print(
-                f"[affdo] {tag}: in-band at k={k:g}; finishing with hard IC "
-                f"(warm start)",
-                flush=True,
+            dphi = (
+                _wrapped_dihed_delta_deg(last_z, angle)
+                if last_z is not None
+                else None
             )
+            if dphi is not None and dphi <= SOFT_DIHED_HARD_IC_SKIP_DEG:
+                skip_hard = True
+                print(
+                    f"[affdo] {tag}: in-band at k={k:g}; "
+                    f"|dphi|={dphi:.3f} deg <= {SOFT_DIHED_HARD_IC_SKIP_DEG:g} "
+                    f"deg; skipping hard IC",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[affdo] {tag}: in-band at k={k:g}; finishing with hard IC "
+                    f"(warm start)",
+                    flush=True,
+                )
             break
         ztxt = f"{last_z:.2f}" if last_z is not None else "?"
         more = i + 1 < len(ks)
@@ -269,6 +294,9 @@ def run_soft_dihed_opt(
                 f"falling back to hard IC (warm start)",
                 flush=True,
             )
+
+    if skip_hard and last_geom is not None:
+        return last_geom
 
     hard_start = (
         _struct_from_opt_geom(struct, last_geom)

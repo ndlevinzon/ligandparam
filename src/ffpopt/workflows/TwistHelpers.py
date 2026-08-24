@@ -620,6 +620,7 @@ def _split_fragment_nproc(
     n_fragments: int,
     *,
     prefer_depth: bool = False,
+    flatten_nested: bool = True,
 ) -> tuple[int, int]:
     """Split ``nproc`` across outer workers and nested wavefront size.
 
@@ -634,11 +635,14 @@ def _split_fragment_nproc(
         ``n_items > 1``). By default prefers as many outer workers as
         possible; with ``prefer_depth=True`` keeps a minimum inner width
         (see :func:`ffpopt.runtime.FastWavefront.split_nproc_for_items`).
+        Pass ``flatten_nested=False`` to keep a 2-D bond×wavefront split
+        (whole-ligand / top-level twist). Fragment spawn workers keep the
+        default flatten so they do not open a third pool.
     """
     from ffpopt.runtime.FastWavefront import split_nproc_for_items
 
     return split_nproc_for_items(
-        nproc, n_fragments, prefer_depth=prefer_depth
+        nproc, n_fragments, prefer_depth=prefer_depth, flatten_nested=flatten_nested
     )
 
 
@@ -650,7 +654,7 @@ def _execute_bond_scan_jobs(
     logger: logging.Logger | None,
     label: str = "scans",
 ) -> list[tuple[str, tuple, Optional[dict]]]:
-    """Run bond-scan jobs with a flattened spawn split (no bond×wavefront nest)."""
+    """Run bond-scan jobs; nest bond×wavefront only at the top-level twist."""
     log = _resolve_logger(logger)
     if not jobs:
         return []
@@ -660,25 +664,33 @@ def _execute_bond_scan_jobs(
     from ffpopt.scan.WaveFront import close_reused_wavefront_pool
 
     models = {str(j.get("model") or "") for j in jobs}
-    model_hint = next(iter(models)) if len(models) == 1 else None
+    model_hint = next(iter(models)) if len(models) else None
     prefer = prefer_bond_pool_depth(
         model=model_hint,
         nproc=nproc,
         n_bonds=len(jobs),
         prefer=prefer_wf_depth,
     )
-    # Already inside a fragment spawn worker: prefer wavefront depth, no bond pool.
-    if in_spawn_worker() and prefer is not True:
+    # Already inside a fragment spawn worker: one axis only (wavefront depth).
+    already_nested = in_spawn_worker()
+    if already_nested and prefer is not True:
         prefer = True
 
+    flatten = already_nested or not prefer
     n_bond_workers, n_wf = _split_fragment_nproc(
-        nproc, len(jobs), prefer_depth=prefer
+        nproc, len(jobs), prefer_depth=prefer, flatten_nested=flatten
     )
     for job in jobs:
         job["wf_kwargs"] = dict(job["wf_kwargs"])
         job["wf_kwargs"]["nproc"] = int(n_wf)
 
     ase_first = any(j["wf_kwargs"].get("geometric_opt") is False for j in jobs)
+    if prefer and n_bond_workers > 1 and n_wf > 1:
+        split_note = " (prefer wf depth; nested spawn)"
+    elif prefer:
+        split_note = " (prefer wf depth)"
+    else:
+        split_note = " (flat; no nested spawn)"
     log.info(
         "[twist] parallel bond scans: %s, %s job(s), nproc=%s -> "
         "%s bond worker(s) x wf_nproc=%s%s%s",
@@ -687,7 +699,7 @@ def _execute_bond_scan_jobs(
         nproc,
         n_bond_workers,
         n_wf,
-        " (prefer wf depth)" if prefer else " (flat; no nested spawn)",
+        split_note,
         " (ASE-first)" if ase_first else "",
     )
 
