@@ -941,7 +941,7 @@ class TestAffdoLogging(unittest.TestCase):
                 "x",
                 opt_fn=fake_opt_hold,
             )
-        self.assertEqual(calls, [500.0, 1000.0])
+        self.assertEqual(calls, [500.0, 1000.0, None])
 
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary

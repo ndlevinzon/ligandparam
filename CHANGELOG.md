@@ -46,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Wavefront plot margins** — ``tight_layout`` UserWarning on dense angle/level grids is suppressed; plots still save with ``bbox_inches='tight'``.
 - **Empty wavefront ``np.amin`` crash** — a scan with no accepted angles (every seed clash-rejected, or every opt failed) raised ``ValueError: zero-size array``. It now prints the node summary and raises ``RuntimeError`` with the failed-node list.
 - **``--soft-dihed-restraint`` seed clash** — hard-twist clash checks no longer snap the scanned dihedral before opt (that rejected every bulky whole-ligand seed). If every seed still fails, a native-angle node is forced so the wavefront can start.
-- **Soft-dihedral k-doubling + warm-start hard IC** — if the harmonic misses the ``+/-tol`` band, ``k`` doubles up to ``--soft-dihed-kmax`` / ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000 kcal/mol/rad^2) from the last coordinates; only then one hard-IC opt runs, also from those coords instead of the original seed.
+- **Soft-dihedral k-doubling + always-on hard IC** — if the harmonic misses the ``+/-tol`` band, ``k`` doubles up to ``--soft-dihed-kmax`` / ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000 kcal/mol/rad^2) from the last coordinates. A hard-IC opt then always runs from those coords (in-band or not) so stored energies are constrained minima at ``φ0``, not ``E(φ*)``.
 - **``--fit-full`` duplicate periodicity** — rounding optimized Fourier periods onto the same integer made ParmEd reject ``DihedralTypeList.append`` (``Cannot add two DihedralType instances with the same periodicity``). Same-``n`` terms are now merged (phase 0 vs 180 subtracts; same phase sums) before frcmod / parm7 write.
 
 ---

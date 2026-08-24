@@ -185,9 +185,9 @@ def run_soft_dihed_opt(
     """Soft harmonic dihedral opt with k-doubling, then one warm-started hard IC.
 
     Each failed band check re-opts from the last coordinates at ``2k`` (up to
-    ``soft_dihed_kmax`` / ``FFPOPT_SOFT_DIHED_KMAX``, default 8000). If the
-    torsion is still out of band, a single hard-IC opt starts from those
-    coords rather than the original seed.
+    ``soft_dihed_kmax`` / ``FFPOPT_SOFT_DIHED_KMAX``, default 8000). A single
+    hard-IC opt always starts from those last coords (in-band or not) so the
+    stored energy is the constrained minimum at ``φ0``, not ``E(φ*)``.
     """
     from ffpopt.geom.Restraints import HarmonicDihedRestraint
 
@@ -246,7 +246,12 @@ def run_soft_dihed_opt(
                     f"kcal/mol/rad^2",
                     flush=True,
                 )
-            return last_geom
+            print(
+                f"[affdo] {tag}: in-band at k={k:g}; finishing with hard IC "
+                f"(warm start)",
+                flush=True,
+            )
+            break
         ztxt = f"{last_z:.2f}" if last_z is not None else "?"
         more = i + 1 < len(ks)
         if more:
