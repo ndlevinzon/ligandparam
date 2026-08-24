@@ -389,7 +389,7 @@ def build_candidate_fragments(
     max_right = max(right_distances.values(), default=0)
 
     # Cumulative shells: only keep depths that change the domain set so the
-    # left×right product does not rebuild identical fragments.
+    # leftxright product does not rebuild identical fragments.
     def _unique_shells(
         distances: dict[int, int], min_depth: int, max_depth: int
     ) -> list[tuple[int, frozenset[int]]]:

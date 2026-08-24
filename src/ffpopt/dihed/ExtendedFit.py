@@ -3,9 +3,9 @@
 Default GenDihedFit remains barrier-height (FC) only via ``lsq_linear``.
 Enable the AFFDO-style vector with CLI / env flags; backends:
 
-* ``lsq`` — fixed-geometry FC-only (legacy; used when only FCs are free)
-* ``lbfgsb`` — SciPy L-BFGS-B on the extended objective
-* ``jax`` — same objective with JAX autodiff Jacobian (optional extra)
+* ``lsq`` - fixed-geometry FC-only (legacy; used when only FCs are free)
+* ``lbfgsb`` - SciPy L-BFGS-B on the extended objective
+* ``jax`` - same objective with JAX autodiff Jacobian (optional extra)
 """
 
 from __future__ import annotations
@@ -225,7 +225,7 @@ def extended_bounds(finp, x0):
 
 
 def _pair14_unscaled_kcal(parm, positions):
-    """Unscaled 1–4 Coulomb and LJ (kcal/mol) for all proper dihedral end pairs."""
+    """Unscaled 1-4 Coulomb and LJ (kcal/mol) for all proper dihedral end pairs."""
     import numpy as np
 
     pos = np.asarray(positions, dtype=float)
@@ -233,7 +233,7 @@ def _pair14_unscaled_kcal(parm, positions):
     for dih in parm.dihedrals:
         if getattr(dih, "improper", False):
             continue
-        # End atoms of the torsion define the 1–4 interaction.
+        # End atoms of the torsion define the 1-4 interaction.
         a = dih.atom1
         b = dih.atom4
         i, j = int(a.idx), int(b.idx)
@@ -247,7 +247,7 @@ def _pair14_unscaled_kcal(parm, positions):
         r = float(np.linalg.norm(pos[i] - pos[j]))
         if r < 1e-6:
             continue
-        # Amber electrostatic constant (kcal·Å / e^2)
+        # Amber electrostatic constant (kcal*Ang / e^2)
         elec = 332.0522173 * qi * qj / r
         # LJ from combining rules on atom type parameters when present.
         try:
@@ -268,7 +268,7 @@ def _pair14_unscaled_kcal(parm, positions):
 
 
 def enrich_cache_with_14(system, sys_cache, scee0: float = 1.2, scnb0: float = 2.0):
-    """Add unscaled 1–4 energies and strip scaled 1–4 from base_kcal."""
+    """Add unscaled 1-4 energies and strip scaled 1-4 from base_kcal."""
     import numpy as np
 
     for iprof, prof in enumerate(system.profiles):
@@ -280,7 +280,7 @@ def enrich_cache_with_14(system, sys_cache, scee0: float = 1.2, scnb0: float = 2
             e14, v14 = _pair14_unscaled_kcal(system.mol, atoms.get_positions())
             elec.append(e14)
             vdw.append(v14)
-            # Remove currently scaled 1–4 contribution from the base.
+            # Remove currently scaled 1-4 contribution from the base.
             base[igeom] -= e14 / float(scee0) + v14 / float(scnb0)
         sys_cache["profiles"][iprof]["base_kcal"] = base
         sys_cache["profiles"][iprof]["elec14"] = np.asarray(elec, dtype=float)
@@ -314,7 +314,7 @@ def ll_energies_extended_kcal(system, sys_cache, finp):
 
 
 def shape_match_chi2_extended(finp, caches) -> float:
-    """Shape-match χ² over all systems/profiles using extended LL energies."""
+    """Shape-match chi^2 over all systems/profiles using extended LL energies."""
     import numpy as np
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
     from ffpopt.dihed.DihedMath import shape_match_delta
@@ -366,7 +366,7 @@ def _lbfgsb_options(args) -> dict:
 
 
 def _jax_objective_factory(finp, caches):
-    """Build a JAX-friendly objective (torsion + optional 1–4; phases continuous)."""
+    """Build a JAX-friendly objective (torsion + optional 1-4; phases continuous)."""
     _prepare_jax_runtime()
     try:
         import jax

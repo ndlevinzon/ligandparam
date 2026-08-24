@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from ffpopt.Reader import ReadMol2  # noqa: F401  — write-once (Reader)
+from ffpopt.Reader import ReadMol2  # noqa: F401  - write-once (Reader)
 
 
 def ConvertMol2toRDKIT(pmol):
@@ -127,7 +127,7 @@ def _butina_rms_distances(mol, cids, *, quiet: bool = False):
 
     For modest ensembles, uses RDKit ``GetBestRMS`` (symmetry-aware). When the
     conformer count is at or above :func:`_confsearch_fast_rms_threshold`,
-    aligns every conformer to the first and uses vectorized heavy-atom RMS —
+    aligns every conformer to the first and uses vectorized heavy-atom RMS -
     much cheaper for large ``nconf`` while remaining adequate for clustering.
     """
     import numpy as np

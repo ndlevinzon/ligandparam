@@ -1,4 +1,4 @@
-"""Recipe name → constructor registry for CLI / drivers."""
+"""Recipe name -> constructor registry for CLI / drivers."""
 
 from __future__ import annotations
 

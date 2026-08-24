@@ -192,15 +192,15 @@ def _gaussian_opt_keyword(n_atoms: int) -> str:
     The additional cost of CalcFC is roughly one frequency calculation at
     the same method and basis set:
 
-        T_Opt ≈ n_steps * T_gradient
-        T_Opt(CalcFC) ≈ T_Hessian + n_steps' * T_gradient
+        T_Opt ~= n_steps * T_gradient
+        T_Opt(CalcFC) ~= T_Hessian + n_steps' * T_gradient
 
     CalcFC is worthwhile only when the better starting Hessian saves enough
     optimization steps to offset T_Hessian.
 
     Scaling (M basis functions, N atoms):
 
-    - The Cartesian Hessian has (3N)^2 elements → storage scales as O(N^2).
+    - The Cartesian Hessian has (3N)^2 elements -> storage scales as O(N^2).
     - For HF and many DFT methods, Gaussian has analytical second
       derivatives. Formal scaling is broadly similar to the gradient, but
       with a much larger prefactor, memory, and disk footprint.
@@ -557,8 +557,8 @@ class StageGaussianRotation(AbstractStage):
 
     Supports two protocols:
 
-    * ``so3_n28`` — 28 deterministic quaternion-packed SO(3) orientations
-    * ``legacy_euler`` — historical Rx/Ry Euler grid (requires ``alpha``,
+    * ``so3_n28`` - 28 deterministic quaternion-packed SO(3) orientations
+    * ``legacy_euler`` - historical Rx/Ry Euler grid (requires ``alpha``,
       ``beta``, ``gamma`` lists)
 
     Output logs are named ``{out_gaussian_label}_rot_*.log`` so

@@ -47,9 +47,9 @@ Rough pipeline:
 
 Typical outputs in the working directory (label = input stem):
 
-* ``{label}.resp.mol2`` — RESP charges
-* ``{label}.frcmod`` — missing parameters
-* ``{label}.lib`` — Leap library
+* ``{label}.resp.mol2`` - RESP charges
+* ``{label}.frcmod`` - missing parameters
+* ``{label}.lib`` - Leap library
 
 Full code
 ---------

@@ -3,6 +3,20 @@
 Python package for force-field torsion optimization, vendored alongside
 ``ligandparam`` under ``src/ffpopt``.
 
+ligandparam drives it through ``lig-dihed-correct``. Two scan modes:
+
+* **Fragment (default)** - scission caps, twist each piece, merge DIHE by atom type.
+* **Whole-ligand** (``--whole-ligand``) - twist rotatable bonds on the intact parent.
+
+```bash
+# fragment
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb --fast
+
+# whole-ligand
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb --fast \
+  --whole-ligand --soft-dihed-restraint --fit-full --fit-backend jax
+```
+
 ## Package layout
 
 Shared monorepo convention: public ``__init__.py``, ``README.md``, CLI/bin
@@ -39,7 +53,7 @@ the code reads). Overlay a copy with ``export FFPOPT_DEFAULTS=/path/to.json``;
 per-key ``EXPORT`` still wins.
 
 Supported torsion / prep scripts stay as console entry points
-(``PrepareInput``, ``DihedWavefront``, twist workflow, …). Specialty
+(``PrepareInput``, ``DihedWavefront``, twist workflow, ...). Specialty
 tools (sugar/pucker, JSON, animate) are quarantined behind one dispatcher:
 
 ```bash
@@ -53,7 +67,7 @@ package (also exposed as ``lig-scission`` / ``scission``).
 ## What is (and is not) overlapping with ligandparam
 
 ligandparam owns **parameterization** (antechamber / Gaussian RESP / parmchk /
-LEaP → mol2+lib+frcmod). ffpopt owns **post-hoc torsion fitting**. Those are
+LEaP -> mol2+lib+frcmod). ffpopt owns **post-hoc torsion fitting**. Those are
 complementary, not duplicates.
 
 Shared helper (deduplicated): ``CopyParm`` lives in ``ffpopt.AmberParm`` and is
@@ -62,7 +76,7 @@ lives in ``ffpopt.runtime.FastWavefront.split_core_budget``.
 
 See ``GLOSSARY.md`` for models and terminology. Runtime code lives in this
 ``src/ffpopt`` tree. The optional ``ffpopt-main/`` checkout (gitignored) is an
-upstream reference only — not required after ``pip install``.
+upstream reference only - not required after ``pip install``.
 
 ## Wavefront evaluate policy
 
@@ -88,10 +102,10 @@ ladder). With small per-fragment CPU leases, bond pools prefer **breadth**
 lease cores only during scan phases (not PrepareInput / GenDihedFit /
 compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start ``itNN`` from
 the prior LL checkpoint when available. Spawn splits are flattened (never
-bond×wavefront nested); HL and ``orig`` scans pipeline in one queue. Under
+bondxwavefront nested); HL and ``orig`` scans pipeline in one queue. Under
 ``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
 (``FFPOPT_QDPI2_OPT``), and XTB/QDpi2 use ASE-first. ``--fast`` remains a
-wall-time trade (coarser Δ, looser converge).
+wall-time trade (coarser Delta, looser converge).
 
 ## Dihedral fit chi^2
 
@@ -113,7 +127,7 @@ Fragmented twist remains the default. For whole-ligand / AFFDO-like runs::
 |------|----------|
 | ``--whole-ligand`` | No scission; twist parent rotatable bonds |
 | ``--multi-centroid N`` | ConfSearch starts; pick smoothest HL profile (Fourier + roughness). Centroid-0 + ``orig`` share one CPU pool; extra starts only if Fourier RMSE exceeds ``FFPOPT_CENTROID_FOURIER_MAX`` (default 0.5 kcal). |
-| ``--soft-dihed-restraint`` | Harmonic dihedral spring (500 kcal/mol/rad², ±0.5°) via geomeTRIC + ASE |
+| ``--soft-dihed-restraint`` | Harmonic dihedral spring (500 kcal/mol/rad^2, +/-0.5 deg) via geomeTRIC + ASE |
 | ``--fit-full`` / ``--fit-mode`` | FC + phase + period + scee/scnb (default remains barrier-only) |
 | ``--fit-backend jax`` | L-BFGS-B with JAX autodiff (``pip install -e '.[jax]'`` from the clone; conda-forge ``jax`` on HPC) |
 | ``--boltzmann-charges`` | Average centroid mol2 charges (when available) |

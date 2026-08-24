@@ -409,10 +409,10 @@ class DihedRestraint(Restraint):
 class HarmonicDihedRestraint(Restraint):
     """AFFDO-style soft dihedral spring for ASE / geomeTRIC.
 
-    Energy (ASE eV): ``E = 0.5 * k_eV * (Δφ_rad)^2`` with
-    ``k_eV = k_kcal * (kcal→eV)``. Default ``k_kcal=500`` matches
-    AFFDO (kcal/mol/rad²). ``tol_deg`` is recorded for post-opt checks
-    (±0.5° default) and does not flatten the potential.
+    Energy (ASE eV): ``E = 0.5 * k_eV * (Deltaphi_rad)^2`` with
+    ``k_eV = k_kcal * (kcal->eV)``. Default ``k_kcal=500`` matches
+    AFFDO (kcal/mol/rad^2). ``tol_deg`` is recorded for post-opt checks
+    (+/-0.5 deg default) and does not flatten the potential.
     """
 
     def __init__(self, k_kcal, idxs, value, tol_deg=0.5):
@@ -452,10 +452,10 @@ class HarmonicDihedRestraint(Restraint):
         )
         diff_deg = (z - self.value + 180.0 + 180.0) % 360.0 - 180.0
         diff_rad = np.deg2rad(diff_deg)
-        # ASE calculator energies are eV; convert k from kcal/mol/rad².
+        # ASE calculator energies are eV; convert k from kcal/mol/rad^2.
         k_ev = self.k_kcal * (units.kcal / units.mol)
         e = 0.5 * k_ev * (diff_rad ** 2)
-        # dE/dφ_deg = k_ev * Δφ_rad * (π/180); grads of CptDihed are per degree.
+        # dE/dphi_deg = k_ev * Deltaphi_rad * (pi/180); grads of CptDihed are per degree.
         tmp = k_ev * diff_rad * (np.pi / 180.0)
         g[self.idxs[0], :] = tmp * dzdra
         g[self.idxs[1], :] = tmp * dzdrb

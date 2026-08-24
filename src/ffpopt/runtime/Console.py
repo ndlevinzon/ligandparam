@@ -11,7 +11,7 @@ duplicating tags. Console handlers always write to the real process streams
 (``sys.__stdout__`` / ``sys.__stderr__``) so teeing stdout for fragment logs
 does not double-prefix already-formatted logger lines.
 
-All console writes are forced to ASCII (``+/-``, ``deg``, ``chi^2``, …) so
+All console writes are forced to ASCII (``+/-``, ``deg``, ``chi^2``, ...) so
 latin-1 Slurm ``.out`` files do not mojibake.
 """
 
@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Sequence, TextIO
 
-# Lines that already carry our console prefix (logger → TeeTextIO).
+# Lines that already carry our console prefix (logger -> TeeTextIO).
 _PREFIXED_LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[")
 # Leading ``[scope]`` tokens embedded in the message / print body.
 _LEADING_SCOPE = re.compile(r"^\[([^\]]+)\]\s*")
@@ -299,7 +299,7 @@ def print_startup_banner(
 
     Uses a process-local flag **and** ``LIGANDPARAM_BANNER_PRINTED`` so spawned
     fragment / wavefront workers that re-import this module do not reprint.
-    Do not call from ``attach_console_handlers`` — only from top-level CLI
+    Do not call from ``attach_console_handlers`` - only from top-level CLI
     entry points.
 
     Returns
@@ -375,7 +375,7 @@ def format_console_line(
     tag: str | Sequence[str] | None = None,
     tags: Sequence[str] | None = None,
 ) -> str:
-    """Prefix ``message`` once: ``TIMESTAMP [tag…] [peeled…] rest``."""
+    """Prefix ``message`` once: ``TIMESTAMP [tag...] [peeled...] rest``."""
     if _PREFIXED_LINE.match(message.lstrip("\r")):
         # Already formatted (e.g. logging handler wrote into a TeeTextIO).
         lined = message if message.endswith("\n") else f"{message}\n"
@@ -474,7 +474,7 @@ class _MaxLevelFilter(logging.Filter):
 
 
 class HierarchicalConsoleFormatter(logging.Formatter):
-    """``TIMESTAMP [base…] [peeled…] LEVEL: message`` with one timestamp."""
+    """``TIMESTAMP [base...] [peeled...] LEVEL: message`` with one timestamp."""
 
     def __init__(self, *tags: str, datefmt: str = "%Y-%m-%d %H:%M:%S") -> None:
         super().__init__(datefmt=datefmt)
@@ -503,7 +503,7 @@ def console_formatter(
     tag: str | Sequence[str] | None = None,
     *extra_tags: str,
 ) -> logging.Formatter:
-    """Formatter: ``YYYY-mm-dd HH:MM:SS [tag…] LEVEL: message``."""
+    """Formatter: ``YYYY-mm-dd HH:MM:SS [tag...] LEVEL: message``."""
     tags = _normalize_tags(tag, *extra_tags)
     return HierarchicalConsoleFormatter(*tags)
 

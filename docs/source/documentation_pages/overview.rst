@@ -5,7 +5,7 @@ Overview
 ligands and residues for Amber MD. Recipes such as
 :class:`~ligandparam.recipes.FreeLigand` and
 :class:`~ligandparam.recipes.LazyLigand` assemble a pipeline; each stage wraps
-a concrete step (Gaussian ESP, RESP fitting, Leap, …).
+a concrete step (Gaussian ESP, RESP fitting, Leap, ...).
 
 Repository layout
 -----------------
@@ -15,27 +15,27 @@ As of version **1.5**, the installable tree under ``src/`` is:
 .. code-block:: text
 
    src/
-   ├── ligandparam/          # recipes, stages, CLI (lig-getparam, …)
-   │   ├── recipes/
-   │   ├── stages/           # includes StageDihedTwistCorrection
-   │   ├── cli/
-   │   ├── io/               # gaussian_io, leap_io, smiles, orientations, …
-   │   └── …
-   ├── ffpopt/               # torsion / dihedral fitting (lig-dihed-correct)
-   │   ├── runtime/          # console, progress boards, CPU budget, --fast
-   │   ├── scan/             # WaveFront, WaveFrontND, wavefront_mixins
-   │   ├── workflows/        # twist, fragmented, whole-ligand
-   │   ├── dihed/            # GenDihedFit types + solvers
-   │   ├── geom/             # GeomOpt, constraints, geomeTRIC
-   │   ├── affdo/            # optional AFFDO extras
-   │   └── …
-   └── scission/             # ligand fragmentation (lig-scission / scission)
+   +-- ligandparam/          # recipes, stages, CLI (lig-getparam, ...)
+   |   +-- recipes/
+   |   +-- stages/           # includes StageDihedTwistCorrection
+   |   +-- cli/
+   |   +-- io/               # gaussian_io, leap_io, smiles, orientations, ...
+   |   +-- ...
+   +-- ffpopt/               # torsion / dihedral fitting (lig-dihed-correct)
+   |   +-- runtime/          # console, progress boards, CPU budget, --fast
+   |   +-- scan/             # WaveFront, WaveFrontND, wavefront_mixins
+   |   +-- workflows/        # twist, fragmented, whole-ligand
+   |   +-- dihed/            # GenDihedFit types + solvers
+   |   +-- geom/             # GeomOpt, constraints, geomeTRIC
+   |   +-- affdo/            # optional AFFDO extras
+   |   +-- ...
+   +-- scission/             # ligand fragmentation (lig-scission / scission)
 
 ``ligandparam`` owns parameterization (charges, typing, baseline
 ``frcmod`` / ``lib``). ``ffpopt`` + ``scission`` own optional **post-hoc**
 torsion correction on that Amber triplet. After ``pip install``, only the
 packages under ``src/`` are used. Optional ``ffpopt-main/`` / ``scission-main/``
-checkouts (often gitignored) are upstream reference trees only — not a runtime
+checkouts (often gitignored) are upstream reference trees only - not a runtime
 dependency.
 
 Canonical imports use ``ffpopt.workflows``, ``ffpopt.scan``, ``ffpopt.geom``,
@@ -51,19 +51,26 @@ Multi-orientation RESP
 before averaging charges. The default ``so3_n28`` protocol uses a fixed
 28-point quaternion pack that covers SO(3) more uniformly than the historical
 Euler alpha/beta grid (``legacy_euler``). Both protocols keep the same job
-count and feed the same multi-RESP → ``parmchk2`` → LEaP path.
+count and feed the same multi-RESP -> ``parmchk2`` -> LEaP path.
 
 See :mod:`ligandparam.io.Orientations` and the :doc:`recipes` / :doc:`examples`
 sections for details.
 
-Optional dihedral corrections
------------------------------
+Optional dihedral corrections (ffpopt)
+--------------------------------------
 
-After a recipe finishes, you typically have ``{label}.mol2``,
-``{label}.lib``, and ``{label}.frcmod``. Run :doc:`dihedrals` (CLI
-``lig-dihed-correct``) to fragment with scission, fit torsions against a
-high-level model (for example ``xtb`` or ``qdpi2``), and write a merged
+After a recipe finishes you have ``{label}.mol2``, ``{label}.lib``, and
+``{label}.frcmod``. :doc:`dihedrals` (``lig-dihed-correct``) fits torsions
+against a high-level model (``xtb``, ``qdpi2``, ...) and writes
 ``{label}.dihed.frcmod``. The ``lib`` is left unchanged.
+
+Two ffpopt modes:
+
+* **Fragment (default)** - scission caps, per-fragment wavefront, merge DIHE
+  by atom type. Cheaper HL opts; good for typical drug-like ligands.
+* **Whole-ligand** (``--whole-ligand``) - twist rotatable bonds on the intact
+  parent. Use when fragments would distort coupled rotors. Optional extras:
+  ``--soft-dihed-restraint``, ``--multi-centroid``, ``--fit-full``.
 
 See also :doc:`cli`, :doc:`ffpopt`, and :doc:`scission`.
 

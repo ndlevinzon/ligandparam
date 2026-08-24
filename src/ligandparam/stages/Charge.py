@@ -240,7 +240,7 @@ class StageNormalizeCharge(AbstractStage):
 
         count = int(np.round(np.abs(charge_difference) / self.precision))
         if count < 1:
-            # Difference below one precision quantum — leave as-is.
+            # Difference below one precision quantum - leave as-is.
             return charges
 
         natoms = len(charges)

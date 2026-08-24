@@ -44,7 +44,7 @@ tblite = [
 ]
 
 # DeepMD-assisted recipes (DPLigand / DPFreeLigand). Install TensorFlow
-# from conda-forge on HPC — pip wheels are often unavailable there:
+# from conda-forge on HPC - pip wheels are often unavailable there:
 #   conda install -c conda-forge tensorflow deepmd-kit
 ml = [
   "deepmd-kit",

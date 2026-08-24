@@ -1,29 +1,112 @@
 [![Documentation Status](https://app.readthedocs.org/projects/ligandparam/badge/?version=latest)](https://ligandparam.readthedocs.io/en/latest/?badge=latest)
-[![Python](https://img.shields.io/badge/python-≥3.10-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python->=3.10-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # ligandparam
 
-**Amber ligand parameterization made modular**
+**Amber ligand parameterization, plus ffpopt torsion correction**
 
-Code originally written by York Lab (Rutgers), then in collaboration with Cheatham Lab (Utah)
+Code originally written by York Lab (Rutgers), then in collaboration with Cheatham Lab (Utah).
 
-`ligandparam` is a Python toolkit for generating force field parameters for nonstandard ligands and residues. It wraps familiar Amber / Gaussian tools behind a stage-based pipeline so you can run a full RESP workflow (or swap individual steps) without rewriting shell scripts.
+`ligandparam` does two jobs that usually sit in separate scripts:
 
-**Docs:** [ligandparam.readthedocs.io](https://ligandparam.readthedocs.io/en/latest/)  
+1. **Parameterize** a nonstandard ligand or residue (Antechamber / Gaussian RESP / `parmchk2` / LEaP) into an Amber triplet: `mol2` + `lib` + `frcmod`.
+2. **Correct dihedrals** with integrated **ffpopt** (wavefront HL/LL scans + cosine fit) and **scission** (optional fragmentation). Two ffpopt modes: **fragment** (default) and **whole-ligand**.
+
+**Docs:** [ligandparam.readthedocs.io](https://ligandparam.readthedocs.io/en/latest/)
 **Repo:** [github.com/piskulichz/ligandparam](https://github.com/piskulichz/ligandparam)
+
+---
+
+## Typical session
+
+```bash
+# 1) Charges, types, baseline frcmod / lib
+lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32
+
+# 2a) Default: fragment the ligand, twist each piece, merge DIHE back
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast
+
+# 2b) Alternative: twist the intact parent (no scission)
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast \
+  --whole-ligand --soft-dihed-restraint --fit-full --fit-backend jax
+```
+
+`--label` is the recipe file stem (`chaps` from `chaps.mol2`), not the residue name (`CHA`). The `.lib` is never rewritten; corrected torsions land in `{label}.dihed.frcmod` (use that with the original `.lib` in LEaP).
+
+`--fast` loosens optimizer / I/O presets. Scan `delta` stays 10 deg so HL and LL share one grid. Logs are ASCII (`+/-`, `deg`, `chi^2`) so latin-1 Slurm `.out` files stay greppable.
+
+---
+
+## ffpopt: fragment vs whole-ligand
+
+Both modes start from the same Amber triplet and the same `lig-dihed-correct` CLI. They differ in **what molecule is scanned**.
+
+| | **Fragment (default)** | **Whole-ligand (`--whole-ligand`)** |
+|--|------------------------|-------------------------------------|
+| **What is scanned** | Scission caps; each rotatable bond in a small fragment | The intact parent ligand |
+| **Why use it** | Cheaper HL opts; local environment around each torsion | Coupled rotors / bulky detergents that fragments distort |
+| **CPU** | Fragment workers fair-share `-n`; flatten bond x wavefront inside a worker | One parent job; nested bond x wavefront (e.g. 8 x 5 on 44 cores) |
+| **Bond batches** | `FFPOPT_MAX_BONDS_PER_TWIST` (default 2), MM updated between batches | `FFPOPT_WHOLE_MAX_BONDS_PER_TWIST` (default 8) |
+| **Output** | Merged parent `{label}.dihed.frcmod` | Parent `{label}.dihed.frcmod` (no fragment merge) |
+| **Lib** | Unchanged | Unchanged |
+
+### Fragment (default)
+
+Scission cuts the parent at rotatable bonds, builds capped `parm7`/`rst7` pieces, runs ffpopt twist in each fragment directory, then merges fitted DIHE terms by atom type. Drop-mode iterations keep earlier survivors unless a later `itXX.frcmod` refits the same key.
+
+```bash
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast
+# inspect cuts only:
+lig-scission fragment -d CHA3 -r CHA --label chaps
+```
+
+Use this for typical drug-like ligands. Prefer `--model xtb` (tblite) when you do not have QDpi2.
+
+### Whole-ligand
+
+Skip scission. Discover rotatable bonds on the parent and twist them in batches on the full molecule. Optional AFFDO-style extras (all default off):
+
+```bash
+lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast \
+  --whole-ligand \
+  --soft-dihed-restraint \
+  --fit-full --fit-backend jax
+```
+
+| Flag | Role |
+|------|------|
+| `--whole-ligand` | No scission; twist the parent |
+| `--soft-dihed-restraint` | Harmonic dihedral spring (500 kcal/mol/rad^2, +/-0.5 deg) instead of a hard IC; k doubles up to 8000 if the angle is out of band, then one hard IC unless already within 0.05 deg |
+| `--multi-centroid N` | Extra ConfSearch starts; keep the smoothest HL profile. Centroid-0 + orig share one pool; extra starts only if Fourier RMSE exceeds `FFPOPT_CENTROID_FOURIER_MAX` (default 0.5 kcal). Costly on large ligands -- try 0 or 2 before 5 |
+| `--fit-full --fit-backend jax` | Fit FC + phase + period + scee/scnb (default is barrier / FC-only). JAX extra: from the clone, `pip install -e '.[jax]'` (not PyPI `ligandparam[jax]`, which is 1.0.0) |
+| `--boltzmann-charges` | Boltzmann-average charges over centroid mol2s (needs `--multi-centroid >= 2`) |
+| `--maxiter 1` | Skip the second orig rescan round (default is 2) |
+
+Whole-ligand opts are full-molecule XTB (or QDpi2) jobs. That is the dominant cost; the extras above add more of those jobs. Keep `--fast`. Leave `OMP_NUM_THREADS=1` (unset is fine): many concurrent 1-thread SCFs beat one fat SCF.
+
+Python entry points:
+
+```python
+from ffpopt.workflows import (
+    run_fragmented_dihed_twist_workflow,
+    run_whole_ligand_dihed_twist_workflow,
+)
+```
+
+Env knobs (`FFPOPT_*`) live in [`src/ffpopt/pkgdata/files/env_defaults.json`](src/ffpopt/pkgdata/files/env_defaults.json). Overlay with `FFPOPT_DEFAULTS=/path.json`; `export FFPOPT_*=` still wins.
 
 ---
 
 ## Features
 
-- **Recipe-based workflows** for common parameterization paths (BCC, single-orientation RESP, multi-orientation RESP, DeepMD-assisted minimization)
-- **Composable stages** to add, remove, or reorder steps without forking the package
-- **Gaussian integration** for geometry optimization and ESP / RESP charge fitting
-- **Amber tooling** via Antechamber, `parmchk2`, and LEaP (`mol2` / `frcmod` / `lib`)
-- **Integrated ffpopt + scission** for optional post-hoc dihedral corrections (`lig-dihed-correct`, `lig-scission`)
-- **CLI utilities** for batch parameterization, fragmentation, SMILES -> PDB, and related prep tasks
-- **Optional extras** for DeepMD / SQM / tblite, dihedral tooling, and OpenFF Sage conversion
+- **Recipe-based parameterization** (BCC, single-orientation RESP, multi-orientation RESP, DeepMD-assisted minimize)
+- **Composable stages** to add, remove, or reorder steps
+- **Gaussian** geometry + ESP / RESP; **Amber** Antechamber / `parmchk2` / LEaP
+- **ffpopt fragment twist** (scission + per-fragment wavefront + DIHE merge)
+- **ffpopt whole-ligand twist** (`--whole-ligand` plus optional soft restraint / multi-centroid / full fit)
+- **ASCII console** for Slurm latin-1 logs
+- **CLI** for batch param, fragmentation, SMILES -> PDB, Sage conversion
 
 ---
 
@@ -31,105 +114,43 @@ Code originally written by York Lab (Rutgers), then in collaboration with Cheath
 
 ### Python
 
-- Python **≥ 3.10**
-- Core dependencies are installed with the package (`numpy<2` for ParmEd compatibility, `MDAnalysis`, `ParmEd`, `RDKit`, …)
-- Optional ML potentials (`mace`, `ani*`, `aimnet2*`) need `pip install ligandparam[ml-potentials]` (or a manual install of those stacks)
+- Python **>= 3.10**
+- Core deps install with the package (`numpy<2` for ParmEd, `MDAnalysis`, `ParmEd`, `RDKit`, ...)
+- Optional ML potentials: `pip install -e ".[ml-potentials]"` from the clone
 
 ### External tools
 
-Depending on the recipe you run, you will also need these on your `PATH` (or configured via recipe kwargs / environment variables):
-
 | Tool | Used for |
 |------|----------|
-| [AmberTools](https://ambermd.org/AmberTools.php) (`antechamber`, `parmchk2`, `tleap`) | Atom typing, frcmod / lib generation |
-| Gaussian (`g16` or compatible) | Optimization and RESP ESP calculations |
+| [AmberTools](https://ambermd.org/AmberTools.php) (`antechamber`, `parmchk2`, `tleap`) | Typing, frcmod / lib, fragment `parm7`/`rst7` |
+| Gaussian (`g16` or compatible) | Optimization and RESP ESP |
+| tblite (extra `[tblite]`) | `--model xtb` dihedral scans |
 
 ---
 
 ## Installation
-
-Clone the repository and install into an environment (Miniforge / conda recommended):
 
 ```bash
 git clone https://github.com/piskulichz/ligandparam.git
 cd ligandparam
 mamba env create -f env.yaml   # or: conda env create -f env.yaml
 conda activate ligandparam
-pip install .
+pip install -e ".[dihed,tblite]"
 ```
 
-### Validate your install
-
-After installing, run the install-validation suite (no AmberTools / Gaussian required):
+`pip install 'ligandparam[jax]'` (no `-e`, no `.`) pulls **PyPI 1.0.0** and can uninstall a local 1.5.x tree. From the clone:
 
 ```bash
+pip install -e '.[jax]'          # or: conda install -c conda-forge jax jaxlib
 python -m unittest tests.test_install_validation -v
-```
-
-Optional extras (`tblite`, `geometric`, AmberTools on `PATH`) are checked when
-present and skipped with an explicit reason when absent. A clean core install
-should report `OK` (with possible `skipped` optional tests).
-
-### Developer regression tests
-
-After changing code under `src/`, run the developer regression suite:
-
-```bash
 python -m unittest tests.test_developer_regression -v
 ```
 
-Both suites together:
-
-```bash
-python -m unittest tests.test_install_validation tests.test_developer_regression -v
-```
-
-### Optional extras
-
-Run these **from the clone** (the extra is on this tree, not the PyPI ``1.0.0`` wheel):
-
-```bash
-pip install -e ".[tblite]" # GFN2-xTB for lig-dihed-correct --model xtb
-pip install -e ".[dihed]"  # ndfes + geometric (geomeTRIC) for lig-dihed-correct
-pip install -e ".[ml]"     # DeepMD (install TensorFlow via conda on HPC)
-pip install -e ".[jax]"    # JAX autodiff for --fit-backend jax
-pip install -e ".[sage]"   # OpenFF Sage conversion
-pip install -e ".[docs]"   # Sphinx documentation build
-pip install -e ".[all]"    # everything above (still needs TF from conda on many HPCs)
-```
-
-``pip install 'ligandparam[jax]'`` (no ``-e``, no ``.``) pulls **PyPI 1.0.0** and
-can uninstall a local 1.5.x install. On HPC, prefer conda-forge
-for JAX itself, then keep the editable tree:
-
-```bash
-conda install -c conda-forge jax jaxlib
-pip install -e .
-```
-
-Dihedral corrections use the integrated [`src/ffpopt`](src/ffpopt/) and
-[`src/scission`](src/scission/) packages (installed with the package). Use
-`pip install -e ".[dihed,tblite]"`, keep AmberTools on `PATH`, then run
-`lig-dihed-correct` (or `lig-scission` alone) after `lig-getparam`.
-
-For DeepMD recipes, prefer conda on HPC (pip TensorFlow often has no wheel):
-
-```bash
-conda install -c conda-forge tensorflow deepmd-kit
-pip install -e ".[ml]"
-```
-
-Editable install for development:
-
-```bash
-pip install -e .
-```
+Other extras from the clone: `.[ml]`, `.[sage]`, `.[docs]`, `.[all]`. DeepMD on HPC: install TensorFlow from conda-forge, then `pip install -e ".[ml]"`.
 
 ---
 
-## Quick start
-
-Parameterize a ligand with the multi-orientation RESP recipe:
+## Parameterization recipes
 
 ```python
 from pathlib import Path
@@ -145,155 +166,58 @@ recipe = FreeLigand(
     nproc=12,
     mem=8,
 )
-
 recipe.setup()
 recipe.list_stages()
 recipe.execute(dry_run=False, nproc=12, mem=8)
 ```
 
-A faster single-orientation RESP path:
+| Recipe | What it does |
+|--------|----------------|
+| `LazierLigand` | Antechamber charges (e.g. BCC) + LEaP |
+| `LazyLigand` | Gaussian minimize + single-orientation RESP |
+| `FreeLigand` | 28-point quaternion SO(3) sampling + multi-RESP |
+| `DPLigand` / `DPFreeLigand` | DeepMD geometry + RESP / multi-RESP |
+| `SQMLigand` | SQM / DeepMD-assisted minimize + RESP |
 
-```python
-from ligandparam.recipes import LazyLigand
+After `setup()` you can `remove_stage` / `insert_stage`. `FreeLigand` default orientation pack is `so3_n28`; `orientation_protocol="legacy_euler"` restores the old Euler grid. Both feed the same multi-RESP -> `parmchk2` -> LEaP path.
 
-recipe = LazyLigand(
-    in_filename="ligand.pdb",
-    cwd="output",
-    net_charge=0,
-    molname="LIG",
-    logger="stream",
-)
-recipe.setup()
-recipe.execute(nproc=8, mem=8)
-```
-
-Typical outputs (depending on recipe) include minimized / RESP `mol2` files, `frcmod`, and Leap `lib` libraries under your working directory.
-
----
-
-## Recipes
-
-| Recipe | What it does | Best when |
-|--------|----------------|-----------|
-| **`LazierLigand`** | Antechamber charges (e.g. BCC) + Leap | You want a fast, no-Gaussian path |
-| **`LazyLigand`** | Gaussian minimize + single-orientation RESP | Standard RESP without multi-orientation sampling |
-| **`FreeLigand`** | 28-point quaternion SO(3) sampling + multi-RESP fit | Higher-quality charge averaging over well-separated orientations |
-| **`DPLigand`** | DeepMD minimization + Gaussian RESP | You have a DeepMD model for geometry |
-| **`DPFreeLigand`** | DeepMD + ``so3_n28`` multi-RESP | DeepMD geometry + FreeLigand-quality charges |
-| **`SQMLigand`** | SQM / DeepMD-assisted minimize + RESP | Semiempirical-assisted workflows |
-
-Each recipe builds an ordered list of **stages**. You can inspect and modify that list after `setup()`:
-
-```python
-recipe.setup()
-recipe.list_stages()
-recipe.remove_stage("Normalize1")
-# recipe.insert_stage(new_stage, "SomeExistingStage")
-recipe.execute()
-```
-
-`FreeLigand` and `DPFreeLigand` use the deterministic `so3_n28` quaternion pack
-by default. To reproduce the previous alpha/beta Euler grid, pass
-`orientation_protocol="legacy_euler"`. Both protocols use 28 Gaussian ESP jobs
-and feed the same multi-RESP → `parmchk2` → LEaP path (`.frcmod` / `.lib`).
-
-### Optional dihedral corrections (ffpopt + scission)
-
-Runtime packages live at [`src/ffpopt`](src/ffpopt/) and
-[`src/scission`](src/scission/) (next to `ligandparam`). After
-`lig-getparam` finishes, run torsion correction in the same session
-(fragmented dihed-twist → merged frcmod; the `.lib` is unchanged). You need
-AmberTools on `PATH` plus an HL model stack (e.g. `xtb` via tblite, or `qdpi2`).
-Fragment workers fair-share `-n` / `nproc` cores via a live lease file and
-reclaim cores from finished fragments at the next scan phase.
-
-```bash
-lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand --net_charge 0 -n 10 -mem 32
-lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
-```
-
-Use ``--model qdpi2`` (or ``mace``, …) if that stack is installed
-(``ligandparam[ml-potentials]`` for MACE / TorchANI / AIMNet); ``xtb``
-only needs ``tblite``.
-
-Fragment alone with scission (without fitting):
-
-```bash
-lig-scission fragment -d CHA3 -r CHA --label chaps
-# or the upstream-style CLI:
-scission fragment --mol2 ... --lib ... --frcmod ... --outdir frags
-```
-
-Python recipes can still append the stage with ``dihed_correct=True``
-(``FreeLigand`` / ``LazyLigand`` / ``DPFreeLigand``). Use ``dihed_delta`` for
-the wavefront step (CLI ``--delta``) and ``dihed_fragment_config`` for
-scission settings. Prefer the standalone CLIs when running interactively
-after ``lig-getparam``.
+Recipes can append twist with `dihed_correct=True` (`dihed_delta`, `dihed_fragment_config`). Prefer the standalone `lig-dihed-correct` CLI after `lig-getparam`.
 
 ---
 
 ## Command-line tools
 
-Installed entry points (see `pyproject.toml`):
-
 | Command | Purpose |
 |---------|---------|
-| `lig-getparam` | Batch-run parameterization recipes |
-| `lig-dihed-correct` | ffpopt dihedral corrections on recipe mol2/lib/frcmod |
-| `lig-scission` / `scission` | Fragment a ligand (or merge fragment frcmods) |
-| `smiles-to-pdb` | Convert a SMILES string to a 3D PDB |
-| `lighfix` | Fix ligand hydrogenation / bonding from PDB input |
-| `lig-to-sage` | Convert mol2 parameters toward OpenFF Sage (optional `[sage]`) |
-| `ffpopt-specialty` | Quarantined tools: sugar/pucker, JSON, animate |
-
-Supported torsion prep scripts (`ffpopt-PrepareInput.py`,
-`ffpopt-DihedWavefront.py`, …) and secondary RespFit/CPE CLIs remain as
-console scripts; see `docs/.../cli.rst`.
+| `lig-getparam` | Run a parameterization recipe |
+| `lig-dihed-correct` | ffpopt fragment or whole-ligand dihedral correction |
+| `lig-scission` / `scission` | Fragment only, or merge fragment frcmods |
+| `smiles-to-pdb` | SMILES -> 3D PDB |
+| `lighfix` | Fix hydrogenation / bonding from PDB |
+| `lig-to-sage` | mol2 toward OpenFF Sage (optional `[sage]`) |
+| `ffpopt-specialty` | Quarantined sugar/pucker, JSON, animate tools |
 
 ```bash
 lig-getparam --help
 lig-dihed-correct --help
 lig-scission --help
-smiles-to-pdb --help
 ```
 
-Re-run after walltime without repeating finished Gaussian work (default):
-complete logs are skipped, and only incomplete orientation ESP jobs are
-re-submitted. Force all Gaussian jobs again with ``-O``:
-
-```bash
-lig-getparam -i ligand.pdb -r LIG -d param -rn freeligand -O
-```
+Re-run `lig-getparam` after walltime without repeating finished Gaussian work (default). Force all Gaussian jobs again with `-O`.
 
 ---
 
 ## Examples
 
-Runnable examples live under [`examples/`](examples/):
-
-| Directory | Topic |
-|-----------|--------|
-| `01_LazyLigand` | Single-orientation RESP |
-| `02_FreeLigand` | Multi-orientation RESP |
-| `03_ModifySteps` | Editing the stage pipeline |
-| `04_FromSmiles` | SMILES -> PDB prep |
-| `05_FromSDF` | Working from SDF libraries |
-
-Sphinx also documents example 07 (dihedral correction after `lig-getparam`);
-see the [documentation examples](https://ligandparam.readthedocs.io/en/latest/).
+Runnable trees under [`examples/`](examples/): `01_LazyLigand`, `02_FreeLigand`, `03_ModifySteps`, `04_FromSmiles`, `05_FromSDF`. Sphinx example 07 is the same-session `lig-getparam` then `lig-dihed-correct` narrative (fragment and whole-ligand).
 
 ---
 
 ## Documentation
 
-- **User guide & API:** https://ligandparam.readthedocs.io/en/latest/
-- Build locally:
-
-```bash
-pip install ".[docs]"
-cd docs
-make html
-```
+- User guide and API: https://ligandparam.readthedocs.io/en/latest/
+- Local: `pip install ".[docs]" && cd docs && make html`
+- ffpopt glossary: [`src/ffpopt/GLOSSARY.md`](src/ffpopt/GLOSSARY.md)
 
 ---
 
@@ -301,45 +225,35 @@ make html
 
 ```text
 src/
-├── ligandparam/         # Parameterization recipes, stages, CLI
-│   ├── recipes/
-│   ├── stages/          # Includes StageDihedTwistCorrection
-│   ├── cli/             # lig-getparam, lig-dihed-correct, lig-scission, …
-│   ├── io/              # gaussian_io, leap_io, smiles, orientations, …
-│   └── …
-├── ffpopt/              # Torsion optimization
-│   ├── runtime/         # console, progress boards, CPU budget, --fast
-│   ├── scan/            # WaveFront, WaveFrontND, mixins, ScanAnalysis
-│   └── workflows/, dihed/, geom/, affdo/
-└── scission/            # Integrated ligand fragmentation + frcmod merge
++-- ligandparam/         # recipes, stages, lig-getparam / lig-dihed-correct
+|   +-- recipes/
+|   +-- stages/          # includes StageDihedTwistCorrection
+|   +-- cli/
+|   +-- io/
++-- ffpopt/              # torsion optimization
+|   +-- runtime/         # console (ASCII), progress boards, CPU budget, --fast
+|   +-- scan/            # WaveFront, WaveFrontND, mixins
+|   +-- workflows/       # fragment twist, whole-ligand twist, bond batches
+|   +-- dihed/           # GenDihedFit
+|   +-- geom/            # GeomOpt, restraints, geomeTRIC
+|   +-- affdo/           # optional whole-ligand extras
++-- scission/            # fragment generation + frcmod merge
 
 tests/
-├── test_install_validation.py    # user install gate
-└── test_developer_regression.py  # developer regression after code changes
++-- test_install_validation.py
++-- test_developer_regression.py
 ```
 
 ---
 
 ## Contributing
 
-Issues and pull requests are welcome.
+1. Fork, branch, `pip install -e ".[docs]"`
+2. `python -m unittest tests.test_developer_regression -v`
+3. Keep stdout, comments, and docs ASCII (`+/-`, `deg`, `chi^2`, `->`)
+4. Open a PR that says why the change is needed
 
-1. Fork and clone the repository
-2. Create a feature branch
-3. Install in editable mode: `pip install -e ".[docs]"`
-4. Run `python -m unittest tests.test_developer_regression -v`
-5. Make focused changes with clear commit messages
-6. Open a PR describing *why* the change is needed
-
-### Releasing a new version
-
-1. Bump `version` in `pyproject.toml` **and** `__version__` in `src/ligandparam/__init__.py` (keep them in sync)
-2. Commit the bump, then tag it:
-
-```bash
-git tag 1.5.1
-git push origin --tags
-```
+Release: bump `version` in `pyproject.toml` and `__version__` in `src/ligandparam/__init__.py`, commit, `git tag 1.5.1 && git push origin --tags`.
 
 ---
 
@@ -354,4 +268,4 @@ git push origin --tags
 
 ## License
 
-This project is licensed under the **MIT License**.
+MIT.

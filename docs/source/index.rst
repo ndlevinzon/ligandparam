@@ -8,8 +8,9 @@ parameterization. Workflows are expressed as **recipes** (ordered lists of
 
 The repository also ships two integrated companion packages under ``src/``:
 
-* ``ffpopt`` — post-hoc torsion (dihedral) fitting (``runtime/``, ``scan/``, …)
-* ``scission`` — Amber-aware ligand fragmentation for torsion scans
+* ``ffpopt`` - post-hoc torsion fitting in **fragment** (default) or
+  **whole-ligand** (``--whole-ligand``) mode
+* ``scission`` - Amber-aware ligand fragmentation used by the fragment path
 
 Quick start
 -----------
@@ -36,26 +37,32 @@ writes ``.mol2`` / ``.frcmod`` / ``.lib`` outputs. Pass
 ``orientation_protocol="legacy_euler"`` to restore the older alpha/beta Euler
 grid.
 
-Same-session CLI (parameterize, then optional torsion correction)
-------------------------------------------------------------------
+Same-session CLI (parameterize, then ffpopt torsion correction)
+----------------------------------------------------------------
 
 .. code-block:: bash
 
    lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand -c 0 -n 10 -mem 32
+
+   # Default: fragment, twist each piece, merge DIHE
    lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
 
+   # Alternative: twist the intact parent
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast \
+       --whole-ligand --soft-dihed-restraint --fit-full --fit-backend jax
+
 ``--label`` is the recipe file stem (from the input filename). Fragmentation
-alone is available via ``lig-scission`` / ``scission``.
+alone is ``lig-scission`` / ``scission``. See :doc:`documentation_pages/dihedrals`.
 
 Common recipes
 --------------
 
-* :class:`~ligandparam.recipes.LazierLigand` — fast Antechamber (e.g. BCC) path
-* :class:`~ligandparam.recipes.LazyLigand` — single-orientation Gaussian RESP
-* :class:`~ligandparam.recipes.FreeLigand` — multi-orientation RESP (``so3_n28``)
+* :class:`~ligandparam.recipes.LazierLigand` - fast Antechamber (e.g. BCC) path
+* :class:`~ligandparam.recipes.LazyLigand` - single-orientation Gaussian RESP
+* :class:`~ligandparam.recipes.FreeLigand` - multi-orientation RESP (``so3_n28``)
 * :class:`~ligandparam.recipes.DPLigand` / :class:`~ligandparam.recipes.DPFreeLigand`
-  — DeepMD-assisted variants
-* :class:`~ligandparam.recipes.SQMLigand` — SQM / DeepMD-assisted minimize + RESP
+  - DeepMD-assisted variants
+* :class:`~ligandparam.recipes.SQMLigand` - SQM / DeepMD-assisted minimize + RESP
 
 Stages can be inspected and edited after ``setup()``
 (``remove_stage``, ``insert_stage``, ``add_stage``).

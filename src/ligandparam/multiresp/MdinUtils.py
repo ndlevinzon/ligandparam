@@ -119,7 +119,7 @@ class AmberCmd(object):
 class Disang(object):
     """Generate a disang file by substituting restraint placeholders in a template.
 
-    Placeholders are ``R1``, ``K1``, ``R2``, ``K2``, … matching the keyword
+    Placeholders are ``R1``, ``K1``, ``R2``, ``K2``, ... matching the keyword
     arguments passed at construction (case-insensitive keys become upper-case
     tokens).
     """

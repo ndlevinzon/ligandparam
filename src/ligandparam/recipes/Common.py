@@ -52,7 +52,7 @@ def init_normalize_center_stages(
     initial_mol2,
     centered_out,
 ) -> List:
-    """Initialize → normalize charges → center (DisplaceMol)."""
+    """Initialize -> normalize charges -> center (DisplaceMol)."""
     return [
         StageInitialize(
             "Initialize",
@@ -309,7 +309,7 @@ def multi_resp_update_stages(
     normalize_input=None,
     expected_gaussian_logs: Optional[int] = None,
 ) -> List:
-    """MultiRespFit → UpdateCharge → Normalize2 → UpdateNames[/Types]."""
+    """MultiRespFit -> UpdateCharge -> Normalize2 -> UpdateNames[/Types]."""
     if expected_gaussian_logs is None:
         expected_gaussian_logs = N_ORIENTATIONS_SO3_N28
     if normalize_input is None:

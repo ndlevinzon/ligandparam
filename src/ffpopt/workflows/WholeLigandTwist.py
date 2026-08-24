@@ -40,7 +40,7 @@ def run_whole_ligand_dihed_twist_workflow(
     Builds ``parm7``/``rst7`` via tleap-like PrepareInput from the parent
     Amber triplet, discovers rotatable central bonds with scission, then
     runs :func:`run_dihed_twist_workflow` with ``bytype=True``. Does not
-    remove the fragmented path — call this explicitly (e.g. CLI
+    remove the fragmented path - call this explicitly (e.g. CLI
     ``--whole-ligand``).
     """
     import shutil
@@ -236,7 +236,7 @@ def run_whole_ligand_dihed_twist_workflow(
         shutil.copy2(it_frcmods[-1], out_frcmod_path)
         log.info("[whole-twist] wrote %s from %s", out_frcmod_path, it_frcmods[-1])
     else:
-        # No refit needed — copy parent.
+        # No refit needed - copy parent.
         shutil.copy2(frcmod_p, out_frcmod_path)
         log.info("[whole-twist] no itXX.frcmod; copied parent frcmod")
 

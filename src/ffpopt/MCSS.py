@@ -245,7 +245,7 @@ def mcss(mol2str_1, mol2str_2, maxtime=60, isotope_map=None, selec=''):
 
 
 
-from ffpopt.Reader import FixParmedAtomicNumbers  # noqa: F401  — write-once (Reader)
+from ffpopt.Reader import FixParmedAtomicNumbers  # noqa: F401  - write-once (Reader)
 
 
 def parmed2mol2str(parmed_atoms):

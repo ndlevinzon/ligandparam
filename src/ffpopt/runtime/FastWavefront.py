@@ -52,7 +52,7 @@ def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = N
 
     Sander / Amber MM used to always prefer depth; that is now decided by
     :func:`prefer_bond_pool_depth` so small fair-share leases can run bonds
-    concurrently instead of a single 1–2-wide wavefront.
+    concurrently instead of a single 1-2-wide wavefront.
     """
     if env_bool("FFPOPT_PREF_WF_DEPTH"):
         return True
@@ -74,7 +74,7 @@ def prefer_bond_pool_depth(
     """Choose bond-pool depth vs breadth for one scan phase.
 
     With tiny fair-share leases (common when many fragments share ``nproc``),
-    depth collapses to ``1 × nproc`` and serializes independent bonds. Prefer
+    depth collapses to ``1 x nproc`` and serializes independent bonds. Prefer
     breadth whenever depth would not keep at least ``n_bonds`` outer workers.
     Explicit ``prefer`` is a model/fast hint only; small-lease breadth and
     ``FFPOPT_PREF_WF_*`` env overrides still win.
@@ -87,7 +87,7 @@ def prefer_bond_pool_depth(
     n_bonds = max(1, int(n_bonds))
     if n_bonds >= 2:
         min_inner = max(1, env_int("FFPOPT_MIN_WF_NPROC"))
-        # Depth would force n_outer < n_bonds → run bonds concurrently instead.
+        # Depth would force n_outer < n_bonds -> run bonds concurrently instead.
         if (nproc // min_inner) < n_bonds:
             return False
     if prefer is not None:
@@ -292,7 +292,7 @@ def geomopt_verbose() -> bool:
 
 
 def fast_recovery_ladder() -> bool:
-    """Use a shorter geomeTRIC recovery ladder (primary → loose → soft)."""
+    """Use a shorter geomeTRIC recovery ladder (primary -> loose -> soft)."""
     if env_bool("FFPOPT_GEOMOPT_FAST_RECOVERY"):
         return True
     return fast_wavefront_enabled(None)

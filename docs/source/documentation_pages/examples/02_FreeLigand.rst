@@ -46,7 +46,7 @@ Set up and run the stages:
 Pipeline (abbreviated)
 ----------------------
 
-1. Convert PDB → mol2 and assign initial charges
+1. Convert PDB -> mol2 and assign initial charges
 2. Gaussian minimization / RESP preparation
 3. Multi-orientation ESP (``so3_n28`` by default) and multi-RESP fit
 4. Write ``.mol2`` / ``.frcmod`` / ``.lib``

@@ -141,7 +141,7 @@ SOFT_DIHED_K_DEFAULT = 500.0
 SOFT_DIHED_KMAX_DEFAULT = 8000.0
 SOFT_DIHED_TOL_DEFAULT = 0.5
 # Skip the extra hard-IC opt when the restrained min is already this close
-# to φ0. At k=8000 kcal/mol/rad², 0.05° residual is ~0.003 kcal/mol.
+# to phi0. At k=8000 kcal/mol/rad^2, 0.05 deg residual is ~0.003 kcal/mol.
 SOFT_DIHED_HARD_IC_SKIP_DEG = 0.05
 
 
@@ -196,7 +196,7 @@ def run_soft_dihed_opt(
     Each failed band check re-opts from the last coordinates at ``2k`` (up to
     ``soft_dihed_kmax`` / ``FFPOPT_SOFT_DIHED_KMAX``, default 8000). A hard-IC
     opt then runs from those coords unless the restrained min is already
-    within ``SOFT_DIHED_HARD_IC_SKIP_DEG`` of ``φ0`` (bias is then far below
+    within ``SOFT_DIHED_HARD_IC_SKIP_DEG`` of ``phi0`` (bias is then far below
     DFT noise).
     """
     from ffpopt.geom.Restraints import HarmonicDihedRestraint
@@ -392,14 +392,14 @@ def evaluate_wavefront_minimum(
 
     Policy (1-D and N-D):
 
-    * Soft, first at bin — store and **spawn once** (coverage seed).
-    * Soft, improves soft min — update; no spawn.
-    * Soft otherwise — demote; no spawn.
-    * Hard vs soft incumbent — replace soft only if ``E_hard <= E_soft``; spawn
+    * Soft, first at bin - store and **spawn once** (coverage seed).
+    * Soft, improves soft min - update; no spawn.
+    * Soft otherwise - demote; no spawn.
+    * Hard vs soft incumbent - replace soft only if ``E_hard <= E_soft``; spawn
       when accepted.
-    * Hard, ``E < min - threshold`` — update and spawn.
-    * Hard, ``E < min`` within threshold — update quietly; no spawn.
-    * Hard, ``E >= min`` — no update; no spawn.
+    * Hard, ``E < min - threshold`` - update and spawn.
+    * Hard, ``E < min`` within threshold - update quietly; no spawn.
+    * Hard, ``E >= min`` - no update; no spawn.
     """
     if energy is None or not np.isfinite(energy):
         return {

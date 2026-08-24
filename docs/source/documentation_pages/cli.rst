@@ -4,13 +4,13 @@ Command-line tools
 Product path (installed by default)
 -----------------------------------
 
-* ``lig-getparam`` — run a parameterization recipe
-* ``lig-dihed-correct`` — fit / merge dihedral corrections (ffpopt + scission)
-* ``lig-scission`` — fragment or merge with ligandparam-friendly ``-d`` / ``-r`` / ``--label`` shortcuts
-* ``scission`` — upstream scission CLI (``fragment`` / ``merge`` / ``pick-bond``)
-* ``smiles-to-pdb`` — SMILES → 3D PDB
-* ``lighfix`` — fix ligand hydrogenation / bonding
-* ``lig-to-sage`` — mol2 → OpenFF Sage helpers (optional ``[sage]`` extra)
+* ``lig-getparam`` - run a parameterization recipe
+* ``lig-dihed-correct`` - ffpopt dihedral correction (**fragment** default, or ``--whole-ligand``)
+* ``lig-scission`` - fragment or merge with ligandparam-friendly ``-d`` / ``-r`` / ``--label`` shortcuts
+* ``scission`` - upstream scission CLI (``fragment`` / ``merge`` / ``pick-bond``)
+* ``smiles-to-pdb`` - SMILES -> 3D PDB
+* ``lighfix`` - fix ligand hydrogenation / bonding
+* ``lig-to-sage`` - mol2 -> OpenFF Sage helpers (optional ``[sage]`` extra)
 
 Supported ffpopt torsion / prep tools (console scripts):
 
@@ -55,8 +55,12 @@ Typical same-session workflow
    # Optional: fragment only
    lig-scission fragment -d CHA3 -r CHA --label chaps
 
-   # Dihedral correction (HL model example: xtb — no qdpi required)
+   # Dihedral correction, fragment path (default)
    lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
+
+   # Dihedral correction, whole-ligand path
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast \
+       --whole-ligand --soft-dihed-restraint --fit-full --fit-backend jax
 
 Notes
 -----
@@ -65,7 +69,9 @@ Notes
 * ``--label`` is the recipe **file stem** (e.g. ``chaps`` from ``chaps.mol2``),
   not necessarily the residue name (``CHA``).
 * Outputs for dihedral correction default to ``{label}.dihed.frcmod`` beside
-  the original ``{label}.frcmod``; the ``.lib`` is unchanged.
+  the original ``{label}.frcmod``; the ``.lib`` is unchanged. Fragment mode
+  writes scan intermediates under a fragments directory; ``--whole-ligand``
+  writes per-batch ``whole-twist.log`` / ``WHOLE_STATUS.txt``.
 * ``--fast`` enables coarser wavefront / looser geomeTRIC presets
   (``FFPOPT_FAST_WAVEFRONT=1``). Explicit non-default knobs still win.
   All ``export FFPOPT_*`` defaults ship in

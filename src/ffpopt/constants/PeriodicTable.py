@@ -202,7 +202,7 @@ def GetRespRadius(atomicNumber):
         'Na': 1.57, 'Mg': 1.36, 'Al': 1.24, 'Si': 1.17, 'P': 1.80, 'S': 1.75, 'Cl': 1.70
     }
     
-    #: Bondi, A. van der Waals Volumes and Radii. J. Phys. Chem. 68, 441–451 (1964).
+    #: Bondi, A. van der Waals Volumes and Radii. J. Phys. Chem. 68, 441-451 (1964).
     BONDI_RADII = {
         'H': 1.20,                                                                         'He': 1.40,
         'Li': 1.82,                          'C': 1.70,  'N': 1.55,  'O': 1.52,  'F': 1.47, 'Ne': 1.54,
@@ -217,7 +217,7 @@ def GetRespRadius(atomicNumber):
         'U': 1.86,
     }
     
-    #: Mantina, M., Chamberlin, A. C., Valero, R., Cramer, C. J. & Truhlar, D. G. Consistent van der Waals Radii for the Whole Main Group. J Phys Chem A 113, 5806–5812 (2009).
+    #: Mantina, M., Chamberlin, A. C., Valero, R., Cramer, C. J. & Truhlar, D. G. Consistent van der Waals Radii for the Whole Main Group. J Phys Chem A 113, 5806-5812 (2009).
     MANTINA_RADII = {
         'H': 1.10,                                                                         'He': 1.40,
         'Li': 1.82, 'Be': 1.53,  'B': 1.92,  'C': 1.70,  'N': 1.55,  'O': 1.52,  'F': 1.47, 'Ne': 1.54,
@@ -248,7 +248,7 @@ def GetRespRadius(atomicNumber):
         'U': 1.86,
     }
     
-    #: Alvarez, S. A cartography of the van der Waals territories. Dalton Transactions 42, 8617–8636 (2013).
+    #: Alvarez, S. A cartography of the van der Waals territories. Dalton Transactions 42, 8617-8636 (2013).
     ALVAREZ_RADII = {
         'H': 1.20,                                                                         'He': 1.43,
         'Li': 2.12, 'Be': 1.98,  'B': 1.91,  'C': 1.77,  'N': 1.66,  'O': 1.50,  'F': 1.46, 'Ne': 1.58,

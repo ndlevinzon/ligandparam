@@ -164,7 +164,7 @@ def MakeUniqueParams(p, xlist, *, type_attr: str, type_factory, scale: float = 1
     Parameters
     ----------
     p : parmed Structure
-        Parameter container (has ``bond_types`` / ``angle_types`` / …).
+        Parameter container (has ``bond_types`` / ``angle_types`` / ...).
     xlist : list
         Bond / angle / dihedral objects whose types should be uniquified.
     type_attr : str

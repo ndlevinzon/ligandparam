@@ -358,7 +358,7 @@ def RunRespFit(*,
     udq_old = 0
     gdq_new = 0
     udq_new = 0
-    # O(natoms) mask / charge bookkeeping — intentionally serial (ESP was the
+    # O(natoms) mask / charge bookkeeping - intentionally serial (ESP was the
     # parallel cost; see ffpopt.cpefit.ParallelEsp).
     for ia,masked in enumerate(copymask):
         print("%3i %12s %6s %12.6f %12.6f"%(ia,m.atnames[ia],masked,newq[ia],origqs[ia]))

@@ -412,7 +412,7 @@ def _wf_kwargs_for_scan_model(model: str, wf_kwargs: dict) -> dict:
     """Specialize wavefront kwargs per energy model.
 
     Sander / Amber MM wavefronts default to ASE-first constrained opts (skip the
-    geomeTRIC recovery ladder) — the dominant wall-time win for ``orig`` /
+    geomeTRIC recovery ladder) - the dominant wall-time win for ``orig`` /
     ``rescan/itNN`` stages. Under ``--fast``, XTB-like and QDpi2 HL scans also
     default to ASE-first. Explicit ``geometric_opt=True`` in ``wf_kwargs``
     still wins.
@@ -635,7 +635,7 @@ def _split_fragment_nproc(
         ``n_items > 1``). By default prefers as many outer workers as
         possible; with ``prefer_depth=True`` keeps a minimum inner width
         (see :func:`ffpopt.runtime.FastWavefront.split_nproc_for_items`).
-        Pass ``flatten_nested=False`` to keep a 2-D bond×wavefront split
+        Pass ``flatten_nested=False`` to keep a 2-D bondxwavefront split
         (whole-ligand / top-level twist). Fragment spawn workers keep the
         default flatten so they do not open a third pool.
     """
@@ -654,7 +654,7 @@ def _execute_bond_scan_jobs(
     logger: logging.Logger | None,
     label: str = "scans",
 ) -> list[tuple[str, tuple, Optional[dict]]]:
-    """Run bond-scan jobs; nest bond×wavefront only at the top-level twist."""
+    """Run bond-scan jobs; nest bondxwavefront only at the top-level twist."""
     log = _resolve_logger(logger)
     if not jobs:
         return []
@@ -738,8 +738,8 @@ def _run_scans_for_bonds(
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Run one wavefront scan per bond, pooling when the core budget allows.
 
-    Splits ``nproc`` as ``n_bond_workers × wf_nproc`` (flattened so both are
-    never >1 — nested spawn pools are too expensive). When ``seed_prefix`` is
+    Splits ``nproc`` as ``n_bond_workers x wf_nproc`` (flattened so both are
+    never >1 - nested spawn pools are too expensive). When ``seed_prefix`` is
     set (e.g. ``\"orig\"`` before ``it01``), each bond warm-starts from that
     prefix's wavefront checkpoint if present.
     """
@@ -850,7 +850,7 @@ def _run_hl_and_orig_scans(
     Independent HL and ``orig`` jobs share one pool. With
     ``multi_centroid >= 2``, centroid-0 HL is scored first; extra ConfSearch
     starts run only for jagged torsions (Fourier RMSE), and those extra
-    centroid×bond jobs share one pool. The smoothest HL profile is promoted
+    centroidxbond jobs share one pool. The smoothest HL profile is promoted
     to ``{hl_prefix}_{idxs}.*``. ``orig`` always starts from primary ``inp``.
     """
     log = _resolve_logger(logger)

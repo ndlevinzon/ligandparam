@@ -161,7 +161,7 @@ def _find_periodic_extrema(
         # Not enough points to define an interior extremum; return empty.
         return []
 
-    # Tile three cycles: [-360, 0) ∪ [0, 360) ∪ [360, 720). Run find_peaks
+    # Tile three cycles: [-360, 0) ? [0, 360) ? [360, 720). Run find_peaks
     # on the tiled energy array; keep only peaks whose angle lies in [0, 360).
     e_tiled = np.concatenate([energies, energies, energies])
     a_tiled = np.concatenate([angles - 360.0, angles, angles + 360.0])
@@ -735,7 +735,7 @@ def plot_comparison(
         )
         if bad:
             ax.annotate(
-                f"|ΔE|={abs(de):.2f}",
+                f"|DeltaE|={abs(de):.2f}",
                 xy=((ang_hl + ang_ll) / 2.0, (en_hl + en_ll) / 2.0),
                 fontsize=7, color="tab:red",
                 xytext=(3, 3), textcoords="offset points",

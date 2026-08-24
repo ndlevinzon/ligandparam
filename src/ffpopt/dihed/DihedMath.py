@@ -13,7 +13,7 @@ import numpy as np
 
 
 def shape_match_delta(hlene, llene):
-    """Mean-centered HL−LL residual (free vertical offset; shape match only)."""
+    """Mean-centered HL-LL residual (free vertical offset; shape match only)."""
     d = np.asarray(hlene, dtype=float) - np.asarray(llene, dtype=float)
     return d - np.mean(d)
 
@@ -109,7 +109,7 @@ def _frame_energy(struct) -> float:
 
 
 def _periodic_interp(src_angles, src_values, tgt_angles):
-    """Linear interpolation of a periodic (0–360 deg) 1-D profile."""
+    """Linear interpolation of a periodic (0-360 deg) 1-D profile."""
     a = np.asarray(src_angles, dtype=float)
     v = np.asarray(src_values, dtype=float)
     order = np.argsort(a)

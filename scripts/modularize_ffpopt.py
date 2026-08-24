@@ -2,10 +2,10 @@
 """Mechanical modularization for ffpopt (behavior-preserving).
 
 Moves mega-modules into packages with:
-  package/_impl.py          — full legacy implementation (imports rewritten)
-  package/<concern>.py      — named re-export modules (public surface)
-  package/__init__.py       — aggregate exports
-  ffpopt/<Legacy>.py        — compatibility facade
+  package/_impl.py          - full legacy implementation (imports rewritten)
+  package/<concern>.py      - named re-export modules (public surface)
+  package/__init__.py       - aggregate exports
+  ffpopt/<Legacy>.py        - compatibility facade
 
 Also relocates runtime helpers under ffpopt/runtime/ with root facades.
 """
@@ -89,7 +89,7 @@ def make_package(
         joined = ",\n    ".join(names)
         write(
             pkg / f"{mod}.py",
-            f'"""{legacy_name} — {mod}."""\n'
+            f'"""{legacy_name} - {mod}."""\n'
             f"from ._impl import (\n    {joined},\n)\n\n"
             f"__all__ = {names!r}\n",
         )
@@ -105,7 +105,7 @@ def make_package(
     )
     write(
         legacy,
-        f'"""Compatibility facade — implementation lives in ``ffpopt.{pkg_name}``."""\n'
+        f'"""Compatibility facade - implementation lives in ``ffpopt.{pkg_name}``."""\n'
         f"from ffpopt.{pkg_name} import *  # noqa: F403\n"
         f"from ffpopt.{pkg_name} import __all__ as __all__  # noqa: F401\n",
     )
@@ -137,7 +137,7 @@ def phase1_runtime() -> None:
         write(runtime / f"{name}.py", text)
         write(
             src,
-            f'"""Compatibility facade — implementation lives in ``ffpopt.runtime.{name}``."""\n'
+            f'"""Compatibility facade - implementation lives in ``ffpopt.runtime.{name}``."""\n'
             f"from ffpopt.runtime.{name} import *  # noqa: F403\n"
             f"try:\n"
             f"    from ffpopt.runtime.{name} import __all__ as __all__  # noqa: F401\n"

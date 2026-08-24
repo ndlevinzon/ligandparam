@@ -9,7 +9,7 @@ coordinates, but that path explicitly raises when constraints are present:
 
 For dihedral scans that is fatal. This module patches recovery so a second
 failure **rebuilds the same IC system (TRIC/DLC) with constraints**, which is
-what geomeTRIC already does on the first rebuild — keeping constrained
+what geomeTRIC already does on the first rebuild - keeping constrained
 optimization instead of aborting.
 
 A second common abort under frozen dihedrals is Brent's trust-radius root
@@ -90,7 +90,7 @@ def patch_brent_not_bracketed() -> None:
                 _BRENT_NOT_BRACKETED_NOTIFIED = True
             last_force = bool(getattr(self, "ForceRebuild", False))
             self.ForceRebuild = True
-            # Smaller trust → next step less likely to need Brent at all.
+            # Smaller trust -> next step less likely to need Brent at all.
             try:
                 tmin = float(getattr(self.params, "thre", 1.0e-6))
             except Exception:
@@ -106,7 +106,7 @@ def patch_brent_not_bracketed() -> None:
 
 
 def apply_geometric_compat_patches() -> None:
-    """Install all ffpopt ↔ geomeTRIC compatibility patches."""
+    """Install all ffpopt <-> geomeTRIC compatibility patches."""
     patch_constrained_cartesian_fallback()
     patch_brent_not_bracketed()
 
@@ -457,7 +457,7 @@ def cleanup_geometric_scratch(prefix: PathLike, *, keep_optim: bool = False) -> 
     Deletes ``{prefix}.tmp/``, ``{prefix}.nsf`` / ``.log`` / ``.xyz`` / ``.json``
     / ``.cons.inp``, recovery-ladder ``{prefix}.r*`` paths, and (unless
     ``keep_optim``) ``{prefix}_optim.xyz``. Does **not** touch a shared
-    ``log.nsf`` in the parent directory — that is handled by
+    ``log.nsf`` in the parent directory - that is handled by
     :func:`sweep_geometric_scratch_dir` when no workers are running.
     """
     prefix = os.path.normpath(str(prefix))
@@ -573,7 +573,7 @@ def _recovery_attempts(
     loose = ["set", "GAU_LOOSE"]
     soft = ["set", "GAU_LOOSE", "maxiter"]
     maxiter_i = int(maxiter)
-    # Full ladder boosts hard; fast mode caps extra work (primary → loose → soft).
+    # Full ladder boosts hard; fast mode caps extra work (primary -> loose -> soft).
     if fast_recovery_ladder():
         boost = max(maxiter_i, min(int(1.5 * maxiter_i), 300))
     else:
@@ -659,7 +659,7 @@ def run_geometric_robust(
     Disable with ``FFPOPT_GEOMOPT_ROBUST=0``. Soft maxiter accept can be
     disabled with ``FFPOPT_GEOMOPT_SOFT_MAXITER=0``. With
     ``FFPOPT_FAST_WAVEFRONT=1`` or ``FFPOPT_GEOMOPT_FAST_RECOVERY=1``, the
-    ladder is shortened to primary → loose → soft-maxiter (no alt coordsys).
+    ladder is shortened to primary -> loose -> soft-maxiter (no alt coordsys).
     """
     import copy
 
@@ -714,7 +714,7 @@ def run_geometric_robust(
             last = read_last_optim_xyz(att_prefix)
             if last is not None and last.shape == work.get_positions().shape:
                 work.set_positions(last)
-            # Linear torsion is not cured by looser converge / coordsys — stop
+            # Linear torsion is not cured by looser converge / coordsys - stop
             # the ladder so GeomOpt can run the dedicated ASE rescue.
             if is_linear_torsion_error(exc):
                 raise

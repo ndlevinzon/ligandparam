@@ -60,7 +60,7 @@ def _formal_charge_hint(atom_type: str, element: str, degree: int, partial_charg
 
 def infer_formal_charge(
     element: str,
-   degree: int,
+  degree: int,
     *,
     atom_type: str = "",
     partial_charge: float = 0.0,

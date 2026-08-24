@@ -1,4 +1,4 @@
-# GLOSSARY — ffpopt
+# GLOSSARY - ffpopt
 
 > Canonical definitions for domain terms used in this repo. The aim is
 > *consistency*: one definition per term, one place to update it when the
@@ -11,11 +11,11 @@
 - Terms used in three or more docs or modules with a specific repo meaning
   that diverges from the generic English meaning.
 - Cross-cutting concepts that appear in `dev/claude-skills/` skill files,
-  README, and code identifiers — anchor them once here, point everywhere else.
+  README, and code identifiers - anchor them once here, point everywhere else.
 
 ## What does NOT go in
 
-- Private internal names (variables, classes) — those live in the code.
+- Private internal names (variables, classes) - those live in the code.
 - Generic programming concepts (database, queue, retry) unless this repo uses
   them in a non-standard way.
 - Per-team jargon that belongs in a chat channel description, not here.
@@ -24,7 +24,7 @@
 
 Use the shape below. Lead with the name. One-sentence definition. Add detail
 only when the one-sentence form is genuinely ambiguous or invites misuse.
-Always cite an authoritative source — a file path plus section.
+Always cite an authoritative source - a file path plus section.
 
 ```markdown
 ### TermName
@@ -112,7 +112,7 @@ fragment atom names do not exist in the parent topology.
 
 ### nprim
 
-**Definition.** Number of cosine primitives (periodicities 1…nprim) fitted
+**Definition.** Number of cosine primitives (periodicities 1...nprim) fitted
 per torsion parameter family.
 
 **Detail.** Default is 3 (periods 1, 2, and 3).
@@ -132,7 +132,20 @@ terms back into a parent frcmod.
 Per-fragment merge accumulates DIHE from all `itXX.frcmod` files in order
 (drop-mode survivors retained unless a later iteration refits the same key).
 
-**Authoritative source.** `src/ffpopt/workflows/fragmented.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/workflows/FragmentedTwist.py:run_fragmented_dihed_twist_workflow`
+
+### Whole-ligand dihed twist
+
+**Definition.** Twist rotatable bonds on the intact parent ligand (no scission
+caps) and write a parent ``.frcmod``.
+
+**Detail.** CLI ``lig-dihed-correct --whole-ligand``. Optional AFFDO extras
+(``--soft-dihed-restraint``, ``--multi-centroid``, ``--fit-full``,
+``--boltzmann-charges``) default off. Bond batches use
+``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8). Top-level twist may nest
+bond x wavefront workers; fragment spawn workers still flatten to one axis.
+
+**Authoritative source.** `src/ffpopt/workflows/WholeLigandTwist.py:run_whole_ligand_dihed_twist_workflow`
 
 ### skip_existing
 

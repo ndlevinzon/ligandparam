@@ -21,14 +21,14 @@ Rubric (what the score means)
 ======= ================================================================
 Score   Meaning
 ======= ================================================================
-9–10    Small surface, consistent patterns, god-modules rare, tests
+9-10    Small surface, consistent patterns, god-modules rare, tests
         cover contracts thoroughly
-7–8     Clear package boundaries and extension points; some large
+7-8     Clear package boundaries and extension points; some large
         modules remain but helpers are extracted
-5–6     Works, but many files mix concerns; changes require tribal
+5-6     Works, but many files mix concerns; changes require tribal
         knowledge
-3–4     Fragile; fear of touching core paths
-1–2     Effectively unmaintainable without a rewrite
+3-4     Fragile; fear of touching core paths
+1-2     Effectively unmaintainable without a rewrite
 ======= ================================================================
 
 What pulls the score **up**
@@ -69,7 +69,7 @@ What pulls the score **down**
 * **Control-flow-heavy stages** still override ``execute`` end-to-end
   (Gaussian rotation, DeepMD, dihed twist). Thin stages use ``_run``.
 * **Scientific coupling:** many stages need RDKit / ParmEd / Gaussian /
-  AmberTools at import or runtime, so “unit test everything” is
+  AmberTools at import or runtime, so "unit test everything" is
   unrealistic without heavy mocking. Tests therefore target contracts
   and pure helpers first.
 * **Checkpoint / pickle compatibility:** wavefront loaders register historical
@@ -95,9 +95,9 @@ prefer the one that keeps the **public CLI and recipe APIs stable**.
 SOLID
 ~~~~~
 
-**S — Single responsibility**
+**S - Single responsibility**
 
-* A **stage** does one pipeline step (initialize, RESP, Leap, …).
+* A **stage** does one pipeline step (initialize, RESP, Leap, ...).
 * A **recipe** only assembles and runs stages.
 * **scission** fragments and merges; it does not fit torsions.
 * **ffpopt** fits / scans torsions; it does not own RESP recipes.
@@ -107,7 +107,7 @@ represent one scientific domain and extracting would create many tiny
 files with worse navigation. Prefer **internal helpers** over file
 explosion.
 
-**O — Open/closed**
+**O - Open/closed**
 
 * New parameterization workflows should **compose** stage builders in
   :mod:`ligandparam.recipes.Common` (or add a small builder) rather than
@@ -115,21 +115,21 @@ explosion.
 * New wavefront policy belongs in :mod:`ffpopt.scan.WavefrontMixins`
   (or ``runtime/``), not duplicated in 1-D and N-D engines.
 
-**L — Liskov substitution**
+**L - Liskov substitution**
 
 * Any :class:`~ligandparam.stages.AbstractStage.AbstractStage` subclass
   must be runnable via ``Driver.execute`` / ``Recipe.execute``.
 * Stages that cannot use the base template must still honor the
-  ``execute(dry_run=…, nproc=…, mem=…)`` contract.
+  ``execute(dry_run=..., nproc=..., mem=...)`` contract.
 
-**I — Interface segregation**
+**I - Interface segregation**
 
 * Recipes do not require DeepMD, Gaussian paths, or dihedral options
-  unless they opt in (``configure_gaussian_recipe(..., with_dihed=…)``,
+  unless they opt in (``configure_gaussian_recipe(..., with_dihed=...)``,
   etc.).
 * CLIs expose only what that entry point needs.
 
-**D — Dependency inversion**
+**D - Dependency inversion**
 
 * High-level workflows depend on stage/recipe abstractions and small
   helpers, not on copying low-level Gaussian argv construction.
@@ -151,16 +151,16 @@ KISS (Keep It Simple)
 ~~~~~~~~~~~~~~~~~~~~~
 
 * Prefer **fewer meaningful files**. Do not split a coherent 2k-line
-  domain file into twenty 100-line files “for SOLID” if navigation gets
+  domain file into twenty 100-line files "for SOLID" if navigation gets
   worse.
 * Prefer obvious functions over deep inheritance hierarchies.
-* Keep pickle-compat aliases as thin re-exports — do not invent a plugin
+* Keep pickle-compat aliases as thin re-exports - do not invent a plugin
   system for checkpoint loading.
 
 YAGNI (You Aren't Gonna Need It)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* Do not add unused recipe stubs, empty stages, or “future” APIs that
+* Do not add unused recipe stubs, empty stages, or "future" APIs that
   raise ``NotImplementedError`` in ``__init__``.
 * Do not introduce heavy DIP interfaces / DI containers unless a second
   real backend appears.
@@ -204,8 +204,8 @@ How to extend safely
 Related pages
 -------------
 
-* :doc:`overview` — repository layout and product flow
-* :doc:`recipes` — recipe catalog
-* :doc:`stages` — stage catalog
-* :doc:`ffpopt` / :doc:`scission` — companion packages
-* :doc:`cli` — supported entry points
+* :doc:`overview` - repository layout and product flow
+* :doc:`recipes` - recipe catalog
+* :doc:`stages` - stage catalog
+* :doc:`ffpopt` / :doc:`scission` - companion packages
+* :doc:`cli` - supported entry points

@@ -1,1 +1,1 @@
-"""CLI entry points for ligandparam (lig-getparam, lig-dihed-correct, …)."""
+"""CLI entry points for ligandparam (lig-getparam, lig-dihed-correct, ...)."""

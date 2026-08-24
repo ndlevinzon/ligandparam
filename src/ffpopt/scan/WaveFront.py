@@ -324,7 +324,7 @@ class WavefrontNode:
         """Return a failure reason, or ``None`` if the geometry looks usable.
 
         Distinguishes real clashes from precheck exceptions (imports, constraint
-        apply failures, …) so failure reports are not all labeled as clashes.
+        apply failures, ...) so failure reports are not all labeled as clashes.
         """
         def _atoms():
             from ffpopt.geom.Constraints import FillConstraints, ApplyConstraints

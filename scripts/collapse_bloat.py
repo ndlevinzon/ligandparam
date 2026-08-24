@@ -54,7 +54,7 @@ def collapse_package(
     mod = impl_name[:-3] if impl_name.endswith(".py") else impl_name
     write(
         pkg_dir / "__init__.py",
-        f'"""{pkg_dir.name} — see ``{mod}`` for implementation."""\n'
+        f'"""{pkg_dir.name} - see ``{mod}`` for implementation."""\n'
         "from __future__ import annotations\n\n"
         f"from .{mod} import *  # noqa: F403\n"
         f"from .{mod} import __all__ as __all__  # noqa: F401\n"
@@ -71,7 +71,7 @@ def collapse_package(
     # Fix botched replace - write cleanly
     write(
         pkg_dir / "__init__.py",
-        f'"""{pkg_dir.name} — implementation in ``{mod}.py``."""\n'
+        f'"""{pkg_dir.name} - implementation in ``{mod}.py``."""\n'
         "from __future__ import annotations\n\n"
         f"from . import {mod} as _impl\n"
         "from ._impl import *  # type: ignore  # noqa: F403\n".replace(
@@ -88,7 +88,7 @@ def collapse_package(
     if facade_path is not None and facade_import is not None:
         write(
             facade_path,
-            f'"""Compatibility facade — implementation lives in ``{facade_import}``."""\n'
+            f'"""Compatibility facade - implementation lives in ``{facade_import}``."""\n'
             "from __future__ import annotations\n\n"
             "import importlib\n"
             "import sys\n\n"
@@ -100,7 +100,7 @@ def collapse_package(
 def fix_init(pkg_dir: Path, mod: str) -> None:
     write(
         pkg_dir / "__init__.py",
-        f'"""{pkg_dir.name} — implementation in ``{mod}.py``."""\n'
+        f'"""{pkg_dir.name} - implementation in ``{mod}.py``."""\n'
         "from __future__ import annotations\n\n"
         f"from . import {mod} as _impl\n\n"
         "for _name in dir(_impl):\n"
@@ -114,7 +114,7 @@ def fix_init(pkg_dir: Path, mod: str) -> None:
 def facade(path: Path, import_path: str) -> None:
     write(
         path,
-        f'"""Compatibility facade — implementation lives in ``{import_path}``."""\n'
+        f'"""Compatibility facade - implementation lives in ``{import_path}``."""\n'
         "from __future__ import annotations\n\n"
         "import importlib\n"
         "import sys\n\n"
@@ -155,7 +155,7 @@ def main() -> None:
         fix_init(pkg, "optimize")
         facade(FF / "GeomOpt.py", "ffpopt.geomopt.optimize")
 
-    # wavefront — keep mixins
+    # wavefront - keep mixins
     pkg = FF / "wavefront"
     if (pkg / "_impl.py").exists():
         (pkg / "_impl.py").replace(pkg / "scan.py")
@@ -199,7 +199,7 @@ def main() -> None:
     fix_init(pkg, "fit")
     facade(FF / "Dihedrals.py", "ffpopt.dihedrals.fit")
 
-    # runtime — already meaningful; trim empty __init__ noise only
+    # runtime - already meaningful; trim empty __init__ noise only
     write(
         FF / "runtime" / "__init__.py",
         '"""Runtime helpers: CPU leases, progress boards, fast presets, console tee."""\n'

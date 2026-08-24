@@ -83,7 +83,7 @@ def is_soft_opt_recovery(struct_or_label) -> bool:
 
     Soft tags: ``soft-maxiter`` (geomeTRIC), ``linear-torsion*`` (near-collinear
     dihedral rescue), and ASE labels ending in ``-soft``. Loose-but-converged
-    attempts (``loose``, ``dlc-loose``, ``hdlc-loose``, …) are also treated as
+    attempts (``loose``, ``dlc-loose``, ``hdlc-loose``, ...) are also treated as
     soft for wavefront spawn policy.
     """
     if struct_or_label is None:
@@ -107,7 +107,7 @@ def is_soft_opt_recovery(struct_or_label) -> bool:
 def _ase_optimizer_classes():
     """Ordered ASE optimizers for difficult constrained cases.
 
-    Under fast wavefront mode, try LBFGS only (skip BFGS→FIRE ladder).
+    Under fast wavefront mode, try LBFGS only (skip BFGS->FIRE ladder).
     """
     from ase.optimize import BFGS, FIRE, LBFGS
     from ffpopt.runtime.FastWavefront import fast_wavefront_enabled
@@ -118,11 +118,11 @@ def _ase_optimizer_classes():
 
 
 def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
-    """ Perform a geometry optimization using ASE (BFGS → LBFGS → FIRE).
+    """ Perform a geometry optimization using ASE (BFGS -> LBFGS -> FIRE).
 
     Tries BFGS first, then LBFGS and FIRE from the best geometry so far.
     Accepts a soft-converged result when ``fmax`` is below
-    :func:`_ase_loose_fmax` even if the strict ``ase_opt_tol`` was missed —
+    :func:`_ase_loose_fmax` even if the strict ``ase_opt_tol`` was missed -
     important for frozen-dihedral wavefront nodes that otherwise die after
     geomeTRIC already nearly relaxed the structure.
     
@@ -981,7 +981,7 @@ def GeomOpt_LINEAR_TORSION(los, struct, constraints=None, restraints=None):
        unkinked bend angle(s).
 
     Tagged ``linear-torsion`` / ``linear-torsion-soft`` (soft for wavefront
-    spawn policy — the geometry is slightly biased off-linear by construction).
+    spawn policy - the geometry is slightly biased off-linear by construction).
     """
     import copy
 
@@ -1034,7 +1034,7 @@ def GeomOpt_LINEAR_TORSION(los, struct, constraints=None, restraints=None):
     bends = find_near_linear_bends(myatoms, cons)
     if not bends and cons is not None:
         # Caller may have already unkinked, or LinearTorsionError fired mid-opt
-        # after drifting linear — force-scan dihedral bends anyway at a lower
+        # after drifting linear - force-scan dihedral bends anyway at a lower
         # threshold so we still attempt a rescue.
         bends = find_near_linear_bends(myatoms, cons, threshold_deg=165.0)
 

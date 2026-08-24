@@ -43,11 +43,11 @@ def pop_dihed_options(kwargs: MutableMapping[str, Any]) -> dict[str, Any]:
     Returns a dict with keys used by recipes:
 
     * ``dihed_correct``, ``dihed_model``, ``dihed_maxiter``, ``dihed_nprim``
-    * ``dihed_delta`` — wavefront angle step in degrees (CLI ``--delta``)
+    * ``dihed_delta`` - wavefront angle step in degrees (CLI ``--delta``)
     * ``dihed_geometric_opt``, ``dihed_skip_existing``
     * ``dihed_out_frcmod``, ``dihed_out_dir``
     * ``dihed_rotatable_bond_smarts``
-    * ``dihed_fragment_config`` — :class:`~scission.Models.FragmentConfig`,
+    * ``dihed_fragment_config`` - :class:`~scission.Models.FragmentConfig`,
       dict for ``FragmentConfig.from_dict``, or ``None``
     """
     return {

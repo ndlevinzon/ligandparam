@@ -2,7 +2,7 @@
 
 Physical policy (rigor-preserving):
 
-* Do **not** drop bonds for bytype dedupe — each instance still contributes a
+* Do **not** drop bonds for bytype dedupe - each instance still contributes a
   scan profile when jointly fitted.
 * Bonds whose central atoms lie within ``couple_radius`` graph bonds are
   treated as coupled: prefer co-batching, and when a coupled cluster must be
@@ -100,7 +100,7 @@ def rotatable_bond_graph_distance(
 ) -> int:
     """Min covalent distance between the two central-atom pairs.
 
-    Sharing an atom → 0; adjacent centrals (A–B and B–C) → 0 or 1.
+    Sharing an atom -> 0; adjacent centrals (A-B and B-C) -> 0 or 1.
     """
     a0, a1 = int(bond_a[0]), int(bond_a[1])
     b0, b1 = int(bond_b[0]), int(bond_b[1])
@@ -149,13 +149,13 @@ def pack_rotatable_bond_batches(
     bonds
         Central-bond pairs (0-based).
     adj
-        Covalent adjacency (atom index → neighbors).
+        Covalent adjacency (atom index -> neighbors).
     max_batch
         Soft cap per joint twist (default :func:`max_bonds_per_twist_batch`).
         Coupled clusters larger than this are split into contiguous chunks
         run sequentially with MM updates between chunks.
     couple_radius
-        Bonds at graph distance ≤ this value are co-clustered.
+        Bonds at graph distance <= this value are co-clustered.
 
     Returns
     -------
@@ -190,7 +190,7 @@ def pack_rotatable_bond_batches(
             d = rotatable_bond_graph_distance(adj, uniq[i], uniq[j])
             dist[i][j] = dist[j][i] = d
 
-    # Coupling graph: edge if distance ≤ couple_radius.
+    # Coupling graph: edge if distance <= couple_radius.
     neighbors: dict[int, set[int]] = defaultdict(set)
     for i in range(n):
         for j in range(i + 1, n):

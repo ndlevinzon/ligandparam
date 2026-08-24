@@ -2,7 +2,7 @@
 
 ``so3_n28`` packs 28 unit quaternions to cover SO(3). Because ``q`` and ``-q``
 are the same rotation, pairwise distances use the geodesic
-``2 * arccos(|q_i · q_j|)``.
+``2 * arccos(|q_i * q_j|)``.
 
 ``legacy_euler`` keeps the historical FreeLigand alpha/beta grid (gamma fixed
 at 0) for reproducibility. Both protocols use 28 Gaussian ESP jobs.
@@ -114,7 +114,7 @@ def minimum_pairwise_rotation_angle(quaternions: np.ndarray, degrees: bool = Tru
     ----------
     quaternions : np.ndarray, shape (n, 4)
         Unit (or near-unit) quaternions.
-    degrees : bool, optional
+   degrees : bool, optional
         If True, return degrees; otherwise radians.
     """
     q = np.asarray(quaternions, dtype=float)

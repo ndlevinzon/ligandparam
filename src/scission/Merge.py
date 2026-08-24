@@ -62,7 +62,7 @@ def find_latest_iteration_frcmod(fragment_dir: Path) -> Path:
 def list_iteration_frcmods(fragment_dir: Path) -> list[Path]:
     """Return all ``itX.frcmod`` files in ascending iteration order.
 
-    Prefer targeted ``stat`` probes (``it01.frcmod``, ``it02.frcmod``, …)
+    Prefer targeted ``stat`` probes (``it01.frcmod``, ``it02.frcmod``, ...)
     over a full directory listing. Fragment run dirs often contain thousands
     of wavefront / geomopt artifacts; listing them on shared filesystems
     (VAST / Lustre) dominates merge wall time.
@@ -396,7 +396,7 @@ def merge_fragment_frcmods(
     (e.g. ``c3-c3-n4-c3``). When two fragments both directly scanned that
     family, the merge keeps the first scanned contributor in ``fragment_dirs``
     order (or the identical parameter set if both agree) and records the
-    collision under ``conflicts`` with a :class:`MergeWarning` — it does not
+    collision under ``conflicts`` with a :class:`MergeWarning` - it does not
     abort the run.
     """
     from concurrent.futures import ThreadPoolExecutor

@@ -11,13 +11,13 @@ Package layout
 .. code-block:: text
 
    ffpopt/
-   ├── runtime/     # console logging, progress boards, CPU budget, --fast presets
-   ├── scan/        # WaveFront, WaveFrontND, wavefront_mixins, ScanAnalysis
-   ├── workflows/   # twist, fragmented, whole-ligand, bond_batches
-   ├── dihed/       # Dihedrals, math, fit_ext, pucker
-   ├── geom/        # GeomOpt, Constraints, Restraints, geometric, linear_torsion
-   ├── affdo/       # log, charges, multi-centroid profiles
-   └── ase/, cpefit/, confsearch/, …
+   +-- runtime/     # console logging, progress boards, CPU budget, --fast presets
+   +-- scan/        # WaveFront, WaveFrontND, wavefront_mixins, ScanAnalysis
+   +-- workflows/   # twist, fragmented, whole-ligand, bond_batches
+   +-- dihed/       # Dihedrals, math, fit_ext, pucker
+   +-- geom/        # GeomOpt, Constraints, Restraints, geometric, linear_torsion
+   +-- affdo/       # log, charges, multi-centroid profiles
+   +-- ase/, cpefit/, confsearch/, ...
 
 Canonical imports:
 
@@ -30,7 +30,7 @@ Canonical imports:
 Primary API
 -----------
 
-.. code-block:: python
+Fragment path (default; scission + per-fragment twist + merge)::
 
    from ffpopt.workflows import run_fragmented_dihed_twist_workflow
 
@@ -46,8 +46,31 @@ Primary API
        maxiter=2,
    )
 
+Whole-ligand path (no scission; AFFDO extras optional)::
+
+   from ffpopt.workflows import run_whole_ligand_dihed_twist_workflow
+
+   result = run_whole_ligand_dihed_twist_workflow(
+       mol2="LIG.mol2",
+       lib="LIG.lib",
+       frcmod="LIG.frcmod",
+       out_dir="whole_ligand_twist",
+       model="xtb",
+       nproc=44,
+       fast_wavefront=True,
+   )
+
 Call from an ``if __name__ == "__main__":`` guard (wavefront uses spawn-mode
 multiprocessing).
+
+CLI (same two modes)::
+
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
+   lig-dihed-correct ... --whole-ligand --soft-dihed-restraint --fit-full
+
+The ligandparam wrapper is ``lig-dihed-correct`` /
+:class:`~ligandparam.stages.FfpoptDihed.StageDihedTwistCorrection`. Prefer
+that after ``lig-getparam``. See :doc:`dihedrals`.
 
 Single-molecule twist (when you already have ``parm7`` / ``rst7`` and explicit
 bonds) is :func:`ffpopt.workflows.run_dihed_twist_workflow`. Pass
@@ -69,7 +92,7 @@ Profile minima and neighbor spawn share one policy in
 * Hard below ``min - threshold``: update and spawn.
 
 ``loose`` / ``*-loose`` recoveries are treated like soft for spawn.
-``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` is a wall-time trade (coarser Δ,
+``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` is a wall-time trade (coarser Delta,
 looser converge); it does not change this policy beyond soft/loose handling.
 Packaged defaults for every ``export FFPOPT_*`` knob are in
 ``ffpopt/pkgdata/files/env_defaults.json``.
@@ -77,7 +100,7 @@ Packaged defaults for every ``export FFPOPT_*`` knob are in
 Fit objective (chi^2)
 ---------------------
 
-GenDihedFit uses a **shape match**: mean-centered HL−LL residual
+GenDihedFit uses a **shape match**: mean-centered HL-LL residual
 (``d = (hl - ll) - mean(hl - ll)``). Under fixed geometry, force constants
 enter linearly and are solved with bounded ``lsq_linear`` (phase fixed at 0).
 Status lines in logs use ASCII (``cond~=``, ``chi^2``) for Slurm / Windows
@@ -87,8 +110,9 @@ ligandparam wrapper
 -------------------
 
 :class:`~ligandparam.stages.FfpoptDihed.StageDihedTwistCorrection` and the
-``lig-dihed-correct`` CLI wrap the fragmented workflow. Prefer those for
-everyday use after ``lig-getparam``.
+``lig-dihed-correct`` CLI wrap both workflows (fragment default;
+``--whole-ligand`` for the parent). Prefer those for everyday use after
+``lig-getparam``.
 
 Module reference
 ----------------
@@ -99,7 +123,7 @@ Module reference
    :show-inheritance:
 
 .. automodule:: ffpopt.workflows
-   :members: run_fragmented_dihed_twist_workflow, run_dihed_twist_workflow
+   :members: run_fragmented_dihed_twist_workflow, run_dihed_twist_workflow, run_whole_ligand_dihed_twist_workflow
    :undoc-members:
    :show-inheritance:
 

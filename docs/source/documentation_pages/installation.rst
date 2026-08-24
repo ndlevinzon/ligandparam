@@ -70,7 +70,7 @@ DeepMD recipes need TensorFlow; on HPC install it from conda, not pip::
     conda install -c conda-forge tensorflow deepmd-kit
     pip install -e ".[ml]"
 
-Heavier HL models (``qdpi2``, ``mace``, …) need their corresponding stacks;
+Heavier HL models (``qdpi2``, ``mace``, ...) need their corresponding stacks;
 see :doc:`dihedrals`.
 
 External tools
@@ -79,9 +79,9 @@ External tools
 Depending on the recipe or CLI you run, you also need these on your ``PATH``
 (or configured via recipe kwargs / environment variables):
 
-* AmberTools (``antechamber``, ``parmchk2``, ``tleap``) — parameterization
+* AmberTools (``antechamber``, ``parmchk2``, ``tleap``) - parameterization
   and scission fragment ``parm7`` / ``rst7`` writing
-* Gaussian (``g16`` or compatible) — FreeLigand / LazyLigand ESP and
+* Gaussian (``g16`` or compatible) - FreeLigand / LazyLigand ESP and
   optimization
 
 See the project README for a fuller requirements table.

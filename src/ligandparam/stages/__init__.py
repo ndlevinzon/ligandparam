@@ -1,4 +1,4 @@
-"""Stage package — lazy exports to avoid eager optional-dep imports."""
+"""Stage package - lazy exports to avoid eager optional-dep imports."""
 from __future__ import annotations
 
 from typing import Any

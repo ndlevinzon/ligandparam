@@ -3,34 +3,62 @@ Dihedral corrections (ffpopt + scission)
 
 After a ligandparam recipe finishes, you typically have an Amber **triplet**:
 
-* ``{label}.mol2`` — charged structure
-* ``{label}.lib`` — Leap library
-* ``{label}.frcmod`` — parmchk / GAFF parameters
+* ``{label}.mol2`` - charged structure
+* ``{label}.lib`` - Leap library
+* ``{label}.frcmod`` - parmchk / GAFF parameters
 
 Optional **dihedral correction** improves torsion parameters by fitting
 against a high-level energy model along rotatable bonds, then merging DIHE
 terms into a new parent frcmod.
 
+Two ffpopt modes
+----------------
+
+``lig-dihed-correct`` always starts from the Amber triplet. Choose how the
+molecule is scanned:
+
+**Fragment (default).** Scission cuts the parent at rotatable bonds, ffpopt
+twists each cap in its own directory, then DIHE terms are merged by atom
+type into ``{label}.dihed.frcmod``. Cheaper per-opt; good for typical
+drug-like ligands.
+
+.. code-block:: bash
+
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
+
+**Whole-ligand** (``--whole-ligand``). Skip scission and twist rotatable
+bonds on the intact parent. Use when fragments would distort coupled rotors
+(detergents, fused systems). Optional extras (all default off):
+``--soft-dihed-restraint``, ``--multi-centroid N``, ``--fit-full``,
+``--fit-backend jax``, ``--boltzmann-charges``.
+
+.. code-block:: bash
+
+   lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast \
+       --whole-ligand --soft-dihed-restraint --fit-full --fit-backend jax
+
+``--fast`` loosens optimizer / I/O presets; scan ``delta`` stays 10 deg so
+HL and LL share one grid. Console lines are ASCII (``+/-``, ``deg``,
+``chi^2``).
+
 Pipeline
 --------
 
-.. code-block:: text
+Fragment path::
 
-   lig-getparam  →  mol2 + lib + frcmod
-         │
-         ▼
-   scission fragment  →  per-fragment parm7/rst7 + fit_torsions
-         │
-         ▼
-   ffpopt twist (HL scan vs sander LL, GenDihedFit, rescan)
-         │
-         ▼
-   merge DIHE by atom type  →  {label}.dihed.frcmod
-                               (lib unchanged)
+   lig-getparam              ->  mol2 + lib + frcmod
+   scission fragment         ->  per-fragment parm7/rst7 + fit_torsions
+   ffpopt twist (per fragment)
+   merge DIHE by atom type   ->  {label}.dihed.frcmod  (lib unchanged)
 
-Drop-mode iterations accumulate DIHE from **all** ``itXX.frcmod`` files in
-order so earlier survivors are kept unless a later iteration explicitly
-refits the same key.
+Whole-ligand path::
+
+   lig-getparam              ->  mol2 + lib + frcmod
+   ffpopt twist (parent)     ->  {label}.dihed.frcmod  (lib unchanged)
+
+Drop-mode fragment iterations accumulate DIHE from **all** ``itXX.frcmod``
+files in order so earlier survivors are kept unless a later iteration
+explicitly refits the same key.
 
 CLI
 ---
@@ -68,12 +96,12 @@ High-level models
 
 Pass ``--model`` to ``lig-dihed-correct``. Useful options without qdpi:
 
-* ``xtb`` — GFN2-xTB via tblite (recommended light default)
-* ``ani2x`` / ``ani1x`` / ``ani1ccx`` — TorchANI (element limits apply)
-* ``mace`` / ``mace-off23_*`` — MACE-OFF (pytorch + model files)
+* ``xtb`` - GFN2-xTB via tblite (recommended light default)
+* ``ani2x`` / ``ani1x`` / ``ani1ccx`` - TorchANI (element limits apply)
+* ``mace`` / ``mace-off23_*`` - MACE-OFF (pytorch + model files)
 * ``aimnet2`` (and variants)
 * Psi4 as ``theory/basis`` (separate psi4 environment)
-* ``dftb2`` / ``dftb3`` — via Amber/sander SQM
+* ``dftb2`` / ``dftb3`` - via Amber/sander SQM
 
 Avoid ``sander`` as the HL target: that compares the force field to itself.
 

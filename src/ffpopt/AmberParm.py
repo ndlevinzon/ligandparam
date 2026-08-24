@@ -62,7 +62,7 @@ def CopyParm(parm):
 def RotateMask(graph, idxs):
     """Build a 0/1 atom mask for rotating about a central bond.
 
-    For dihedral ``idxs = [a, b, c, d]``, the rotatable bond is ``b–c``.
+    For dihedral ``idxs = [a, b, c, d]``, the rotatable bond is ``b-c``.
     Atoms are bipartitioned with a single BFS across that bond (same idea as
     scission ``component_beyond_bond``), then the mask is oriented so atom
     ``d`` moves. Prefer the smaller side before flipping.
@@ -70,7 +70,7 @@ def RotateMask(graph, idxs):
     Parameters
     ----------
     graph : GraphSearch
-        Covalent graph with string node ids (``"0"``, ``"1"``, …).
+        Covalent graph with string node ids (``"0"``, ``"1"``, ...).
     idxs : sequence of int
         Four 0-based atom indices defining the dihedral.
 

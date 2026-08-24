@@ -1992,7 +1992,7 @@ def NonlinearSolve(args,finp):
         print("[ffpopt] NonlinearSolve: no parameters to fit")
         return
 
-    # Extended AFFDO-style knobs (phase / period / scee·scnb) or explicit backends.
+    # Extended AFFDO-style knobs (phase / period / scee*scnb) or explicit backends.
     use_extended = bool(
         getattr(finp, "opt_phase", False)
         or getattr(finp, "opt_periods", False)
@@ -2025,7 +2025,7 @@ def NonlinearSolve(args,finp):
     xhi = x[:] + 5.0
 
     if not reopt:
-        # Fixed-geometry FCs enter linearly — bounded linear least squares.
+        # Fixed-geometry FCs enter linearly - bounded linear least squares.
         from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
         kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
@@ -2081,7 +2081,7 @@ def WriteParmedScript(fname,p,dfcns,scee=1.2,scnb=2.0): #,bytype):
     dfcns : list of MultiDihedFcn
         A list of MultiDihedFcn objects representing the dihedral functions to be modified.
     scee, scnb : float, optional
-        1–4 electrostatic and VDW scaling factors written into the script.
+        1-4 electrostatic and VDW scaling factors written into the script.
     
     Returns
     -------

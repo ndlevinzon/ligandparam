@@ -483,7 +483,7 @@ class Struct(object):
     def clone_geometry(self, coords=None, ene=None, frcs=None):
         """Return a topology-sharing clone with independent ``data`` / positions.
 
-        Shares immutable-ish topology lists (``elements``, ``bonds``, …) via a
+        Shares immutable-ish topology lists (``elements``, ``bonds``, ...) via a
         shallow ``data`` dict copy. Clears graph / RDKit caches. Use this instead
         of ``deepcopy`` when only energy / coordinates / forces change (wavefront
         nodes, parm path overrides).

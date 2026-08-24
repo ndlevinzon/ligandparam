@@ -17,9 +17,9 @@ from ligandparam.recipes.DihedOptions import append_dihed_twist_stage
 class FreeLigand(Recipe):
     """Parameterize a ligand with multi-orientation Gaussian RESP fitting.
 
-    Pipeline: initialize → normalize → center → low/high Gaussian minimize →
-    multi-orientation ESP (default: ``so3_n28`` quaternion pack) → multi-RESP
-    fit → charge/name/type updates → ``parmchk2`` / LEaP (``.frcmod`` / ``.lib``).
+    Pipeline: initialize -> normalize -> center -> low/high Gaussian minimize ->
+    multi-orientation ESP (default: ``so3_n28`` quaternion pack) -> multi-RESP
+    fit -> charge/name/type updates -> ``parmchk2`` / LEaP (``.frcmod`` / ``.lib``).
 
     Parameters
     ----------

@@ -8,7 +8,7 @@ These tests exercise real import paths, CLI entry points, and a few
 non-trivial numerical / I/O helpers. They intentionally avoid AmberTools,
 Gaussian, and GPU stacks so a basic conda/pip install can pass on a laptop.
 
-Optional extras (``tblite``, ``geometric``, …) are checked when present and
+Optional extras (``tblite``, ``geometric``, ...) are checked when present and
 skipped with an explicit reason when absent.
 """
 

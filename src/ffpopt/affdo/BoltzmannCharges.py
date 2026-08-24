@@ -1,7 +1,7 @@
 """Boltzmann-average atomic charges over conformer centroids.
 
 Optional whole-ligand helper: weight per-centroid charge vectors by
-``w_k ∝ exp(-(E_k - E_min) / kT)`` at ``T=298 K`` and write averaged charges
+``w_k propto exp(-(E_k - E_min) / kT)`` at ``T=298 K`` and write averaged charges
 into a mol2 (and optionally update an Amber ``.lib`` via parmed).
 """
 

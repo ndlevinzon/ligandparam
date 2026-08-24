@@ -292,7 +292,7 @@ class GraphSearch(object):
 
 
     def ComponentBeyondBond(self, atom_in, atom_out):
-        """Return nodes on the ``atom_out`` side of the ``atom_in``–``atom_out`` bond.
+        """Return nodes on the ``atom_out`` side of the ``atom_in``-``atom_out`` bond.
 
         Mirrors scission's ``component_beyond_bond``: BFS from ``atom_out``
         without crossing ``atom_in``. Includes ``atom_out``. Runs in ``O(N+E)``.

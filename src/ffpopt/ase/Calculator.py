@@ -560,7 +560,7 @@ class QDpi2Calculator(Calculator):
 
         self.dpmodel = dpmodel
         self.charge = charge
-        # both | xtb | dp — xtb-only / dp-only used for cheap opts under --fast.
+        # both | xtb | dp - xtb-only / dp-only used for cheap opts under --fast.
         self.force_components = str(force_components or "both").strip().lower()
         self.xtbcalc = make_tblite_calculator(charge=self.charge)
         Calculator.__init__(self,**kwargs)
@@ -760,7 +760,7 @@ class RestrainedCalculator(Calculator):
         Calculator.calculate(self, atoms, properties, system_changes)
 
         crds = self.atoms.get_positions()
-        # Unwrap GenCalculator → SanderCalculator when possible for the
+        # Unwrap GenCalculator -> SanderCalculator when possible for the
         # direct pysander path; otherwise evaluate through the base calc.
         inner = getattr(self.calc, "calc", self.calc)
         if isinstance(inner, SanderCalculator):

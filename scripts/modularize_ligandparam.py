@@ -72,7 +72,7 @@ def split_gaussian() -> None:
         joined = ",\n    ".join(names)
         write(
             pkg / f"{mod}.py",
-            f'"""Gaussian stages — {mod}."""\n'
+            f'"""Gaussian stages - {mod}."""\n'
             f"from ._impl import (\n    {joined},\n)\n\n"
             f"__all__ = {names!r}\n",
         )
@@ -122,7 +122,7 @@ def lazy_stages_init() -> None:
     }
     # Also pull utilsstages names lazily via __getattr__ fallback
     lines = [
-        '"""Stage package — lazy exports to avoid eager optional-dep imports."""',
+        '"""Stage package - lazy exports to avoid eager optional-dep imports."""',
         "from __future__ import annotations",
         "",
         "from typing import Any",
@@ -167,7 +167,7 @@ def lazy_stages_init() -> None:
         # Replace class body with alias at end of file approach: prepend alias and comment old class
         # Safer: after imports, add:
         alias = (
-            "\n# Canonical SMILES→PDB stage lives in smilestopdb; keep legacy name.\n"
+            "\n# Canonical SMILES->PDB stage lives in smilestopdb; keep legacy name.\n"
             "from .smiles_to_pdb import StageSmilesToPDB as StageSmilestoPDB  # noqa: E402\n"
         )
         # Only add if not already aliased; leave old class but rename to _Legacy
@@ -185,7 +185,7 @@ def lazy_stages_init() -> None:
         )
         if pattern.search(init_text):
             init_text = pattern.sub(
-                "\n# Legacy name → canonical StageSmilesToPDB\n"
+                "\n# Legacy name -> canonical StageSmilesToPDB\n"
                 "from .smiles_to_pdb import StageSmilesToPDB as StageSmilestoPDB\n\n",
                 init_text,
                 count=1,
@@ -198,7 +198,7 @@ def recipe_registry() -> None:
     write(
         LP / "recipes" / "registry.py",
         '''\
-"""Recipe name → constructor registry for CLI / drivers."""
+"""Recipe name -> constructor registry for CLI / drivers."""
 
 from __future__ import annotations
 
@@ -298,7 +298,7 @@ def split_parmhelper() -> None:
         joined = ",\n    ".join(names)
         write(
             pkg / f"{mod}.py",
-            f'"""ParmEd helpers — {mod}."""\n'
+            f'"""ParmEd helpers - {mod}."""\n'
             f"from ._impl import (\n    {joined},\n)\n\n"
             f"__all__ = {names!r}\n",
         )
@@ -317,7 +317,7 @@ def split_parmhelper() -> None:
     )
     write(
         src,
-        '"""Compatibility facade — implementation lives in ``ligandparam.multiresp.parm``."""\n'
+        '"""Compatibility facade - implementation lives in ``ligandparam.multiresp.parm``."""\n'
         "from __future__ import annotations\n\n"
         "import importlib\n"
         "import sys\n\n"

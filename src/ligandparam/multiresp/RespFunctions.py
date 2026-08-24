@@ -243,7 +243,7 @@ def WriteArray8(fh,arr):
 
 
 
-# Compiled once — ReadGauEsp is called for every multi-RESP orientation log.
+# Compiled once - ReadGauEsp is called for every multi-RESP orientation log.
 _ATOMIC_CENTER_LINE = None
 _FIT_CENTER_LINE = None
 _ESP_LINE = None
@@ -306,7 +306,7 @@ def ReadGauEsp(fname):
     with open(fname, "r") as fh:
         for line in fh:
             # Substring gates avoid three regex matches on every log line
-            # (× ~28 orientation files in FreeLigand multi-RESP).
+            # (x ~28 orientation files in FreeLigand multi-RESP).
             if "Atomic Center" in line:
                 vals = _coords_after_is_at(line)
                 if vals is None:

@@ -42,7 +42,7 @@ def _require_rdkit(test: unittest.TestCase) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Recipes — registry + setup() stage graphs (contract / wiring)
+# Recipes - registry + setup() stage graphs (contract / wiring)
 # ---------------------------------------------------------------------------
 
 
@@ -280,7 +280,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Stages — charge normalize + abstract contracts
+# Stages - charge normalize + abstract contracts
 # ---------------------------------------------------------------------------
 
 
@@ -662,7 +662,7 @@ class TestLoggingContracts(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# AFFDO-style extras — logging helpers + pure scoring
+# AFFDO-style extras - logging helpers + pure scoring
 # ---------------------------------------------------------------------------
 
 
@@ -1196,7 +1196,7 @@ class TestAffdoLogging(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# ligandparam I/O — amber bundle resolution
+# ligandparam I/O - amber bundle resolution
 # ---------------------------------------------------------------------------
 
 
@@ -1321,13 +1321,13 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# scission — models + merge + torsions on synthetic ligand
+# scission - models + merge + torsions on synthetic ligand
 # ---------------------------------------------------------------------------
 
 
 class TestScissionFunctions(unittest.TestCase):
     def _butane_like_ligand(self):
-        """Linear C4 chain with hydrogens — rotatable C–C bonds."""
+        """Linear C4 chain with hydrogens - rotatable C-C bonds."""
         from scission.Models import Atom, Bond, Ligand
 
         atoms = []
@@ -1519,7 +1519,7 @@ class TestScissionFunctions(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# ffpopt — constraints, dihedrals, wavefront policy, runtime helpers
+# ffpopt - constraints, dihedrals, wavefront policy, runtime helpers
 # ---------------------------------------------------------------------------
 
 
@@ -1867,7 +1867,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         # Sander no longer always prefers depth at the model level.
         self.assertFalse(prefer_wavefront_depth(model="sander", fast=False))
         self.assertFalse(prefer_wavefront_depth(model="qdpi2", fast=False))
-        # Tiny lease + multi-bond → bond breadth (concurrent bonds).
+        # Tiny lease + multi-bond -> bond breadth (concurrent bonds).
         self.assertFalse(
             prefer_bond_pool_depth(model="sander", nproc=3, n_bonds=3)
         )
@@ -1877,7 +1877,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 model="sander", nproc=12, n_bonds=3, prefer=True
             )
         )
-        # Many fragments on a modest node → fragment breadth.
+        # Many fragments on a modest node -> fragment breadth.
         self.assertFalse(
             prefer_fragment_pool_depth(
                 model="xtb", nproc=8, n_fragments=6, fast=True
@@ -1972,7 +1972,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         # Nearby (0,1) and (2,3) should prefer the same or adjacent batches.
         self.assertGreaterEqual(len(batches), 2)
 
-        # Two distant bonds → can be separate components but still ≤ max_batch each.
+        # Two distant bonds -> can be separate components but still <= max_batch each.
         far = pack_rotatable_bond_batches(
             [(0, 1), (6, 7)], adj, max_batch=2, couple_radius=1
         )
@@ -2032,7 +2032,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         from ffpopt.dihed.Dihedrals import PrimDihedFcn
 
         prim = PrimDihedFcn(2.0, 0.0, 1)
-        # CptEne(0°) = 2*(1+cos0) = 4
+        # CptEne(0 deg) = 2*(1+cos0) = 4
         self.assertAlmostEqual(float(prim.CptEne(0.0)), 4.0)
 
 
