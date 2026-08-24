@@ -62,28 +62,18 @@ def run_whole_ligand_dihed_twist_workflow(
 
     from ffpopt.affdo.AffdoLog import describe_affdo_extras, format_boltzmann_summary, log_affdo
 
-    log_affdo(
-        log,
-        "whole-ligand twist starting: mol2=%s lib=%s frcmod=%s out_dir=%s",
-        mol2_p,
-        lib_p,
-        frcmod_p,
-        out_dir_path,
+    extras_line = describe_affdo_extras(
+        whole_ligand=True,
+        multi_centroid=multi_centroid,
+        boltzmann_charges=boltzmann_charges,
+        soft_dihed_restraint=bool(standard_kwargs.get("soft_dihed_restraint")),
+        soft_dihed_k=standard_kwargs.get("soft_dihed_k"),
+        soft_dihed_kmax=standard_kwargs.get("soft_dihed_kmax"),
+        soft_dihed_tol=standard_kwargs.get("soft_dihed_tol"),
+        fit_cli_args=fit_cli_args,
     )
-    log_affdo(
-        log,
-        "extras: %s",
-        describe_affdo_extras(
-            whole_ligand=True,
-            multi_centroid=multi_centroid,
-            boltzmann_charges=boltzmann_charges,
-            soft_dihed_restraint=bool(standard_kwargs.get("soft_dihed_restraint")),
-            soft_dihed_k=standard_kwargs.get("soft_dihed_k"),
-            soft_dihed_kmax=standard_kwargs.get("soft_dihed_kmax"),
-            soft_dihed_tol=standard_kwargs.get("soft_dihed_tol"),
-            fit_cli_args=fit_cli_args,
-        ),
-    )
+    log.info("[whole-twist] whole-ligand twist starting: mol2=%s lib=%s frcmod=%s out_dir=%s", mol2_p, lib_p, frcmod_p, out_dir_path)
+    log.info("[whole-twist] extras: %s", extras_line)
 
     # Materialize parm7/rst7 beside the work dir via leap when needed.
     parm7 = out_dir_path / "ligand.parm7"
@@ -122,6 +112,35 @@ def run_whole_ligand_dihed_twist_workflow(
     if not bonds:
         raise RuntimeError("whole-ligand twist: no rotatable bonds found")
     log.info("[whole-twist] %s rotatable bond(s): %s", len(bonds), bonds)
+
+    n_batches = None
+    try:
+        from ffpopt.workflows.BondBatches import (
+            adjacency_from_parmed,
+            pack_rotatable_bond_batches,
+        )
+        from ffpopt.Struct import ListOfStruct
+
+        los = ListOfStruct.from_file(str(start_json))
+        mol = los.structs[0].ReadAmberParm()
+        n_batches = len(pack_rotatable_bond_batches(bonds, adjacency_from_parmed(mol)))
+    except Exception:
+        n_batches = None
+
+    from ffpopt.runtime.Console import format_whole_ligand_run_banner, print_run_banner
+
+    print_run_banner(
+        format_whole_ligand_run_banner(
+            ligand=mol2_p.stem,
+            model=str(standard_kwargs.get("model") or "qdpi2"),
+            nproc=int(nproc),
+            delta=int(delta),
+            n_bonds=len(bonds),
+            n_batches=n_batches,
+            extras=extras_line,
+            work_dir=str(out_dir_path),
+        )
+    )
 
     boltz_info = None
     if boltzmann_charges and int(multi_centroid or 0) < 2:
@@ -200,6 +219,7 @@ def run_whole_ligand_dihed_twist_workflow(
         multi_centroid=multi_centroid,
         centroid_mol2=mol2_p,
         fit_cli_args=fit_cli_args,
+        job_kind="whole",
         **standard_kwargs,
     )
 

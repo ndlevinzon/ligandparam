@@ -562,6 +562,18 @@ def run_fragmented_dihed_twist_workflow(
         fragmentation_dump = frag_result.to_dict()
         fragments_iter = frag_result.selected_fragments
 
+    from ffpopt.runtime.Console import format_fragmented_run_banner, print_run_banner
+
+    print_run_banner(
+        format_fragmented_run_banner(
+            ligand=mol2_path.stem,
+            model=str(standard_kwargs.get("model") or "qdpi2"),
+            nproc=int(nproc),
+            n_fragments=len(fragments_iter),
+            work_dir=str(out_dir_path),
+        )
+    )
+
     # bytype is forced True here: the per-fragment fits are merged back into
     # the parent frcmod via scission.Merge.merge_fragment_frcmods, which can
     # only map fragment-fit DIHE terms onto parent atoms by atom type - the

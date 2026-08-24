@@ -311,22 +311,22 @@ def main(argv: list[str] | None = None) -> int:
         bundle.lib,
         bundle.frcmod,
     )
-    from ffpopt.affdo.AffdoLog import describe_affdo_extras, log_affdo
+    if args.whole_ligand:
+        from ffpopt.affdo.AffdoLog import describe_affdo_extras
 
-    log_affdo(
-        logger,
-        "extras: %s",
-        describe_affdo_extras(
-            whole_ligand=args.whole_ligand,
-            multi_centroid=args.multi_centroid,
-            boltzmann_charges=args.boltzmann_charges,
-            soft_dihed_restraint=args.soft_dihed_restraint,
-            soft_dihed_k=args.soft_dihed_k,
-            soft_dihed_kmax=args.soft_dihed_kmax,
-            soft_dihed_tol=args.soft_dihed_tol,
-            fit_cli_args=_build_fit_cli_args(args),
-        ),
-    )
+        logger.info(
+            "[whole-twist] extras: %s",
+            describe_affdo_extras(
+                whole_ligand=True,
+                multi_centroid=args.multi_centroid,
+                boltzmann_charges=args.boltzmann_charges,
+                soft_dihed_restraint=args.soft_dihed_restraint,
+                soft_dihed_k=args.soft_dihed_k,
+                soft_dihed_kmax=args.soft_dihed_kmax,
+                soft_dihed_tol=args.soft_dihed_tol,
+                fit_cli_args=_build_fit_cli_args(args),
+            ),
+        )
     result = run_dihed_correct(
         bundle=bundle,
         out_frcmod=args.out_frcmod,

@@ -694,6 +694,65 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertIn("--fit-full", full)
         self.assertIn("jax", full)
 
+    def test_run_banner_is_rectangular_ascii(self):
+        from ffpopt.runtime.Console import (
+            format_fragmented_run_banner,
+            format_whole_ligand_run_banner,
+        )
+
+        whole = format_whole_ligand_run_banner(
+            ligand="CHAPS",
+            model="xtb",
+            nproc=44,
+            delta=10,
+            n_bonds=12,
+            n_batches=6,
+            extras="soft-dihed kmax=8000; fit-full/jax",
+            work_dir="/scratch/chaps",
+        )
+        lines = [ln for ln in whole.splitlines() if ln]
+        width = len(lines[0])
+        self.assertGreaterEqual(width, 52)
+        for ln in lines:
+            self.assertEqual(len(ln), width, ln)
+            self.assertTrue(ln.isascii())
+        self.assertIn("WHOLE-LIGAND TWIST", whole)
+        self.assertIn("CHAPS", whole)
+        self.assertIn("WHOLE_STATUS.txt", whole)
+        self.assertTrue(lines[0].startswith("+") and lines[0].endswith("+"))
+
+        frag = format_fragmented_run_banner(
+            ligand="DDM",
+            model="xtb",
+            nproc=56,
+            n_fragments=8,
+            work_dir="/tmp/ddm",
+        )
+        flines = [ln for ln in frag.splitlines() if ln]
+        fw = len(flines[0])
+        for ln in flines:
+            self.assertEqual(len(ln), fw, ln)
+        self.assertIn("FRAGMENTED TWIST", frag)
+        self.assertIn("FRAG_STATUS.txt", frag)
+
+    def test_whole_file_logger_identity_tag(self):
+        import tempfile
+        from pathlib import Path
+        from ffpopt.runtime.ProgressBoard import make_whole_file_logger
+
+        with tempfile.TemporaryDirectory() as td:
+            log_path = Path(td) / "whole-twist.log"
+            logger = make_whole_file_logger("torsion_batch_00", log_path)
+            logger.info("[whole-twist] hello from batch")
+            for h in list(logger.handlers):
+                h.flush()
+                h.close()
+            logger.handlers.clear()
+            text = log_path.read_text(encoding="utf-8")
+        self.assertIn("[ffpopt:torsion_batch_00]", text)
+        self.assertIn("[whole-twist]", text)
+        self.assertIn("hello from batch", text)
+
     def test_fit_backend_jax_falls_back_without_jax(self):
         from argparse import Namespace
         from unittest.mock import patch

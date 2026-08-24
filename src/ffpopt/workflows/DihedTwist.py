@@ -24,6 +24,30 @@ from ffpopt.workflows.TwistHelpers import (
     normalize_bond_pairs0,
 )
 
+
+def _is_whole_job(job_kind) -> bool:
+    """True when this twist should log like a whole-ligand (AFFDO) run."""
+    kind = str(job_kind or "").strip().lower()
+    return kind in {"whole", "whole-ligand", "affdo"}
+
+
+def _whole_identity(batch_id: str) -> str:
+    """Console identity matching fragment tags: ``torsion_batch_00``."""
+    text = str(batch_id or "").strip()
+    if text.startswith("torsion_batch_"):
+        return text
+    return f"torsion_batch_{text}"
+
+
+def _stage_status(stage: str) -> str:
+    key = str(stage or "").lower()
+    if key in {"finished", "done"}:
+        return "done"
+    if key in {"failed", "error"}:
+        return "failed"
+    return "running"
+
+
 def run_batched_dihed_twist_workflow(
     *,
     inp: str,
@@ -31,6 +55,7 @@ def run_batched_dihed_twist_workflow(
     workdir: PathLike | None = None,
     logger: logging.Logger | None = None,
     progress: Callable[[str, str], None] | None = None,
+    job_kind: str | None = None,
     **twist_kwargs,
 ) -> dict:
     """Run twist in sequential bond batches (coupled together, then apply).
@@ -49,6 +74,11 @@ def run_batched_dihed_twist_workflow(
     from ffpopt.Struct import ListOfStruct
 
     log = _resolve_logger(logger)
+    if job_kind is None:
+        job_kind = twist_kwargs.pop("job_kind", None)
+    else:
+        twist_kwargs.pop("job_kind", None)
+    is_whole = _is_whole_job(job_kind)
     bonds0 = normalize_bond_pairs0(bond)
     wd = _as_path(workdir).resolve() if workdir is not None else Path(".").resolve()
     wd.mkdir(parents=True, exist_ok=True)
@@ -58,15 +88,122 @@ def run_batched_dihed_twist_workflow(
     mol = los.structs[0].ReadAmberParm()
     adj = adjacency_from_parmed(mol)
     batches = pack_rotatable_bond_batches(bonds0, adj)
-    if len(batches) <= 1:
+
+    def _run_one_batch(
+        *,
+        batch_inp: str,
+        batch_bonds,
+        batch_wd,
+        batch_log,
+        batch_progress,
+    ):
         return run_dihed_twist_workflow(
-            inp=str(inp_path),
-            bond=bonds0,
-            workdir=wd,
-            logger=log,
-            progress=progress,
+            inp=batch_inp,
+            bond=batch_bonds,
+            workdir=batch_wd,
+            logger=batch_log,
+            progress=batch_progress,
             bond_batching=False,
+            job_kind=None,
             **twist_kwargs,
+        )
+
+    def _run_logged_batch(
+        *,
+        batch_inp: str,
+        batch_bonds,
+        batch_wd,
+        batch_id: str,
+        log_path: Path,
+        store=None,
+        parent_progress=None,
+        progress_prefix: str = "",
+    ):
+        from ffpopt.runtime.ProgressBoard import (
+            make_whole_file_logger,
+            whole_stdio_to_file,
+        )
+
+        identity = _whole_identity(batch_id)
+        batch_log = make_whole_file_logger(identity, log_path)
+
+        def _batch_progress(stage: str, detail: str = ""):
+            if store is not None:
+                store.update(
+                    identity,
+                    status=_stage_status(stage),
+                    stage=stage,
+                    detail=detail or f"{len(batch_bonds)} bond(s)",
+                    log_path=str(log_path),
+                )
+            if parent_progress is not None:
+                try:
+                    parent_progress(
+                        f"{progress_prefix}{stage}" if progress_prefix else stage,
+                        detail or f"{len(batch_bonds)} bond(s)",
+                    )
+                except Exception:
+                    pass
+
+        with whole_stdio_to_file(log_path, batch_id=identity):
+            return _run_one_batch(
+                batch_inp=batch_inp,
+                batch_bonds=batch_bonds,
+                batch_wd=batch_wd,
+                batch_log=batch_log,
+                batch_progress=_batch_progress,
+            )
+
+    if len(batches) <= 1:
+        if is_whole:
+            from ffpopt.runtime.ProgressBoard import (
+                WholeBoardWatcher,
+                WholeProgressStore,
+            )
+
+            store = WholeProgressStore(wd / ".whole_progress.json")
+            identity = _whole_identity("00")
+            log_path = wd / "whole-twist.log"
+            store.register(identity, bonds=len(bonds0), log_path=str(log_path))
+            watcher = WholeBoardWatcher(
+                store,
+                board_path=wd / "WHOLE_STATUS.txt",
+                logger=log,
+                interval_sec=5.0,
+                log_root_hint="whole-twist.log",
+            )
+            watcher.start()
+            try:
+                result = _run_logged_batch(
+                    batch_inp=str(inp_path),
+                    batch_bonds=bonds0,
+                    batch_wd=wd,
+                    batch_id="00",
+                    log_path=log_path,
+                    store=store,
+                    parent_progress=progress,
+                )
+                store.update(
+                    identity, status="done", stage="finished", detail="ok"
+                )
+                return result
+            except Exception as exc:
+                store.update(
+                    identity,
+                    status="failed",
+                    stage="failed",
+                    detail=type(exc).__name__,
+                    error=str(exc)[:200],
+                )
+                raise
+            finally:
+                watcher.stop()
+        return _run_one_batch(
+            batch_inp=str(inp_path),
+            batch_bonds=bonds0,
+            batch_wd=wd,
+            batch_log=log,
+            batch_progress=progress,
         )
 
     log.info(
@@ -87,63 +224,129 @@ def run_batched_dihed_twist_workflow(
     }
     current_inp = str(inp_path)
     batch_dirs: list[Path] = []
+    whole_store = None
+    watcher = None
+    if is_whole:
+        from ffpopt.runtime.ProgressBoard import WholeBoardWatcher, WholeProgressStore
 
-    for bi, batch_bonds in enumerate(batches):
-        batch_dir = wd / f"torsion_batch_{bi:02d}"
-        batch_dir.mkdir(parents=True, exist_ok=True)
-        batch_dirs.append(batch_dir)
-        # Seed each batch dir with the current topology JSON (absolute parm paths).
-        batch_inp = batch_dir / "start.json"
-        if Path(current_inp).resolve() != batch_inp.resolve():
-            shutil.copy2(current_inp, batch_inp)
-
-        def _batch_progress(stage: str, detail: str = "", _bi=bi, _n=len(batches)):
-            if progress is not None:
-                try:
-                    progress(
-                        f"batch{_bi + 1}/{_n}/{stage}",
-                        detail or f"{len(batch_bonds)} bond(s)",
-                    )
-                except Exception:
-                    pass
-
-        log.info(
-            "[twist] batch %s/%s: %s bond(s) %s (workdir=%s)",
-            bi + 1,
-            len(batches),
-            len(batch_bonds),
-            batch_bonds,
-            batch_dir,
-        )
-        _batch_progress("start", f"bonds={batch_bonds}")
-        batch_result = run_dihed_twist_workflow(
-            inp=str(batch_inp),
-            bond=batch_bonds,
-            workdir=batch_dir,
-            logger=log,
-            progress=_batch_progress,
-            bond_batching=False,
-            **twist_kwargs,
-        )
-        merged["scans"].extend(batch_result.get("scans") or [])
-        merged["fit_jsons"].extend(batch_result.get("fit_jsons") or [])
-        merged["iterations"].extend(batch_result.get("iterations") or [])
-        init_cmp = batch_result.get("initial_comparisons") or {}
-        merged["initial_comparisons"].update(init_cmp)
-        merged["iteration_comparisons"].extend(
-            batch_result.get("iteration_comparisons") or []
-        )
-        if batch_result.get("early_stopped_at"):
-            merged["early_stopped_at"] = (
-                f"batch{bi:02d}:{batch_result['early_stopped_at']}"
+        whole_store = WholeProgressStore(wd / ".whole_progress.json")
+        for bi, batch_bonds in enumerate(batches):
+            identity = _whole_identity(f"{bi:02d}")
+            whole_store.register(
+                identity,
+                bonds=len(batch_bonds),
+                log_path=str(wd / f"torsion_batch_{bi:02d}" / "whole-twist.log"),
             )
+        watcher = WholeBoardWatcher(
+            whole_store,
+            board_path=wd / "WHOLE_STATUS.txt",
+            logger=log,
+            interval_sec=5.0,
+            log_root_hint="torsion_batch_XX/whole-twist.log",
+        )
+        watcher.start()
 
-        # Next batch starts from the latest fitted parm/json when available.
-        iters = batch_result.get("iterations") or []
-        if iters:
-            current_inp = str(iters[-1]["json"])
-        else:
-            current_inp = str(batch_inp)
+    try:
+        for bi, batch_bonds in enumerate(batches):
+            batch_dir = wd / f"torsion_batch_{bi:02d}"
+            batch_dir.mkdir(parents=True, exist_ok=True)
+            batch_dirs.append(batch_dir)
+            # Seed each batch dir with the current topology JSON (absolute parm paths).
+            batch_inp = batch_dir / "start.json"
+            if Path(current_inp).resolve() != batch_inp.resolve():
+                shutil.copy2(current_inp, batch_inp)
+
+            prefix = f"batch{bi + 1}/{len(batches)}/"
+            if is_whole:
+                log_path = batch_dir / "whole-twist.log"
+                identity = _whole_identity(f"{bi:02d}")
+                batch_log_tmp = log
+                batch_log_tmp.info(
+                    "[whole-twist] batch %s/%s: %s bond(s) %s (workdir=%s)",
+                    bi + 1,
+                    len(batches),
+                    len(batch_bonds),
+                    batch_bonds,
+                    batch_dir,
+                )
+                try:
+                    batch_result = _run_logged_batch(
+                        batch_inp=str(batch_inp),
+                        batch_bonds=batch_bonds,
+                        batch_wd=batch_dir,
+                        batch_id=f"{bi:02d}",
+                        log_path=log_path,
+                        store=whole_store,
+                        parent_progress=progress,
+                        progress_prefix=prefix,
+                    )
+                    whole_store.update(
+                        identity, status="done", stage="finished", detail="ok"
+                    )
+                except Exception as exc:
+                    whole_store.update(
+                        identity,
+                        status="failed",
+                        stage="failed",
+                        detail=type(exc).__name__,
+                        error=str(exc)[:200],
+                    )
+                    raise
+            else:
+
+                def _batch_progress(
+                    stage: str,
+                    detail: str = "",
+                    _bi=bi,
+                    _n=len(batches),
+                ):
+                    if progress is not None:
+                        try:
+                            progress(
+                                f"batch{_bi + 1}/{_n}/{stage}",
+                                detail or f"{len(batch_bonds)} bond(s)",
+                            )
+                        except Exception:
+                            pass
+
+                log.info(
+                    "[twist] batch %s/%s: %s bond(s) %s (workdir=%s)",
+                    bi + 1,
+                    len(batches),
+                    len(batch_bonds),
+                    batch_bonds,
+                    batch_dir,
+                )
+                _batch_progress("start", f"bonds={batch_bonds}")
+                batch_result = _run_one_batch(
+                    batch_inp=str(batch_inp),
+                    batch_bonds=batch_bonds,
+                    batch_wd=batch_dir,
+                    batch_log=log,
+                    batch_progress=_batch_progress,
+                )
+            merged["scans"].extend(batch_result.get("scans") or [])
+            merged["fit_jsons"].extend(batch_result.get("fit_jsons") or [])
+            merged["iterations"].extend(batch_result.get("iterations") or [])
+            init_cmp = batch_result.get("initial_comparisons") or {}
+            merged["initial_comparisons"].update(init_cmp)
+            merged["iteration_comparisons"].extend(
+                batch_result.get("iteration_comparisons") or []
+            )
+            if batch_result.get("early_stopped_at"):
+                merged["early_stopped_at"] = (
+                    f"batch{bi:02d}:{batch_result['early_stopped_at']}"
+                )
+
+            # Next batch starts from the latest fitted parm/json when available.
+            iters = batch_result.get("iterations") or []
+            if iters:
+                current_inp = str(iters[-1]["json"])
+            else:
+                current_inp = str(batch_inp)
+    finally:
+        if watcher is not None:
+            watcher.stop()
 
     promoted = _promote_batch_iteration_outputs(batch_dirs, wd, logger=log)
     merged["promoted_frcmods"] = [str(p) for p in promoted]
@@ -191,6 +394,7 @@ def run_dihed_twist_workflow(
     multi_centroid: int = 0,
     centroid_mol2: PathLike | None = None,
     fit_cli_args: list | None = None,
+    job_kind: str | None = None,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -215,7 +419,7 @@ def run_dihed_twist_workflow(
     do_batch = bond_batching
     if do_batch is None:
         do_batch = should_batch_bonds(len(bonds_early))
-    if do_batch and should_batch_bonds(len(bonds_early)):
+    if _is_whole_job(job_kind) or (do_batch and should_batch_bonds(len(bonds_early))):
         return run_batched_dihed_twist_workflow(
             inp=inp,
             bond=bonds_early,
@@ -245,6 +449,7 @@ def run_dihed_twist_workflow(
             multi_centroid=multi_centroid,
             centroid_mol2=centroid_mol2,
             fit_cli_args=fit_cli_args,
+            job_kind=job_kind,
             **standard_kwargs,
         )
 

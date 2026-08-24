@@ -3,6 +3,7 @@
 Format (single timestamp, hierarchical brackets)::
 
     YYYY-mm-dd HH:MM:SS [ffpopt:fragment_10] [frag-twist] INFO: message
+    YYYY-mm-dd HH:MM:SS [ffpopt:torsion_batch_00] [whole-twist] INFO: message
 
 Leading ``[scope]`` tokens in the message body are peeled into the bracket
 hierarchy so callers can keep writing ``log.info("[frag-twist] ...")`` without
@@ -157,6 +158,135 @@ def format_startup_banner(*, version: str | None = None) -> str:
         f"\n"
         f"  Authors:\n"
         f"{authors}\n"
+    )
+
+
+def format_run_banner(
+    title: str,
+    fields: Sequence[tuple[str, str]],
+    *,
+    width: int = 72,
+) -> str:
+    """Fixed-width ASCII card for the current job (no timestamp prefix).
+
+    Used under the startup logo so Slurm ``.out`` files open with a greppable
+    summary (mode, ligand, nproc, log paths) before wavefront spam.
+    """
+    width = max(52, min(int(width), 96))
+    inner = width - 2
+    title = ascii_for_stdio(str(title or "")).strip() or "RUN"
+    if len(title) > inner - 2:
+        title = title[: inner - 2]
+
+    def _bar() -> str:
+        return "+" + "-" * inner + "+"
+
+    def _fit(line: str) -> str:
+        if not line:
+            return _bar()
+        cap = line[0] if line[0] in "+|" else "|"
+        end = line[-1] if line[-1] in "+|" else "|"
+        body = line[1:-1] if len(line) >= 2 else ""
+        if len(body) < inner:
+            body = body + " " * (inner - len(body))
+        elif len(body) > inner:
+            body = body[:inner]
+        return cap + body + end
+
+    label_w = 8
+    if fields:
+        label_w = max(len(str(k)) for k, _ in fields)
+        label_w = min(max(label_w, 8), 12)
+    value_w = inner - 4 - label_w
+    if value_w < 16:
+        value_w = 16
+        label_w = max(6, inner - 4 - value_w)
+
+    lines = [_bar(), "|" + title.center(inner) + "|", _bar()]
+    for key, raw in fields:
+        label = ascii_for_stdio(str(key)).strip()
+        val = ascii_for_stdio(str(raw if raw is not None else "")).replace("\n", " ").strip()
+        chunks: list[str] = []
+        text = val
+        while text:
+            chunks.append(text[:value_w])
+            text = text[value_w:]
+        if not chunks:
+            chunks = [""]
+        for i, chunk in enumerate(chunks):
+            lab = label if i == 0 else ""
+            lines.append(f"|  {lab:<{label_w}} {chunk:<{value_w}} |")
+    lines.append(_bar())
+    return "\n".join(_fit(line) for line in lines) + "\n"
+
+
+def print_run_banner(text: str, *, stream: TextIO | None = None) -> None:
+    """Write a run card to the real stdout (not through a fragment/batch tee)."""
+    ensure_ascii_stdio()
+    out = stream if stream is not None else sys.__stdout__
+    body = ascii_for_stdio(text)
+    if not body.endswith("\n"):
+        body += "\n"
+    try:
+        out.write(body if body.startswith("\n") else "\n" + body)
+        out.flush()
+    except OSError:
+        pass
+
+
+def format_whole_ligand_run_banner(
+    *,
+    ligand: str,
+    model: str = "qdpi2",
+    nproc: int = 1,
+    delta: int = 10,
+    n_bonds: int = 0,
+    n_batches: int | None = None,
+    extras: str = "",
+    work_dir: str = "",
+) -> str:
+    """ASCII card for ``--whole-ligand`` / AFFDO-style twist runs."""
+    if n_batches is None:
+        bonds_line = f"{int(n_bonds)} rotatable"
+    else:
+        bonds_line = (
+            f"{int(n_bonds)} rotatable  ->  {int(n_batches)} sequential "
+            f"batch(es)"
+        )
+    extra = extras.strip() if extras else "(none)"
+    return format_run_banner(
+        "WHOLE-LIGAND TWIST",
+        [
+            ("ligand", ligand),
+            ("model", f"{model}    nproc={int(nproc)}    delta={int(delta)} deg"),
+            ("bonds", bonds_line),
+            ("extras", extra),
+            ("work", work_dir),
+            ("status", "WHOLE_STATUS.txt"),
+            ("logs", "torsion_batch_XX/whole-twist.log"),
+        ],
+    )
+
+
+def format_fragmented_run_banner(
+    *,
+    ligand: str,
+    model: str = "qdpi2",
+    nproc: int = 1,
+    n_fragments: int = 0,
+    work_dir: str = "",
+) -> str:
+    """ASCII card for the default scission / fragment twist path."""
+    return format_run_banner(
+        "FRAGMENTED TWIST",
+        [
+            ("ligand", ligand),
+            ("model", f"{model}    nproc={int(nproc)}"),
+            ("frags", f"{int(n_fragments)} fragment(s)"),
+            ("work", work_dir),
+            ("status", "FRAG_STATUS.txt"),
+            ("logs", "<fragment>/frag-twist.log"),
+        ],
     )
 
 

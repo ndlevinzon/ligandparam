@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **PascalCase library modules** — snake_case ``src/`` modules renamed to descriptive PascalCase (``TwistHelpers``, ``AffdoLog``, ``LigandIo``, …) to match existing ffpopt domain files. Package directories stay lowercase. Hyphenated ``ffpopt.bin`` CLIs unchanged.
 - **Git case-only names** — Windows ``core.ignorecase`` left ``log.py`` / ``scripts.py`` / ``cli.py`` in the index while imports expect ``Log`` / ``Scripts`` / ``Cli``. Re-recorded with two-step ``git mv`` so Linux checkouts match.
 - **ASCII stdout** — console / argparse / exception-note lines map ``+/-``, ``deg``, ``chi^2`` (not ``±`` ``°`` ``χ²``) so latin-1 Slurm ``.out`` files stay greppable.
+- **Whole-ligand logs** — ``--whole-ligand`` / AFFDO runs now use the same identity pattern as fragment jobs: ``TIMESTAMP [ffpopt:torsion_batch_XX] [whole-twist]``. Per-batch ``whole-twist.log``, live ``WHOLE_STATUS.txt``, and an ASCII run card under the startup logo.
 - **Env defaults JSON** — all user ``FFPOPT_*`` knobs live in ``ffpopt/pkgdata/files/env_defaults.json`` (commented JSONC; this is the store the code reads). Overlay with ``FFPOPT_DEFAULTS=/path.json``; per-key ``export FFPOPT_*=`` still wins.
 - **Multi-centroid HL pooling** — centroid-0 HL and ``orig`` share one job queue; extra ConfSearch starts run only for jagged torsions (Fourier RMSE vs ``FFPOPT_CENTROID_FOURIER_MAX``, default 0.5 kcal) and those centroid×bond jobs share one pool.
 

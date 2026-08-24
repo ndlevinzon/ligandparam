@@ -449,3 +449,116 @@ class FragmentBoardWatcher(JobBoardWatcher):
             thread_name="frag-progress-board",
         )
 
+
+KNOWN_WHOLE_STAGES = (
+    "queued",
+    "prepare",
+    "twist",
+    "finished",
+    "failed",
+)
+
+
+class WholeProgressStore(JobProgressStore):
+    """Process-shared whole-ligand torsion-batch status table."""
+
+    def __init__(self, path: PathLike) -> None:
+        super().__init__(
+            path,
+            collection_key="batches",
+            id_header="Batch",
+            title="Whole-ligand dihedral twist - live status",
+            empty_hint="no torsion batches registered yet",
+            detail_hint_label="Per-batch detail logs",
+        )
+
+    def register(
+        self,
+        batch_id: str,
+        *,
+        bonds: int = 0,
+        log_path: str | None = None,
+    ) -> None:
+        """Mark a torsion batch as queued before it starts."""
+        super().register(
+            batch_id,
+            status="queued",
+            stage="queued",
+            detail=f"{bonds} bond(s)",
+            bonds=bonds,
+            log_path=log_path,
+        )
+
+
+def format_whole_board(
+    batches: Mapping[str, Mapping[str, Any]],
+    *,
+    title: str = "Whole-ligand dihedral twist - live status",
+    log_root_hint: str | None = None,
+) -> str:
+    """Format ``{id: {status, stage, detail, ...}}`` as a fixed-width board."""
+    return format_job_board(
+        batches,
+        title=title,
+        id_header="Batch",
+        empty_hint="no torsion batches registered yet",
+        detail_hint_label="Per-batch detail logs",
+        log_root_hint=log_root_hint,
+    )
+
+
+@contextmanager
+def whole_stdio_to_file(
+    log_path: Path,
+    *,
+    batch_id: str | None = None,
+) -> Iterator[None]:
+    """Tee stdout/stderr to ``log_path`` and the parent console."""
+    tag = f"ffpopt:{batch_id}" if batch_id else "ffpopt"
+    with tee_stdio_to_file(log_path, tag=tag):
+        yield
+
+
+def make_whole_file_logger(batch_id: str, log_path: Path):
+    """Logger that writes to the batch log and mirrors to the console.
+
+    Console lines look like::
+
+        TIMESTAMP [ffpopt:torsion_batch_00] [whole-twist] INFO: message
+    """
+    import logging
+
+    name = f"ffpopt.workflows.whole.{batch_id}"
+    tag = f"ffpopt:{batch_id}"
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    handler.setFormatter(console_formatter(tag))
+    logger.addHandler(handler)
+    attach_console_handlers(logger, tag=tag)
+    return logger
+
+
+class WholeBoardWatcher(JobBoardWatcher):
+    """Background thread that refreshes ``WHOLE_STATUS.txt`` and logs on change."""
+
+    def __init__(
+        self,
+        store: WholeProgressStore,
+        *,
+        board_path: Path,
+        logger,
+        interval_sec: float = 5.0,
+        log_root_hint: str | None = None,
+    ) -> None:
+        super().__init__(
+            store,
+            board_path=board_path,
+            logger=logger,
+            interval_sec=interval_sec,
+            log_root_hint=log_root_hint,
+            thread_name="whole-progress-board",
+        )
+
