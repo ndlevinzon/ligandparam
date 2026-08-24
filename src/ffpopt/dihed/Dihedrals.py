@@ -65,6 +65,17 @@ def ChangeDihedrals(p,idxs,xs,fc=None,bytype=False):
     from collections import defaultdict as ddict
     from parmed.tools.actions import deleteDihedral, addDihedral
 
+    if xs:
+        scee = float(getattr(xs[0], "scee", 1.2))
+        scnb = float(getattr(xs[0], "scnb", 2.0))
+        pers = [amber_dihed_period(x.per) for x in xs]
+        if len(pers) != len(set(pers)):
+            xs = parmed_dihedral_types_from_prims(
+                [PrimDihedFcn(x.phi_k, x.phase, x.per) for x in xs],
+                scee=scee,
+                scnb=scnb,
+            )
+
     if bytype:
 
         ftypes = tuple([p.atoms[idx].type for idx in idxs])
@@ -173,6 +184,91 @@ class PrimDihedFcn(object):
         import numpy as np
         a = (self.per * ang + self.phase)*(np.pi/180)
         return 1+np.cos(a)
+
+
+def snap_amber_dihed_phase(phase):
+    """Map a dihedral phase (deg) onto Amber's 0 or 180."""
+    p = float(phase) % 360.0
+    if p > 180.0:
+        p -= 360.0
+    if abs(p) <= 90.0:
+        return 0.0
+    return 180.0
+
+
+def amber_dihed_period(per):
+    """Nearest Amber Fourier periodicity in ``[1, 12]``."""
+    per_i = int(round(float(per)))
+    return max(1, min(12, per_i))
+
+
+def merge_duplicate_period_prims(prims, warn=True, label=None):
+    """Collapse Fourier terms that share an Amber periodicity.
+
+    ParmEd ``DihedralTypeList`` forbids two terms with the same ``n``.
+    ``--fit-full`` can round two optimized periods onto the same integer.
+    Same-``n`` terms are linearly dependent (phase 0 vs 180 flips the cosine
+    sign); merging keeps the oscillatory part. The constant offset is absorbed
+    by the fit.
+    """
+    from collections import OrderedDict
+
+    groups = OrderedDict()
+    for prim in prims:
+        groups.setdefault(amber_dihed_period(prim.per), []).append(prim)
+
+    merged = []
+    prefix = "[fit-write]" if not label else f"[fit-write] {label}"
+    for per, items in groups.items():
+        if len(items) == 1:
+            p = items[0]
+            merged.append(
+                PrimDihedFcn(float(p.fc), snap_amber_dihed_phase(p.phase), per)
+            )
+            continue
+        cos_coeff = 0.0
+        for p in items:
+            fc = float(p.fc)
+            if snap_amber_dihed_phase(p.phase) == 0.0:
+                cos_coeff += fc
+            else:
+                cos_coeff -= fc
+        if cos_coeff >= 0.0:
+            fc, phase = float(cos_coeff), 0.0
+        else:
+            fc, phase = float(-cos_coeff), 180.0
+        if warn:
+            parts = ", ".join(
+                f"fc={float(p.fc):.6g} phase={float(p.phase):.1f}"
+                for p in items
+            )
+            print(
+                f"{prefix} merged {len(items)} Fourier terms with period n={per} "
+                f"({parts}) -> fc={fc:.6g} phase={phase:.0f}",
+                flush=True,
+            )
+        merged.append(PrimDihedFcn(fc, phase, per))
+    return merged
+
+
+def parmed_dihedral_types_from_prims(prims, scee=1.2, scnb=2.0, **kwargs):
+    """``DihedralType`` list with unique periodicities for ParmEd writes."""
+    from parmed import DihedralType
+
+    return [
+        DihedralType(p.fc, p.per, p.phase, scee, scnb)
+        for p in merge_duplicate_period_prims(prims, **kwargs)
+    ]
+
+
+def parmed_dihedral_type_list_from_prims(prims, scee=1.2, scnb=2.0, **kwargs):
+    """``DihedralTypeList`` that will not raise on duplicate periods."""
+    from parmed import DihedralTypeList
+
+    typs = DihedralTypeList()
+    for typ in parmed_dihedral_types_from_prims(prims, scee, scnb, **kwargs):
+        typs.append(typ)
+    return typs
 
     
 class MultiDihedFcn(object):
@@ -384,15 +480,7 @@ def ChangeParmFromMultiDihedFcn(p,fcn):
         
     """
     out = CopyParm(p)
-    scee = 1.2
-    scnb = 2.0
-    xs = []
-    for prim in fcn.prims:
-        per = prim.per
-        ph = prim.phase
-        fc = prim.fc
-        x = DihedralType(fc, per, ph, scee, scnb)
-        xs.append(x)
+    xs = parmed_dihedral_types_from_prims(fcn.prims, scee=1.2, scnb=2.0)
     ChangeDihedrals(out,fcn.idxs,xs)
     return out
 
@@ -1002,7 +1090,6 @@ class SystemType(object):
             A new Parm object with the dihedral parameters set according to the instances.
         
         """
-        from parmed import DihedralType
         from ffpopt.dihed.Dihedrals import ChangeDihedrals
         from ffpopt.AmberParm import CopyParm
 
@@ -1015,13 +1102,13 @@ class SystemType(object):
             scee = float(getattr(owner, "scee", scee))
             scnb = float(getattr(owner, "scnb", scnb))
         for pinst in self.pinstances:
-            xs = []
-            for prim in pinst.ptype.dfcns.prims:
-                per = prim.per
-                ph = prim.phase
-                fc = prim.fc
-                x = DihedralType(fc, per, ph, scee, scnb)
-                xs.append(x)
+            pname = getattr(pinst.ptype, "name", None)
+            xs = parmed_dihedral_types_from_prims(
+                pinst.ptype.dfcns.prims,
+                scee=scee,
+                scnb=scnb,
+                label=pname,
+            )
             for idxs in pinst.dihedidxs:
                 ChangeDihedrals(p,idxs,xs)
         return p
@@ -1423,8 +1510,6 @@ class FitInputType(object):
         
         """
         from parmed.amber import AmberParameterSet
-        from parmed import DihedralTypeList
-        from parmed import DihedralType
         #from parmed.amber.mask import AmberMask
         
         for s in self.systems:
@@ -1434,16 +1519,14 @@ class FitInputType(object):
         for pname in self.ptypedict:
             ptype = self.ptypedict[pname]
             if ptype.masks is not None and ptype.dfcns is not None:
-
-                typs = DihedralTypeList()
                 scee = float(getattr(self, "scee", 1.2))
                 scnb = float(getattr(self, "scnb", 2.0))
-                for iprim,prim in enumerate(ptype.dfcns.prims):
-                    per = prim.per
-                    ph = prim.phase
-                    fc = prim.fc
-                    typ = DihedralType(fc, per, ph, scee, scnb)
-                    typs.append(typ)
+                typs = parmed_dihedral_type_list_from_prims(
+                    ptype.dfcns.prims,
+                    scee=scee,
+                    scnb=scnb,
+                    label=pname,
+                )
                 
                 for mask in ptype.masks:
                     atypes = [ x[2:] for x in mask ]
@@ -2068,7 +2151,7 @@ def WriteParmedScript(fname,p,dfcns,scee=1.2,scnb=2.0): #,bytype):
                 f"idxs={idxs_label}\", flush=True)\n"
             )
             fh.write(f"deleteDihedral(p,{mstr}).execute()\n")
-            for prim in dfcn.prims:
+            for prim in merge_duplicate_period_prims(dfcn.prims, label=idxs_label):
                 fh.write(f"addDihedral(p,{mstr},{prim.fc},{prim.per},{prim.phase},scee,scnb).execute()\n")
             fh.write("\n\n")
 

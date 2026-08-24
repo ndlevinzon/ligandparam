@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Wavefront plot margins** — ``tight_layout`` UserWarning on dense angle/level grids is suppressed; plots still save with ``bbox_inches='tight'``.
 - **Empty wavefront ``np.amin`` crash** — a scan with no accepted angles (every seed clash-rejected, or every opt failed) raised ``ValueError: zero-size array``. It now prints the node summary and raises ``RuntimeError`` with the failed-node list.
 - **``--soft-dihed-restraint`` seed clash** — hard-twist clash checks no longer snap the scanned dihedral before opt (that rejected every bulky whole-ligand seed). If every seed still fails, a native-angle node is forced so the wavefront can start.
+- **``--fit-full`` duplicate periodicity** — rounding optimized Fourier periods onto the same integer made ParmEd reject ``DihedralTypeList.append`` (``Cannot add two DihedralType instances with the same periodicity``). Same-``n`` terms are now merged (phase 0 vs 180 subtracts; same phase sums) before frcmod / parm7 write.
 
 ---
 

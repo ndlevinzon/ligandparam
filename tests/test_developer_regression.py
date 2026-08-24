@@ -1341,6 +1341,48 @@ class TestScissionFunctions(unittest.TestCase):
 
 
 class TestFfpoptCoreFunctions(unittest.TestCase):
+    def test_merge_duplicate_period_prims(self):
+        from ffpopt.dihed.Dihedrals import (
+            PrimDihedFcn,
+            merge_duplicate_period_prims,
+            parmed_dihedral_type_list_from_prims,
+        )
+
+        same_phase = merge_duplicate_period_prims(
+            [PrimDihedFcn(1.5, 0.0, 2), PrimDihedFcn(0.5, 0.0, 2.4)],
+            warn=False,
+        )
+        self.assertEqual(len(same_phase), 1)
+        self.assertEqual(same_phase[0].per, 2)
+        self.assertEqual(same_phase[0].phase, 0.0)
+        self.assertAlmostEqual(same_phase[0].fc, 2.0)
+
+        opposite = merge_duplicate_period_prims(
+            [PrimDihedFcn(2.0, 0.0, 3), PrimDihedFcn(0.5, 180.0, 3)],
+            warn=False,
+        )
+        self.assertEqual(len(opposite), 1)
+        self.assertEqual(opposite[0].per, 3)
+        self.assertEqual(opposite[0].phase, 0.0)
+        self.assertAlmostEqual(opposite[0].fc, 1.5)
+
+        distinct = merge_duplicate_period_prims(
+            [PrimDihedFcn(1.0, 0.0, 1), PrimDihedFcn(2.0, 180.0, 2)],
+            warn=False,
+        )
+        self.assertEqual([p.per for p in distinct], [1, 2])
+
+        try:
+            import parmed  # noqa: F401
+        except ImportError:
+            return
+        typs = parmed_dihedral_type_list_from_prims(
+            [PrimDihedFcn(1.0, 0.0, 2), PrimDihedFcn(0.25, 180.0, 2)],
+            warn=False,
+        )
+        self.assertEqual(len(typs), 1)
+        self.assertEqual(int(typs[0].per), 2)
+
     def test_constraints_to_geometric(self):
         from ffpopt.geom.Constraints import Constraint, to_geometric
 
