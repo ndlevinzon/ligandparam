@@ -348,6 +348,36 @@ def _resolve_scans_and_params(mol, bonds, nprim: int, bytype: bool):
     return scans, params, s_template
 
 
+def _scan_json_nframes(path: Path) -> int | None:
+    """Frame count from a wavefront scan JSON, or None if unreadable."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(data, list):
+        return len(data)
+    if not isinstance(data, dict):
+        return None
+    structs = data.get("structs") or data.get("structures")
+    if isinstance(structs, list):
+        return len(structs)
+    return None
+
+
+def existing_scan_grid_mismatch(path: Path, delta) -> bool:
+    """True when ``path`` looks like a uniform 360/n grid that is not ``delta``."""
+    if delta is None:
+        return False
+    n = _scan_json_nframes(path)
+    if not n:
+        return False
+    expected = max(1, 360 // int(delta))
+    if n == expected:
+        return False
+    return bool(n > 0 and 360 % n == 0)
+
+
 def _is_sander_ll_model(model: str | None) -> bool:
     m = (model or "").strip().lower()
     return m in {"sander", "amber", "mm"} or m.startswith("sander")
@@ -439,13 +469,21 @@ def _run_one_scan(
     inp_path = str(_in_workdir(workdir, inp))
     out_path = str(_in_workdir(workdir, out))
     if skip_existing and Path(out_path).exists():
-        log.info("[twist] %s exists - skipping.", out_path)
-        from ffpopt.geom.Geometric import sweep_geometric_scratch_dir
+        if existing_scan_grid_mismatch(Path(out_path), wf_kwargs.get("delta")):
+            log.warning(
+                "[twist] %s exists but its angle grid does not match delta=%s; "
+                "rescanning so HL/LL stay aligned",
+                out_path,
+                wf_kwargs.get("delta"),
+            )
+        else:
+            log.info("[twist] %s exists - skipping.", out_path)
+            from ffpopt.geom.Geometric import sweep_geometric_scratch_dir
 
-        n = sweep_geometric_scratch_dir(Path(out_path).parent, recursive=True)
-        if n:
-            log.info("[twist] removed %s leftover geomeTRIC scratch path(s)", n)
-        return None
+            n = sweep_geometric_scratch_dir(Path(out_path).parent, recursive=True)
+            if n:
+                log.info("[twist] removed %s leftover geomeTRIC scratch path(s)", n)
+            return None
 
     dihed_str = ",".join(str(i) for i in dihed_idxs)
     log.info(

@@ -374,6 +374,8 @@ def _jax_objective_factory(finp, caches):
             "Omit --fit-backend jax to use SciPy L-BFGS-B."
         ) from exc
 
+    jax.config.update("jax_enable_x64", True)
+
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
     kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
@@ -553,11 +555,7 @@ def solve_extended_lbfgsb(args, finp, caches):
             method="L-BFGS-B",
             jac=jac,
             bounds=bounds,
-            options={
-                "ftol": getattr(args, "nltol", 0.01),
-                "maxiter": getattr(args, "nlmaxiter", 300),
-                "disp": False,
-            },
+            options=_lbfgsb_options(args),
         )
     else:
         def fun(x):
@@ -570,11 +568,7 @@ def solve_extended_lbfgsb(args, finp, caches):
             x0,
             method="L-BFGS-B",
             bounds=bounds,
-            options={
-                "ftol": getattr(args, "nltol", 0.01),
-                "maxiter": getattr(args, "nlmaxiter", 300),
-                "disp": False,
-            },
+            options=_lbfgsb_options(args),
         )
 
     set_extended_params(finp, res.x)

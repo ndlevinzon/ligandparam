@@ -718,6 +718,24 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertEqual(args.fit_backend, "lbfgsb")
             self.assertEqual(args.fit_mode, "full")
 
+    def test_existing_scan_grid_mismatch(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from ffpopt.workflows.TwistHelpers import existing_scan_grid_mismatch
+        from ffpopt.dihed.ExtendedFit import _lbfgsb_options
+
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "orig.json"
+            p.write_text(json.dumps([{}] * 36))
+            self.assertTrue(existing_scan_grid_mismatch(p, 15))
+            self.assertFalse(existing_scan_grid_mismatch(p, 10))
+            p.write_text(json.dumps({"structs": [{}] * 24}))
+            self.assertFalse(existing_scan_grid_mismatch(p, 15))
+        opts = _lbfgsb_options(type("A", (), {"nltol": 0.02, "nlmaxiter": 10})())
+        self.assertNotIn("disp", opts)
+        self.assertEqual(opts["ftol"], 0.02)
+
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary
 
