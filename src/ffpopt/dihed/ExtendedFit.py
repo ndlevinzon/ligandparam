@@ -338,8 +338,31 @@ def objective_extended(x, finp, caches):
     return shape_match_chi2_extended(finp, caches)
 
 
+def _prepare_jax_runtime() -> None:
+    """Pin JAX to CPU + float64 before the first ``import jax``.
+
+    CHPC CPU allocations have no GPU; the CUDA plugin otherwise raises
+    ``CUDA_ERROR_NO_DEVICE``. Float64 is required so kcal/mol residuals
+    are not truncated to float32. Override with ``JAX_PLATFORMS`` if a
+    GPU node is actually intended.
+    """
+    import os
+
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("JAX_ENABLE_X64", "true")
+
+
+def _lbfgsb_options(args) -> dict:
+    """SciPy L-BFGS-B options. Do not pass ``disp`` (removed in recent SciPy)."""
+    return {
+        "ftol": getattr(args, "nltol", 0.01),
+        "maxiter": getattr(args, "nlmaxiter", 300),
+    }
+
+
 def _jax_objective_factory(finp, caches):
     """Build a JAX-friendly objective (torsion + optional 1–4; phases continuous)."""
+    _prepare_jax_runtime()
     try:
         import jax
         import jax.numpy as jnp
