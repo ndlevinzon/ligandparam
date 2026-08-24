@@ -534,3 +534,26 @@ def cleanup_wavefront_geometric_scratch(
         print(
             f"[ffpopt] removed {n} leftover geomeTRIC scratch path(s) in {workdir}"
         )
+
+
+def save_wavefront_figure(path, *, close: bool = True) -> None:
+    """Save the current matplotlib figure without noisy tight-layout warnings.
+
+    Dense angle/level grids often cannot satisfy ``tight_layout``; the plot is
+    still written with ``bbox_inches='tight'``.
+    """
+    import warnings
+
+    from matplotlib import pyplot as plt
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message=r".*[Tt]ight layout not applied.*"
+        )
+        try:
+            plt.tight_layout()
+        except Exception:
+            pass
+    plt.savefig(path, bbox_inches="tight")
+    if close:
+        plt.close()

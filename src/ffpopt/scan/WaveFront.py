@@ -1388,8 +1388,9 @@ def plot_wavefront(levels: list[WavefrontLevel], delta: int = 10, filename: str 
             if counts[i, j] > 0:
                 plt.text(j, i, str(counts[i, j]), va='center', ha='center', color='black', fontsize=8)
 
-    plt.tight_layout()
-    plt.savefig(filename)
+    from ffpopt.scan.WavefrontMixins import save_wavefront_figure
+
+    save_wavefront_figure(filename)
 
 def find_adjacent_dihedrals(con: Constraint, los: ListOfStruct) -> tuple[list[int], list[int]]:
     """ Generates initial conformers based on the initial geometry optimization.

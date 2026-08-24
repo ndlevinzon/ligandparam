@@ -1457,8 +1457,9 @@ class Wavefront(object):
                     plt.text(j, i, str(counts[i, j]), va='center',
                              ha='center', color='black', fontsize=8)
 
-        plt.tight_layout()
-        plt.savefig(pngfile)
+        from ffpopt.scan.WavefrontMixins import save_wavefront_figure
+
+        save_wavefront_figure(pngfile)
 
         bins = copy.deepcopy(self.min_bins)
         for gidx in bins:

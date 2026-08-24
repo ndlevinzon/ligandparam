@@ -387,7 +387,10 @@ def load_scan_dat(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     tuple of numpy.ndarray
         ``(angles, energies_shifted_kcal_per_mol)``.
     """
-    data = np.loadtxt(str(path))
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"scan .dat not found: {p}")
+    data = np.loadtxt(str(p))
     if data.ndim == 1:
         data = data[None, :]
     return data[:, 0], data[:, 1]
@@ -457,6 +460,13 @@ def _load_any(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """
     p = Path(path)
     if p.suffix == ".dat":
+        if not p.is_file():
+            alt = p.with_suffix(".json")
+            if alt.is_file():
+                return load_scan_json(alt)
+            raise FileNotFoundError(
+                f"scan file not found: {p} (no companion {alt.name} either)"
+            )
         return load_scan_dat(p)
     if p.suffix == ".json":
         return load_scan_json(p)

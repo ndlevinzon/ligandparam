@@ -40,6 +40,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **``--fast`` keeps ``delta=10``** — coarser 15 deg HL vs leftover 10 deg orig was collapsing fits to 12 shared angles. Fast mode still loosens geomeTRIC / I/O, not the scan grid.
 - **Mismatched leftover scans** — if both files still look like full 360/n grids, GenDihedFit interpolates HL energies onto the LL angles (keeps MM geometries) instead of dropping to the intersection.
 - **JAX CPU before first import** — ``JAX_PLATFORMS=cpu`` / ``CUDA_VISIBLE_DEVICES=-1`` are set at GenDihedFit process start and in ``jax_is_available()``, not only inside the JAX objective factory.
+- **Incomplete skip_existing scans** — reuse requires the companion ``.dat`` and exactly ``360/delta`` frames. JSON-only leftovers (killed after JSON, before ``.dat``) are rescanned instead of later crashing ``np.loadtxt``.
+- **Missing centroid HL profiles** — if no centroid scan is scoreable, twist raises with the candidate paths instead of warning and then dying in HL/LL compare on ``xtb_<idxs>.dat``.
+- **Wavefront plot margins** — ``tight_layout`` UserWarning on dense angle/level grids is suppressed; plots still save with ``bbox_inches='tight'``.
 
 ---
 

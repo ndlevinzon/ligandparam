@@ -378,6 +378,31 @@ def existing_scan_grid_mismatch(path: Path, delta) -> bool:
     return bool(n > 0 and 360 % n == 0)
 
 
+def scan_outputs_complete(path: Path, delta=None) -> bool:
+    """True when ``skip_existing`` may reuse this scan (JSON + ``.dat`` + grid).
+
+    A leftover JSON without its companion ``.dat``, an unreadable/empty JSON, or
+    a frame count that is not ``360/delta`` must be rescanned. Incomplete
+    wavefronts (killed after JSON, before ``.dat``) used to be skipped, then
+    compare crashed in ``np.loadtxt``.
+    """
+    json_path = Path(path)
+    if json_path.suffix.lower() != ".json":
+        json_path = json_path.with_suffix(".json")
+    if not json_path.is_file():
+        return False
+    dat_path = json_path.with_suffix(".dat")
+    if not dat_path.is_file() or dat_path.stat().st_size < 1:
+        return False
+    n = _scan_json_nframes(json_path)
+    if not n:
+        return False
+    if delta is None:
+        return True
+    expected = max(1, 360 // int(delta))
+    return n == expected
+
+
 def _is_sander_ll_model(model: str | None) -> bool:
     m = (model or "").strip().lower()
     return m in {"sander", "amber", "mm"} or m.startswith("sander")
@@ -469,14 +494,7 @@ def _run_one_scan(
     inp_path = str(_in_workdir(workdir, inp))
     out_path = str(_in_workdir(workdir, out))
     if skip_existing and Path(out_path).exists():
-        if existing_scan_grid_mismatch(Path(out_path), wf_kwargs.get("delta")):
-            log.warning(
-                "[twist] %s exists but its angle grid does not match delta=%s; "
-                "rescanning so HL/LL stay aligned",
-                out_path,
-                wf_kwargs.get("delta"),
-            )
-        else:
+        if scan_outputs_complete(Path(out_path), wf_kwargs.get("delta")):
             log.info("[twist] %s exists - skipping.", out_path)
             from ffpopt.geom.Geometric import sweep_geometric_scratch_dir
 
@@ -484,6 +502,12 @@ def _run_one_scan(
             if n:
                 log.info("[twist] removed %s leftover geomeTRIC scratch path(s)", n)
             return None
+        log.warning(
+            "[twist] %s exists but is incomplete or its angle grid does not "
+            "match delta=%s (need JSON + .dat with 360/delta frames); rescanning",
+            out_path,
+            wf_kwargs.get("delta"),
+        )
 
     dihed_str = ",".join(str(i) for i in dihed_idxs)
     log.info(
@@ -764,8 +788,21 @@ def _promote_centroid_pick(
 
     best, score, rows = pick_smoothest_profile(candidates)
     if best is None:
-        log.warning("[affdo] %s: no centroid HL profiles to score", idx)
-        return
+        detail = []
+        for row in rows or []:
+            p = Path(row.get("path") or "?")
+            err = row.get("error") or f"score={row.get('score')}"
+            detail.append(f"  {p.name}: {err}")
+        if not detail:
+            detail = [f"  {Path(c).name}: missing" for c in candidates]
+        raise FileNotFoundError(
+            f"[affdo] {idx}: no usable centroid HL profiles to promote to "
+            f"{hl_prefix}_{idx}.dat. Compare needs that file. Candidates:\n"
+            + "\n".join(detail)
+            + "\nIf this is a restart, delete the matching "
+            f"{hl_prefix}.c*_{idx}.json files (and checkpoints) so the HL "
+            "scan is not skip_existing'd without a .dat."
+        )
     _log_centroid_profile_rows(log, idx, rows, best=best)
     src_stem = Path(best)
     dst_stem = _in_workdir(workdir, f"{hl_prefix}_{idx}")
@@ -1128,8 +1165,40 @@ def _compare_per_bond(
     out = {}
     for scan in scans:
         idx = scan.GetIdxStr()
-        hl_path = str(_in_workdir(workdir, f"{hl_prefix}_{idx}.dat"))
-        ll_path = str(_in_workdir(workdir, f"{ll_prefix}_{idx}.dat"))
+        def _profile(prefix: str) -> Path | None:
+            dat = Path(_in_workdir(workdir, f"{prefix}_{idx}.dat"))
+            if dat.is_file():
+                return dat
+            js = Path(_in_workdir(workdir, f"{prefix}_{idx}.json"))
+            if js.is_file():
+                return js
+            return None
+
+        hl_file = _profile(hl_prefix)
+        ll_file = _profile(ll_prefix)
+        if hl_file is None or ll_file is None:
+            missing = []
+            if hl_file is None:
+                missing.append(str(_in_workdir(workdir, f"{hl_prefix}_{idx}.dat")))
+            if ll_file is None:
+                missing.append(str(_in_workdir(workdir, f"{ll_prefix}_{idx}.dat")))
+            hints = []
+            parent = Path(_in_workdir(workdir, "."))
+            related = sorted(parent.glob(f"*{idx}.dat")) + sorted(
+                parent.glob(f"*{idx}.json")
+            )
+            if related:
+                hints.append(
+                    "related files: " + ", ".join(r.name for r in related[:8])
+                )
+            extra = ("; " + "; ".join(hints)) if hints else ""
+            raise FileNotFoundError(
+                f"HL/LL compare for {idx}: missing {', '.join(missing)}.{extra} "
+                "If multi-centroid HL never promoted a profile, the scan likely "
+                "failed or skip_existing reused a JSON without a .dat."
+            )
+        hl_path = str(hl_file)
+        ll_path = str(ll_file)
         plot_path = None
         if plot_dir is not None:
             plot_path = Path(plot_dir) / f"compare_{hl_prefix}_vs_{ll_prefix}_{idx}.png"

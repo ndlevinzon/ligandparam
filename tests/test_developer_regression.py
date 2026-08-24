@@ -732,6 +732,26 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertFalse(existing_scan_grid_mismatch(p, 10))
             p.write_text(json.dumps({"structs": [{}] * 24}))
             self.assertFalse(existing_scan_grid_mismatch(p, 15))
+            from ffpopt.workflows.TwistHelpers import (
+                scan_outputs_complete,
+                _promote_centroid_pick,
+            )
+
+            p.write_text(json.dumps([{}] * 36))
+            self.assertFalse(scan_outputs_complete(p, 10))
+            p.with_suffix(".dat").write_text("0 0 0\n", encoding="utf-8")
+            self.assertTrue(scan_outputs_complete(p, 10))
+            self.assertFalse(scan_outputs_complete(p, 15))
+            log = logging.getLogger("test.centroid_promote")
+            with self.assertRaises(FileNotFoundError) as ctx:
+                _promote_centroid_pick(
+                    log,
+                    idx="0-1-2-3",
+                    hl_prefix="xtb",
+                    workdir=Path(td),
+                    candidates=[Path(td) / "xtb.c0_0-1-2-3.dat"],
+                )
+            self.assertIn("no usable centroid HL profiles", str(ctx.exception))
         opts = _lbfgsb_options(type("A", (), {"nltol": 0.02, "nlmaxiter": 10})())
         self.assertNotIn("disp", opts)
         self.assertEqual(opts["ftol"], 0.02)
