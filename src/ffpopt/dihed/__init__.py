@@ -7,6 +7,9 @@ from typing import Any
 __all__ = [
     "Dihedrals",
     "DihedMath",
+    "DihedFourier",
+    "DihedParmEd",
+    "DihedFitSolve",
     "ExtendedFit",
     "DeltaPuckerFit",
 ]

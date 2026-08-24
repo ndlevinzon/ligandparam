@@ -10,23 +10,28 @@ import numpy as np
 from typing import Generator, Optional
 from pathlib import Path
 
-from ffpopt.geom.GeomOpt import GeomOpt, bare_potential_energy, is_soft_opt_recovery, opt_recovery_label
+from ffpopt.geom.GeomOpt import GeomOpt, is_soft_opt_recovery, opt_recovery_label
 from ffpopt.geom.Constraints import Constraint
 from ffpopt.Struct import ListOfStruct, Struct
 
 from .WavefrontMixins import (
     apply_slim_node_result,
+    apply_wavefront_minimum_to_node,
     atomic_pickle_dump,
     clear_los_calc,
     clone_struct_geometry,
     ensure_soft_opt_attrs,
+    finalize_successful_node_opt,
+    format_wavefront_progress,
     load_wavefront_pickle,
     mark_node_failed,
-    maybe_write_success_checkpoint,
+    merge_standard_wavefront_kwargs,
     pickle_load_compat,
     precheck_geometry_clash,
     replace_node_with_pickle,
+    require_main_guard_for_spawn,
     run_mp_spawn_drain_loop,
+    slim_completed_nodes_for_checkpoint,
     slim_node_result,
     write_node_pickle,
     cleanup_wavefront_geometric_scratch,
@@ -280,20 +285,7 @@ class WavefrontNode:
                         f"Node {self.node_id} soft-accepted opt "
                         f"(recovery={self.opt_recovery}); will not spawn neighbors"
                     )
-                self.energy = np.round(bare_potential_energy(self.opt_geom), 6)
-                try:
-                    from ffpopt.geom.Geometric import refine_qdpi2_energy
-
-                    refined = refine_qdpi2_energy(self.los, self.opt_geom)
-                    if refined is not None:
-                        self.energy = np.round(float(refined), 6)
-                        self.opt_geom.data["energy"] = float(refined)
-                        self.opt_geom.data["qdpi2_refined"] = True
-                except Exception:
-                    pass
-                self.forces = self.opt_geom.data.get("forces", self.forces)
-                maybe_write_success_checkpoint(self)
-                self.complete = True
+                finalize_successful_node_opt(self)
             except Exception as e:
                 print(f"Node {self.node_id} optimization error: {type(e).__name__}: {e}")
                 self._mark_failed("optimization_error", e)
@@ -913,13 +905,15 @@ class Wavefront:
             Number of nodes currently being optimized by workers.
 
         """
-        completed = sum(1 for level in self.levels
-                        for node in level.nodes if node.complete)
-        highest = max((level.level_id for level in self.levels), default=0)
         total_angles = 360 // self.delta if self.delta else 0
-        print(f"[wavefront] completed={completed} pending={pending} "
-              f"in-flight={in_flight} highest-level={highest} "
-              f"angles={len(self.min_energies)}/{total_angles}")
+        print(
+            format_wavefront_progress(
+                self,
+                pending,
+                in_flight,
+                extra=f"angles={len(self.min_energies)}/{total_angles}",
+            )
+        )
 
     def _cleanup_completed(self) -> None:
         """ Delete per-node checkpoint pickles already captured in the checkpoint.
@@ -1038,22 +1032,13 @@ class Wavefront:
         self._rebuild_level_energies()
         if self.los is not None:
             self.los.clear_runtime_caches()
-        self._slim_nodes_for_checkpoint()
+        slim_completed_nodes_for_checkpoint(self)
         atomic_pickle_dump(self, self.checkpoint)
         print(f"Checkpoint saved to {self.checkpoint}.")
 
     def _slim_nodes_for_checkpoint(self) -> None:
         """Drop bulky redundant arrays from completed nodes before pickling."""
-        for level in getattr(self, "levels", []) or []:
-            for node in getattr(level, "nodes", []) or []:
-                if not getattr(node, "complete", False):
-                    continue
-                # Forces are not needed to resume; energy + opt_geom coords are.
-                if getattr(node, "opt_geom", None) is not None:
-                    if "forces" in node.opt_geom.data:
-                        node.opt_geom.data["forces"] = None
-                n_atoms = len(node.struct.data["elements"])
-                node.forces = np.zeros((n_atoms, 3))
+        slim_completed_nodes_for_checkpoint(self)
 
     def init_min(self) -> None:
         """Initial geometry optimization and angle calculation.
@@ -1090,102 +1075,35 @@ class Wavefront:
     def _evaluate_node(self, node: WavefrontNode) -> None:
         """Update per-angle minima and set ``node.active`` (spawn) via shared policy.
 
-        See :func:`ffpopt.scan.WavefrontMixins.evaluate_wavefront_minimum`.
+        See :func:`ffpopt.scan.WavefrontMixins.apply_wavefront_minimum_to_node`.
         ``convergence_threshold`` is kcal/mol; node energies are eV.
         """
-        from ffpopt.scan.WavefrontMixins import (
-            evaluate_wavefront_minimum,
-            kcal_threshold_to_ev,
-        )
-
-        threshold_ev = kcal_threshold_to_ev(self.convergence_threshold)
-        if not node.active:
-            return
-        if node.energy is None or not np.isfinite(node.energy):
-            print(f"Angle {node.angle} is inactive due to failed optimization.")
-            node.active = False
-            return
-
-        soft = bool(getattr(node, "soft_opt", False))
-        if not soft and node.opt_geom is not None:
-            soft = is_soft_opt_recovery(node.opt_geom)
-            node.soft_opt = soft
-
-        existing_soft = False
         has_incumbent = node.angle in self.min_energies
         incumbent_energy = self.min_energies.get(node.angle)
+        incumbent_soft = False
         if node.angle in self.min_nodes:
             prev = self.min_nodes[node.angle]
-            existing_soft = bool(getattr(prev, "soft_opt", False))
-            if not existing_soft:
-                existing_soft = is_soft_opt_recovery(
+            incumbent_soft = bool(getattr(prev, "soft_opt", False))
+            if not incumbent_soft:
+                incumbent_soft = is_soft_opt_recovery(
                     self.min_structures.get(node.angle)
                 )
 
-        decision = evaluate_wavefront_minimum(
-            energy=node.energy,
-            soft=soft,
+        def on_update(n, _reason, _old):
+            self.min_energies[n.angle] = n.energy
+            self.min_structures[n.angle] = n.opt_geom
+            self.min_nodes[n.angle] = n
+
+        apply_wavefront_minimum_to_node(
+            node,
+            loc=node.angle,
+            threshold_kcal=self.convergence_threshold,
             has_incumbent=has_incumbent,
             incumbent_energy=incumbent_energy,
-            incumbent_soft=existing_soft,
-            threshold_ev=threshold_ev,
+            incumbent_soft=incumbent_soft,
+            on_update=on_update,
+            noun="angle",
         )
-        reason = decision["reason"]
-        if decision["update_min"]:
-            old = incumbent_energy
-            self.min_energies[node.angle] = node.energy
-            self.min_structures[node.angle] = node.opt_geom
-            self.min_nodes[node.angle] = node
-            if reason == "soft_first_seed":
-                print(
-                    f"New angle (soft-opt seed): {node.angle}, Energy: {node.energy} "
-                    f"(recovery={getattr(node, 'opt_recovery', None)}; spawn once)"
-                )
-            elif reason == "soft_improve":
-                print(
-                    f"Updating soft-opt angle: {node.angle}, "
-                    f"Old Energy: {old}, New Energy: {node.energy} (no spawn)"
-                )
-            elif reason == "hard_first":
-                print(f"New angle detected: {node.angle}, Energy: {node.energy}")
-            elif reason == "hard_replace_soft":
-                print(
-                    f"Replacing soft-opt angle {node.angle} with hard-converged "
-                    f"Energy: {node.energy} (was {old})"
-                )
-            elif reason == "hard_significant_improve":
-                print(
-                    f"Updating angle: {node.angle}, Old Energy: {old}, "
-                    f"New Energy: {node.energy}"
-                )
-            elif reason == "hard_quiet_improve":
-                print(
-                    f"Quiet update angle {node.angle}: {old} -> {node.energy} "
-                    f"(within threshold; no spawn)"
-                )
-        else:
-            if reason == "soft_demoted":
-                print(
-                    f"Angle {node.angle} soft-opt demoted "
-                    f"(recovery={getattr(node, 'opt_recovery', None)}); "
-                    f"not replacing hard-converged / lower soft minimum."
-                )
-            elif reason == "hard_worse_than_soft":
-                print(
-                    f"Angle {node.angle} hard-opt higher than soft min "
-                    f"({node.energy} > {incumbent_energy}); keeping soft profile."
-                )
-            elif reason == "hard_not_lower":
-                print(
-                    f"Angle {node.angle} is not active, energy {node.energy} "
-                    f"is not lower than minimum {incumbent_energy}."
-                )
-            else:
-                print(
-                    f"Angle {node.angle} inactive ({reason}): energy {node.energy}."
-                )
-
-        node.active = bool(decision["active"])
 
     def determine_active_nodes(self, current_level: WavefrontLevel) -> None:
         """ Evaluate every node in a level via :meth:`_evaluate_node`.
@@ -1485,35 +1403,11 @@ def run_dihed_wavefront(
         ``energies`` is min-shifted (kcal/mol); ``energies_noshift`` is the raw
         kcal/mol energies before shifting.
     """
-    import argparse
-    import sys as _sys
     from types import SimpleNamespace
-    from ffpopt.Options import AddStandardOptions
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
 
-    # Spawn workers re-import the caller's entry script with __name__ == '__mp_main__'.
-    # If we see that name on our caller's frame, the caller didn't wrap the call in
-    # `if __name__ == '__main__':` and we'd otherwise blow up inside multiprocessing
-    # with a confusing traceback. Fail loudly with a fix-it message instead.
-    _caller_globals = _sys._getframe(1).f_globals
-    if _caller_globals.get("__name__") == "__mp_main__":
-        raise RuntimeError(
-            "run_dihed_wavefront was re-invoked by a multiprocessing spawn worker "
-            "re-importing the calling script. Wrap the call in "
-            "`if __name__ == '__main__':` so the worker re-import doesn't "
-            "re-execute it. See "
-            "https://docs.python.org/3/library/multiprocessing.html#multiprocessing-programming"
-        )
-
-    _p = argparse.ArgumentParser(add_help=False)
-    AddStandardOptions(_p)
-    std_defaults = vars(_p.parse_args([]))
-    unknown = set(standard_kwargs) - set(std_defaults)
-    if unknown:
-        raise TypeError(
-            f"run_dihed_wavefront got unexpected keyword argument(s): {sorted(unknown)}"
-        )
-    std = {**std_defaults, **standard_kwargs}
+    require_main_guard_for_spawn()
+    std = merge_standard_wavefront_kwargs(standard_kwargs)
 
     if std.get("soft_dihed_restraint"):
         k = std.get("soft_dihed_k", 500.0)

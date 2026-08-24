@@ -738,5 +738,215 @@ def run_geometric_robust(
     raise last_exc
 
 
+# --- subprocess watchdog (moved from GeomOpt) ---
+
+def _linux_process_tree_cputime(pid: int):
+    """Sum ``utime+stime`` (jiffies) for ``pid`` and descendants via ``/proc``.
+
+    Returns ``None`` when ``/proc`` is unavailable (non-Linux) or unreadable.
+    Used so the geomeTRIC watchdog does not treat a busy energy evaluation as a
+    stall merely because the ``.log`` file is quiet.
+    """
+    import os
+
+    total = 0
+    stack = [int(pid)]
+    seen = set()
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        try:
+            with open(f"/proc/{cur}/stat", "r", encoding="utf-8") as fh:
+                data = fh.read()
+            # ``comm`` is in parentheses and may contain spaces.
+            rparen = data.rfind(")")
+            fields = data[rparen + 2 :].split()
+            total += int(fields[11]) + int(fields[12])
+        except (OSError, IndexError, ValueError):
+            continue
+        # Prefer the kernel's children list when present.
+        try:
+            with open(
+                f"/proc/{cur}/task/{cur}/children", "r", encoding="utf-8"
+            ) as fh:
+                stack.extend(int(x) for x in fh.read().split())
+            continue
+        except OSError:
+            pass
+        try:
+            for name in os.listdir(f"/proc/{cur}/task"):
+                with open(
+                    f"/proc/{cur}/task/{name}/children", "r", encoding="utf-8"
+                ) as fh:
+                    stack.extend(int(x) for x in fh.read().split())
+        except OSError:
+            pass
+    return total
+
+
+def _path_tree_mtime(path: str) -> float:
+    """Newest mtime among ``path`` and its immediate children (best-effort)."""
+    import os
+
+    try:
+        newest = os.path.getmtime(path)
+    except OSError:
+        return 0.0
+    try:
+        names = os.listdir(path)
+    except OSError:
+        return newest
+    for name in names:
+        try:
+            newest = max(newest, os.path.getmtime(os.path.join(path, name)))
+        except OSError:
+            continue
+    return newest
+
+
+def _geometric_stall_timeout_sec(default: float | None = None) -> float:
+    """Stall timeout from ``FFPOPT_GEOMETRIC_STALL_SEC`` (``0`` disables)."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    if default is not None:
+        return float(default)
+    return float(env_float("FFPOPT_GEOMETRIC_STALL_SEC"))
+
+
+def _run_geometric_with_watchdog(
+    cmds,
+    tmplog,
+    activity_dir=None,
+    poll_interval_sec=5.0,
+    stall_timeout_sec=None,
+    bmatrix_wedge_pattern="more than 1000 B-matrices stored",
+):
+    """Run geometric-optimize as a child process and watch its log for wedged states.
+
+    Raises RuntimeError if the B-matrix accumulation warning appears, or if
+    the job shows *no* progress for ``stall_timeout_sec``. Progress is any of:
+    log growth, increasing process-tree CPU time, or updates under
+    ``activity_dir`` (typically geomeTRIC's ``*.tmp`` folder). Quiet logs alone
+    are not enough to declare a stall - ML / xTB gradient evaluations can sit
+    for many minutes between log lines.
+
+    Set ``FFPOPT_GEOMETRIC_STALL_SEC=0`` to disable stall kills (B-matrix wedge
+    detection remains). On any wedge the child's process group is SIGTERM'd
+    (then SIGKILL'd after 10s). The caller is expected to translate the
+    exception into a fallback or ``_mark_failed()``.
+    """
+    import os
+    import signal
+    import subprocess as subp
+    import time
+
+    if stall_timeout_sec is None:
+        stall_timeout_sec = _geometric_stall_timeout_sec()
+
+    child_env = os.environ.copy()
+    #child_env["PYTHONWARNINGS"] = "ignore:ignore_bad_restart_file:FutureWarning"
+
+    proc = subp.Popen(cmds, text=True, env=child_env,
+                      start_new_session=True)
+
+    log_pos = 0
+    # carry the tail of the last chunk so a pattern split across two
+    # reads is still detected
+    log_tail = ""
+    last_change = time.monotonic()
+    last_cpu = _linux_process_tree_cputime(proc.pid)
+    last_dir_mtime = (
+        _path_tree_mtime(activity_dir) if activity_dir is not None else 0.0
+    )
+    wedge_reason = None
+
+    try:
+        while proc.poll() is None:
+            progressed = False
+
+            try:
+                cur_size = os.path.getsize(tmplog)
+            except OSError:
+                cur_size = 0
+
+            if cur_size > log_pos:
+                try:
+                    with open(tmplog, "r") as fh:
+                        fh.seek(log_pos)
+                        chunk = fh.read()
+                except OSError:
+                    chunk = ""
+                if chunk:
+                    log_pos += len(chunk)
+                    scan_text = log_tail + chunk
+                    if bmatrix_wedge_pattern in scan_text:
+                        wedge_reason = (
+                            f"geomeTRIC wedged: '{bmatrix_wedge_pattern}'"
+                            f" detected in {tmplog}"
+                        )
+                        break
+                    log_tail = scan_text[-len(bmatrix_wedge_pattern):]
+                    progressed = True
+            elif cur_size < log_pos:
+                # log was rotated/truncated
+                log_pos = 0
+                log_tail = ""
+                progressed = True
+
+            cpu = _linux_process_tree_cputime(proc.pid)
+            if (
+                cpu is not None
+                and last_cpu is not None
+                and cpu > last_cpu
+            ):
+                last_cpu = cpu
+                progressed = True
+            elif cpu is not None and last_cpu is None:
+                last_cpu = cpu
+
+            if activity_dir is not None:
+                dir_mtime = _path_tree_mtime(activity_dir)
+                if dir_mtime > last_dir_mtime:
+                    last_dir_mtime = dir_mtime
+                    progressed = True
+
+            if progressed:
+                last_change = time.monotonic()
+            elif (
+                stall_timeout_sec > 0
+                and time.monotonic() - last_change > stall_timeout_sec
+            ):
+                wedge_reason = (
+                    f"geomeTRIC stalled: no log/CPU/tmpdir progress for "
+                    f"{stall_timeout_sec}s (log={tmplog})"
+                )
+                break
+
+            time.sleep(poll_interval_sec)
+    finally:
+        if proc.poll() is None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                pass
+            try:
+                proc.wait(timeout=10)
+            except subp.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (OSError, ProcessLookupError):
+                    pass
+                try:
+                    proc.wait(timeout=5)
+                except subp.TimeoutExpired:
+                    pass
+
+    if wedge_reason is not None:
+        raise RuntimeError(wedge_reason)
+
+
 if __name__ == "__main__":
     main()
+

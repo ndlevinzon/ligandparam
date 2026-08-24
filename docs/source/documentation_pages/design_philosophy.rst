@@ -60,12 +60,14 @@ What pulls the score **up**
 What pulls the score **down**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* **God modules** still dominate absolute size, especially
-  ``ffpopt.dihed.Dihedrals``, ``ffpopt.scan.WaveFront*``,
-  ``ligandparam.multiresp.ParmHelper``, and ``ffpopt.geom.GeomOpt``.
-  Twist orchestration now lives in ``ffpopt.workflows`` (split by
-  entry point). They are coherent domains, but they still raise
-  change risk.
+* **God modules** still dominate absolute size, but named helpers now
+  sit beside the public facades: wavefront drain / min-policy /
+  checkpoint slim in :mod:`ffpopt.scan.WavefrontMixins`; Fourier /
+  ParmEd / fit-solve slices under :mod:`ffpopt.dihed`; ASE + parallel
+  drivers beside :mod:`ffpopt.geom.GeomOpt`; job-script and ParmEd I/O
+  beside :mod:`ligandparam.multiresp.ParmHelper`. The original filenames
+  remain the import path (``Dihedrals``, ``WaveFront``, ``GeomOpt``,
+  ``ParmHelper``). Facades are not yet thin enough to raise the score.
 * **Control-flow-heavy stages** still override ``execute`` end-to-end
   (Gaussian rotation, DeepMD, dihed twist). Thin stages use ``_run``.
 * **Scientific coupling:** many stages need RDKit / ParmEd / Gaussian /

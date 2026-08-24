@@ -6,6 +6,8 @@ from typing import Any
 
 __all__ = [
     "GeomOpt",
+    "GeomOptAse",
+    "GeomOptParallel",
     "Geometry",
     "Constraints",
     "Restraints",

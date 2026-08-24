@@ -1734,6 +1734,100 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 self.assertEqual(d["update_min"], upd)
                 self.assertEqual(d["active"], act)
 
+    def test_wavefront_apply_minimum_helper(self):
+        """Shared evaluate-node tail updates the min store and node.active."""
+        from types import SimpleNamespace
+
+        from ffpopt.scan.WavefrontMixins import apply_wavefront_minimum_to_node
+
+        store = {}
+
+        def on_update(n, reason, _old):
+            store["energy"] = n.energy
+            store["reason"] = reason
+
+        node = SimpleNamespace(
+            energy=1.0,
+            active=True,
+            soft_opt=False,
+            opt_geom=None,
+            opt_recovery=None,
+        )
+        d = apply_wavefront_minimum_to_node(
+            node,
+            loc=90,
+            threshold_kcal=2.306,
+            has_incumbent=False,
+            incumbent_energy=None,
+            incumbent_soft=False,
+            on_update=on_update,
+            noun="angle",
+        )
+        self.assertEqual(d["reason"], "hard_first")
+        self.assertTrue(node.active)
+        self.assertEqual(store["energy"], 1.0)
+
+    def test_wavefront_facade_exports(self):
+        from ffpopt.scan.WaveFront import Wavefront, WavefrontNode, run_dihed_wavefront
+        from ffpopt.scan.WavefrontMixins import (
+            apply_wavefront_minimum_to_node,
+            finalize_successful_node_opt,
+            slim_completed_nodes_for_checkpoint,
+        )
+
+        self.assertTrue(callable(run_dihed_wavefront))
+        self.assertTrue(callable(apply_wavefront_minimum_to_node))
+        self.assertTrue(callable(finalize_successful_node_opt))
+        self.assertTrue(callable(slim_completed_nodes_for_checkpoint))
+        self.assertTrue(hasattr(Wavefront, "_evaluate_node"))
+        self.assertTrue(hasattr(WavefrontNode, "calculate"))
+
+    def test_dihed_facade_exports(self):
+        from ffpopt.dihed import DihedFitSolve, DihedFourier, DihedParmEd
+        from ffpopt.dihed.Dihedrals import (
+            ChangeDihedrals,
+            DeleteDihedrals,
+            FitInputType,
+            IsolatedLinearSolve,
+            MultiDihedFcn,
+            NonlinearSolve,
+            PrimDihedFcn,
+            WriteParmedScript,
+        )
+
+        self.assertIs(PrimDihedFcn, DihedFourier.PrimDihedFcn)
+        self.assertIs(MultiDihedFcn, DihedFourier.MultiDihedFcn)
+        self.assertIs(DeleteDihedrals, DihedParmEd.DeleteDihedrals)
+        self.assertIs(ChangeDihedrals, DihedParmEd.ChangeDihedrals)
+        self.assertIs(WriteParmedScript, DihedParmEd.WriteParmedScript)
+        self.assertIs(IsolatedLinearSolve, DihedFitSolve.IsolatedLinearSolve)
+        self.assertIs(NonlinearSolve, DihedFitSolve.NonlinearSolve)
+        self.assertTrue(isinstance(FitInputType, type))
+
+    def test_geomopt_facade_exports(self):
+        from ffpopt.geom import GeomOptAse, GeomOptParallel
+        from ffpopt.geom.GeomOpt import CalcNode, GeomOpt, GeomOpt_ASE
+
+        self.assertIs(GeomOpt_ASE, GeomOptAse.GeomOpt_ASE)
+        self.assertIs(CalcNode, GeomOptParallel.CalcNode)
+        self.assertTrue(callable(GeomOpt))
+
+    def test_parmhelper_saveparm_exported(self):
+        import ast
+        from pathlib import Path
+
+        utils = Path(__file__).resolve().parents[1] / "src" / "ligandparam" / "multiresp" / "ParmEdUtils.py"
+        helper = Path(__file__).resolve().parents[1] / "src" / "ligandparam" / "multiresp" / "ParmHelper.py"
+        util_names = {
+            n.name
+            for n in ast.parse(utils.read_text(encoding="utf-8")).body
+            if isinstance(n, ast.FunctionDef)
+        }
+        self.assertIn("SaveParm", util_names)
+        text = helper.read_text(encoding="utf-8")
+        self.assertIn("SaveParm", text)
+        self.assertIn("from ligandparam.multiresp.ParmEdUtils import", text)
+
     def test_dihed_math_reexported_and_ipc_slim(self):
         from ffpopt.dihed import DihedMath as dihed_math
         from ffpopt.dihed.Dihedrals import shape_match_delta

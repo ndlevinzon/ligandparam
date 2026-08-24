@@ -469,6 +469,222 @@ def evaluate_wavefront_minimum(
     }
 
 
+def stamp_node_soft_flag(node: Any, *, incumbent_geom=None) -> tuple[bool, bool]:
+    """Refresh ``node.soft_opt`` from recovery tags; return (node, incumbent) flags."""
+    from ffpopt.geom.GeomOpt import is_soft_opt_recovery
+
+    soft = bool(getattr(node, "soft_opt", False))
+    if not soft and getattr(node, "opt_geom", None) is not None:
+        soft = is_soft_opt_recovery(node.opt_geom)
+        node.soft_opt = soft
+    incumbent_soft = False
+    if incumbent_geom is not None:
+        incumbent_soft = is_soft_opt_recovery(incumbent_geom)
+    return soft, incumbent_soft
+
+
+def finalize_successful_node_opt(node: Any) -> None:
+    """Round energy, optional qdpi2 refine, success pickle, mark complete."""
+    from ffpopt.geom.GeomOpt import bare_potential_energy
+
+    node.energy = np.round(bare_potential_energy(node.opt_geom), 6)
+    try:
+        from ffpopt.geom.Geometric import refine_qdpi2_energy
+
+        refined = refine_qdpi2_energy(node.los, node.opt_geom)
+        if refined is not None:
+            node.energy = np.round(float(refined), 6)
+            node.opt_geom.data["energy"] = float(refined)
+            node.opt_geom.data["qdpi2_refined"] = True
+    except Exception:
+        pass
+    node.forces = node.opt_geom.data.get("forces", node.forces)
+    maybe_write_success_checkpoint(node)
+    node.complete = True
+
+
+def slim_completed_nodes_for_checkpoint(wavefront: Any) -> None:
+    """Drop bulky force arrays from completed nodes before pickling."""
+    for level in getattr(wavefront, "levels", []) or []:
+        for node in getattr(level, "nodes", []) or []:
+            if not getattr(node, "complete", False):
+                continue
+            if getattr(node, "opt_geom", None) is not None:
+                if "forces" in node.opt_geom.data:
+                    node.opt_geom.data["forces"] = None
+            n_atoms = len(node.struct.data["elements"])
+            node.forces = np.zeros((n_atoms, 3))
+
+
+def format_minimum_decision_message(
+    reason: str,
+    *,
+    loc,
+    energy,
+    old,
+    recovery=None,
+    noun: str = "coordinate",
+) -> str:
+    """ASCII log line for a wavefront min-policy decision."""
+    rec = recovery
+    label = noun.capitalize()
+    if reason == "soft_first_seed":
+        return (
+            f"New {noun} (soft-opt seed): {loc}, Energy: {energy} "
+            f"(recovery={rec}; spawn once)"
+        )
+    if reason == "soft_improve":
+        return (
+            f"Updating soft-opt {noun}: {loc}, "
+            f"Old Energy: {old}, New Energy: {energy} (no spawn)"
+        )
+    if reason == "hard_first":
+        return f"New {noun} detected: {loc}, Energy: {energy}"
+    if reason == "hard_replace_soft":
+        return (
+            f"Replacing soft-opt {noun} {loc} with hard-converged "
+            f"Energy: {energy} (was {old})"
+        )
+    if reason == "hard_significant_improve":
+        return f"Updating {noun}: {loc}, Old Energy: {old}, New Energy: {energy}"
+    if reason == "hard_quiet_improve":
+        return (
+            f"Quiet update {noun} {loc}: {old} -> {energy} "
+            f"(within threshold; no spawn)"
+        )
+    if reason == "soft_demoted":
+        return (
+            f"{label} {loc} soft-opt demoted (recovery={rec}); "
+            f"not replacing hard-converged / lower soft minimum."
+        )
+    if reason == "hard_worse_than_soft":
+        return (
+            f"{label} {loc} hard-opt higher than soft min "
+            f"({energy} > {old}); keeping soft profile."
+        )
+    if reason == "hard_not_lower":
+        return (
+            f"{label} {loc} is not active, energy {energy} "
+            f"is not lower than minimum {old}."
+        )
+    if reason == "nonfinite":
+        return f"{label} {loc} is inactive due to failed optimization."
+    return f"{label} {loc} inactive ({reason}): energy {energy}."
+
+
+def apply_wavefront_minimum_to_node(
+    node: Any,
+    *,
+    loc,
+    threshold_kcal: float,
+    has_incumbent: bool,
+    incumbent_energy,
+    incumbent_soft: bool,
+    on_update,
+    noun: str = "coordinate",
+) -> dict:
+    """Shared evaluate-node tail: policy, logs, ``node.active``.
+
+    ``on_update(node, reason, old_energy)`` stores the new min when the
+    policy says ``update_min``.
+    """
+    if not getattr(node, "active", True):
+        return {"update_min": False, "active": False, "reason": "already_inactive"}
+    if node.energy is None or not np.isfinite(node.energy):
+        print(
+            format_minimum_decision_message(
+                "nonfinite", loc=loc, energy=node.energy, old=incumbent_energy, noun=noun
+            )
+        )
+        node.active = False
+        return {"update_min": False, "active": False, "reason": "nonfinite"}
+
+    stamp_node_soft_flag(node)
+    decision = evaluate_wavefront_minimum(
+        energy=node.energy,
+        soft=bool(getattr(node, "soft_opt", False)),
+        has_incumbent=has_incumbent,
+        incumbent_energy=incumbent_energy,
+        incumbent_soft=incumbent_soft,
+        threshold_ev=kcal_threshold_to_ev(threshold_kcal),
+    )
+    reason = decision["reason"]
+    old = incumbent_energy
+    recovery = getattr(node, "opt_recovery", None)
+    if decision["update_min"]:
+        on_update(node, reason, old)
+    print(
+        format_minimum_decision_message(
+            reason,
+            loc=loc,
+            energy=node.energy,
+            old=old,
+            recovery=recovery,
+            noun=noun,
+        )
+    )
+    node.active = bool(decision["active"])
+    return decision
+
+
+def format_wavefront_progress(
+    wavefront: Any,
+    pending: int,
+    in_flight: int,
+    *,
+    extra: str,
+) -> str:
+    """One-line live progress summary shared by 1-D and N-D engines."""
+    completed = sum(
+        1
+        for level in getattr(wavefront, "levels", []) or []
+        for node in getattr(level, "nodes", []) or []
+        if getattr(node, "complete", False)
+    )
+    highest = max(
+        (level.level_id for level in getattr(wavefront, "levels", []) or []),
+        default=0,
+    )
+    return (
+        f"[wavefront] completed={completed} pending={pending} "
+        f"in-flight={in_flight} highest-level={highest} {extra}"
+    )
+
+
+def require_main_guard_for_spawn() -> None:
+    """Abort if a spawn worker re-imported the caller's script."""
+    import sys
+
+    caller = sys._getframe(2).f_globals
+    if caller.get("__name__") == "__mp_main__":
+        raise RuntimeError(
+            "run_dihed_wavefront was re-invoked by a multiprocessing spawn worker "
+            "re-importing the calling script. Wrap the call in "
+            "`if __name__ == '__main__':` so the worker re-import doesn't "
+            "re-execute it. See "
+            "https://docs.python.org/3/library/multiprocessing.html#multiprocessing-programming"
+        )
+
+
+def merge_standard_wavefront_kwargs(standard_kwargs: dict, extra_adders=()) -> dict:
+    """Merge CLI-default standard options with caller kwargs."""
+    import argparse
+
+    from ffpopt.Options import AddStandardOptions
+
+    parser = argparse.ArgumentParser(add_help=False)
+    AddStandardOptions(parser)
+    for adder in extra_adders:
+        adder(parser)
+    std_defaults = vars(parser.parse_args([]))
+    unknown = set(standard_kwargs) - set(std_defaults)
+    if unknown:
+        raise TypeError(
+            f"run_dihed_wavefront got unexpected keyword argument(s): {sorted(unknown)}"
+        )
+    return {**std_defaults, **standard_kwargs}
+
+
 def register_wavefront_pickle_aliases() -> None:
     """Map historical ``ffpopt.WaveFront*`` pickle names onto ``scan.*`` modules."""
     import sys
