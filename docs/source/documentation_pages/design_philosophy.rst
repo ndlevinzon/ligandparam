@@ -9,8 +9,8 @@ unmaintainable pile of one-off scripts.
 Maintainability score
 ---------------------
 
-**Overall: 8 / 10** (research monorepo after specialty CLI quarantine,
-thin ``_run`` migrations, and shared wavefront / fit-math helpers).
+**Overall: 9 / 10** (research monorepo after specialty CLI quarantine,
+thin public facades, merged 1-D/N-D wavefront, and shared helpers).
 
 This is a judgment call, not a CI metric. It reflects how hard it is for a
 new developer (or future-you) to change behavior safely.
@@ -48,6 +48,10 @@ What pulls the score **up**
   (MP + MPI drain, evaluate policy), ``dihed.math`` / ``ipc_slim``,
   ``runtime/`` (console, CPU budget, non-daemon pools), scission
   ``safe_name`` / DIHE key helpers.
+* **Thin public facades:** ``Dihedrals``, ``WaveFront``, and
+  ``WaveFrontND`` re-export a single implementation (fit types / Fourier /
+  ParmEd / solvers; one ``Wavefront`` class in ``WavefrontEngine``).
+  Pickle and CLI import paths stay stable.
 * **Two deliberate test entry points:** install validation for users;
   developer regression for wiring and pure helpers (no AmberTools /
   Gaussian required for most of that suite).
@@ -60,33 +64,30 @@ What pulls the score **up**
 What pulls the score **down**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* **God modules** still dominate absolute size, but named helpers now
-  sit beside the public facades: wavefront drain / min-policy /
-  checkpoint slim in :mod:`ffpopt.scan.WavefrontMixins`; Fourier /
-  ParmEd / fit-solve slices under :mod:`ffpopt.dihed`; ASE + parallel
-  drivers beside :mod:`ffpopt.geom.GeomOpt`; job-script and ParmEd I/O
-  beside :mod:`ligandparam.multiresp.ParmHelper`. The original filenames
-  remain the import path (``Dihedrals``, ``WaveFront``, ``GeomOpt``,
-  ``ParmHelper``). Facades are not yet thin enough to raise the score.
+* **God modules** still dominate a few files by line count:
+  :mod:`ffpopt.geom.GeomOpt` and :mod:`ligandparam.multiresp.ParmHelper`
+  keep large public surfaces even after ASE / parallel / job-script
+  helpers were extracted. Wavefront and dihedral public filenames are
+  now thin re-export facades.
 * **Control-flow-heavy stages** still override ``execute`` end-to-end
   (Gaussian rotation, DeepMD, dihed twist). Thin stages use ``_run``.
 * **Scientific coupling:** many stages need RDKit / ParmEd / Gaussian /
   AmberTools at import or runtime, so "unit test everything" is
   unrealistic without heavy mocking. Tests therefore target contracts
   and pure helpers first.
-* **Checkpoint / pickle compatibility:** wavefront loaders register historical
-  ``ffpopt.WaveFront`` names onto ``scan.WaveFront`` in ``sys.modules`` so
-  older checkpoints resume without extra shim files.
+* **Checkpoint / pickle compatibility:** wavefront loaders register
+  historical ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` names onto the
+  ``scan`` facades, and new dumps live on ``WavefrontEngine``.
 
-Toward 9/10
+Toward 10/10
 ~~~~~~~~~~~
 
 * Continue extracting **shared loops and policies** into mixins/runtime
   instead of splitting mega-files into dozens of tiny modules.
 * Keep growing developer tests around recipe builders, wavefront policy,
   and merge helpers whenever those areas change.
-* Further shrink god-module hot paths only when a helper has a clear
-  name and tests.
+* Shrink remaining GeomOpt / ParmHelper hot paths only when a helper has
+  a clear name and tests.
 
 Principles we follow
 --------------------
@@ -104,7 +105,7 @@ SOLID
 * **scission** fragments and merges; it does not fit torsions.
 * **ffpopt** fits / scans torsions; it does not own RESP recipes.
 
-Large modules (``Dihedrals``, ``Workflows``) are tolerated when they
+Large modules (``GeomOpt``, ``Workflows``) are tolerated when they
 represent one scientific domain and extracting would create many tiny
 files with worse navigation. Prefer **internal helpers** over file
 explosion.
@@ -115,7 +116,7 @@ explosion.
   :mod:`ligandparam.recipes.Common` (or add a small builder) rather than
   copy-paste a 150-line ``setup()``.
 * New wavefront policy belongs in :mod:`ffpopt.scan.WavefrontMixins`
-  (or ``runtime/``), not duplicated in 1-D and N-D engines.
+  (or ``runtime/``), not duplicated across 1-D and N-D call paths.
 
 **L - Liskov substitution**
 

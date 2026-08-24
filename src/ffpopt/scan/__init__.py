@@ -7,6 +7,7 @@ from typing import Any
 __all__ = [
     "WaveFront",
     "WaveFrontND",
+    "WavefrontEngine",
     "WavefrontMixins",
     "ScanAnalysis",
 ]
@@ -14,6 +15,7 @@ __all__ = [
 _LAZY = {
     "WaveFront": ".WaveFront",
     "WaveFrontND": ".WaveFrontND",
+    "WavefrontEngine": ".WavefrontEngine",
     "WavefrontMixins": ".WavefrontMixins",
     "ScanAnalysis": ".ScanAnalysis",
 }

@@ -691,9 +691,11 @@ def register_wavefront_pickle_aliases() -> None:
 
     from ffpopt.scan import WaveFront as wf
     from ffpopt.scan import WaveFrontND as wfnd
+    from ffpopt.scan import WavefrontEngine as engine
 
     sys.modules.setdefault("ffpopt.WaveFront", wf)
     sys.modules.setdefault("ffpopt.WaveFrontND", wfnd)
+    sys.modules.setdefault("ffpopt.scan.WavefrontEngine", engine)
 
 
 def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):

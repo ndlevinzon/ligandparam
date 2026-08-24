@@ -1769,6 +1769,12 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
     def test_wavefront_facade_exports(self):
         from ffpopt.scan.WaveFront import Wavefront, WavefrontNode, run_dihed_wavefront
+        from ffpopt.scan.WaveFrontND import (
+            GetGridNeighbors,
+            Wavefront as NDWavefront,
+            run_dihed_wavefront as run_ndim_wavefront,
+        )
+        from ffpopt.scan.WavefrontEngine import Wavefront as EngineWavefront
         from ffpopt.scan.WavefrontMixins import (
             apply_wavefront_minimum_to_node,
             finalize_successful_node_opt,
@@ -1776,10 +1782,16 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         )
 
         self.assertTrue(callable(run_dihed_wavefront))
+        self.assertTrue(callable(run_ndim_wavefront))
+        self.assertIsNot(run_dihed_wavefront, run_ndim_wavefront)
+        self.assertTrue(callable(GetGridNeighbors))
+        self.assertIs(Wavefront, NDWavefront)
+        self.assertIs(Wavefront, EngineWavefront)
         self.assertTrue(callable(apply_wavefront_minimum_to_node))
         self.assertTrue(callable(finalize_successful_node_opt))
         self.assertTrue(callable(slim_completed_nodes_for_checkpoint))
         self.assertTrue(hasattr(Wavefront, "_evaluate_node"))
+        self.assertTrue(hasattr(Wavefront, "calculate_mpi"))
         self.assertTrue(hasattr(WavefrontNode, "calculate"))
 
     def test_dihed_facade_exports(self):
@@ -1787,6 +1799,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         from ffpopt.dihed.Dihedrals import (
             ChangeDihedrals,
             DeleteDihedrals,
+            FindPuckers,
             FitInputType,
             IsolatedLinearSolve,
             MultiDihedFcn,
@@ -1803,6 +1816,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIs(IsolatedLinearSolve, DihedFitSolve.IsolatedLinearSolve)
         self.assertIs(NonlinearSolve, DihedFitSolve.NonlinearSolve)
         self.assertTrue(isinstance(FitInputType, type))
+        self.assertTrue(callable(FindPuckers))
 
     def test_geomopt_facade_exports(self):
         from ffpopt.geom import GeomOptAse, GeomOptParallel
@@ -2116,11 +2130,15 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
     def test_pickle_compat_alias(self):
         from ffpopt.scan.WavefrontMixins import register_wavefront_pickle_aliases
         from ffpopt.scan.WaveFront import Wavefront
+        from ffpopt.scan.WaveFrontND import Wavefront as NDWavefront
 
         register_wavefront_pickle_aliases()
         import ffpopt.WaveFront as legacy
+        import ffpopt.WaveFrontND as legacy_nd
 
         self.assertIs(legacy.Wavefront, Wavefront)
+        self.assertIs(legacy_nd.Wavefront, NDWavefront)
+        self.assertIs(legacy.Wavefront, legacy_nd.Wavefront)
 
     def test_prim_dihed_energy_term(self):
         from ffpopt.dihed.Dihedrals import PrimDihedFcn
