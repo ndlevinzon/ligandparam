@@ -1794,6 +1794,131 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertTrue(hasattr(Wavefront, "calculate_mpi"))
         self.assertTrue(hasattr(WavefrontNode, "calculate"))
 
+    def test_grid_neighbors_von_neumann(self):
+        from ffpopt.scan.WavefrontEngine import GetGridNeighbors
+
+        class _Dim:
+            def __init__(self, size, isper):
+                self.size = size
+                self.isper = isper
+
+        class _Grid:
+            def __init__(self):
+                self.dims = [_Dim(10, True), _Dim(8, False)]
+
+            def CptGlbIdxFromBinIdx(self, b):
+                return int(b[0]) * 8 + int(b[1])
+
+        grid = _Grid()
+        nbs = GetGridNeighbors([5, 4], grid)
+        as_set = {tuple(p) for p in nbs}
+        self.assertEqual(as_set, {(4, 4), (6, 4), (5, 3), (5, 5)})
+        self.assertEqual(len(nbs), 4)
+
+        edge = GetGridNeighbors([0, 0], grid)
+        self.assertEqual({tuple(p) for p in edge}, {(9, 0), (1, 0), (0, 1)})
+
+        valid = {grid.CptGlbIdxFromBinIdx([4, 4]), grid.CptGlbIdxFromBinIdx([6, 4])}
+        clipped = GetGridNeighbors([5, 4], grid, validbins=valid)
+        self.assertEqual({tuple(p) for p in clipped}, {(4, 4), (6, 4)})
+
+    def test_wavefront_seed_coalesce(self):
+        from types import SimpleNamespace
+        from collections import deque
+        from ffpopt.scan.WavefrontEngine import Wavefront
+
+        wf = Wavefront.__new__(Wavefront)
+        wf.grid = None
+        wf.delta = 10
+        wf.levels = []
+        wf._pending_by_loc = {}
+        wf._inflight_locs = set()
+        wf._deferred_seeds = {}
+
+        pending_node = SimpleNamespace(struct="old", seed_energy=2.0, angle=170.0)
+        wf._pending_by_loc[170.0] = pending_node
+        self.assertIsNone(
+            wf._enqueue_visit(
+                170.0,
+                struct="better",
+                seed_energy=1.0,
+                level_id=2,
+                angle=170.0,
+            )
+        )
+        self.assertEqual(pending_node.struct, "better")
+        self.assertEqual(pending_node.seed_energy, 1.0)
+        self.assertIsNone(
+            wf._enqueue_visit(
+                170.0,
+                struct="worse",
+                seed_energy=3.0,
+                level_id=2,
+                angle=170.0,
+            )
+        )
+        self.assertEqual(pending_node.struct, "better")
+
+        wf._pending_by_loc.clear()
+        wf._inflight_locs.add(180.0)
+        self.assertIsNone(
+            wf._enqueue_visit(
+                180.0,
+                struct="seed-a",
+                seed_energy=4.0,
+                level_id=3,
+                angle=180.0,
+            )
+        )
+        self.assertIsNone(
+            wf._enqueue_visit(
+                180.0,
+                struct="seed-b",
+                seed_energy=1.5,
+                level_id=4,
+                angle=180.0,
+            )
+        )
+        self.assertEqual(wf._deferred_seeds[180.0]["struct"], "seed-b")
+        self.assertEqual(wf._deferred_seeds[180.0]["energy"], 1.5)
+
+        a = SimpleNamespace(angle=10.0, seed_energy=None)
+        b = SimpleNamespace(angle=10.0, seed_energy=None)
+        c = SimpleNamespace(angle=20.0, seed_energy=None)
+        q = deque([a, b, c])
+        wf._rebuild_occupancy(q)
+        self.assertEqual(list(q), [a, c])
+        self.assertIs(wf._pending_by_loc[10.0], a)
+
+    def test_checkpoint_keeps_calc_cache(self):
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+        from ffpopt.scan.WavefrontMixins import pickle_checkpoint_keep_calc_cache
+
+        class _Los:
+            def __init__(self):
+                self.calc = object()
+                self._ffpopt_calc_cache = ("key", object())
+                self.cleared = 0
+
+            def clear_runtime_caches(self):
+                self.cleared += 1
+                self.calc = None
+                self._ffpopt_calc_cache = None
+
+        los = _Los()
+        calc = los.calc
+        cache = los._ffpopt_calc_cache
+        payload = SimpleNamespace(x=1)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "ckpt.pkl"
+            pickle_checkpoint_keep_calc_cache(payload, path, los)
+            self.assertTrue(path.is_file())
+        self.assertEqual(los.cleared, 1)
+        self.assertIs(los.calc, calc)
+        self.assertIs(los._ffpopt_calc_cache, cache)
+
     def test_dihed_facade_exports(self):
         from ffpopt.dihed import DihedFitSolve, DihedFourier, DihedParmEd
         from ffpopt.dihed.Dihedrals import (

@@ -125,6 +125,30 @@ def atomic_pickle_dump(obj: Any, path) -> None:
     os.replace(tmp, path)
 
 
+def pickle_checkpoint_keep_calc_cache(obj: Any, path, los) -> None:
+    """Pickle a wavefront after stripping live calculators, then restore them.
+
+    ``ListOfStruct.clear_runtime_caches`` drops ``_ffpopt_calc_cache`` so the
+    checkpoint does not serialize an XTB/DFT/sander handle. The parent process
+    still needs that cache: serial ``nproc=1`` would otherwise rebuild the
+    model on every checkpoint. Unbind, dump, rebind.
+    """
+    calc = getattr(los, "calc", None) if los is not None else None
+    cache = getattr(los, "_ffpopt_calc_cache", None) if los is not None else None
+    if los is not None:
+        clearer = getattr(los, "clear_runtime_caches", None)
+        if callable(clearer):
+            clearer()
+    try:
+        atomic_pickle_dump(obj, path)
+    finally:
+        if los is not None:
+            if calc is not None:
+                los.calc = calc
+            if cache is not None:
+                los._ffpopt_calc_cache = cache
+
+
 def uses_soft_dihed_restraint(los) -> bool:
     """True when wavefront should not hard-apply the scanned dihedral.
 
@@ -810,12 +834,17 @@ def run_mp_spawn_drain_loop(
     print_progress,
     checkpoint_every: int,
     terminate_pool: bool = True,
+    on_dispatch=None,
+    on_skip=None,
 ) -> None:
     """Shared multiprocessing drain loop for 1-D and N-D wavefront scans.
 
     ``pool`` may be ``None`` for serial execution. Callers create the pool and
     own finish bookkeeping after this returns. When ``terminate_pool`` is
     False, the pool is left open for reuse across sequential scans.
+
+    ``on_dispatch`` is called when a node is about to run (pending -> in-flight).
+    ``on_skip`` is called when a queued node is dropped as inactive.
     """
     import time
 
@@ -830,7 +859,13 @@ def run_mp_spawn_drain_loop(
                     pending.extend(on_complete(node))
                     continue
                 if not node.active:
+                    if on_skip is not None:
+                        extra = on_skip(node)
+                        if extra is not None:
+                            pending.append(extra)
                     continue
+                if on_dispatch is not None:
+                    on_dispatch(node)
                 if pool is None:
                     node.calculate()
                     pending.extend(on_complete(node))
@@ -877,6 +912,8 @@ def run_mpi_spawn_drain_loop(
     cleanup_completed,
     print_progress,
     checkpoint_every: int,
+    on_dispatch=None,
+    on_skip=None,
 ) -> None:
     """Shared MPI master drain loop (rank 0) for N-D wavefront scans.
 
@@ -900,9 +937,15 @@ def run_mpi_spawn_drain_loop(
                     idle_workers.add(worker)
                     continue
                 if not node.active:
+                    if on_skip is not None:
+                        extra = on_skip(node)
+                        if extra is not None:
+                            pending.append(extra)
                     idle_workers.add(worker)
                     continue
 
+                if on_dispatch is not None:
+                    on_dispatch(node)
                 comm.send(node.to_job(), dest=worker, tag=tag_task)
                 in_flight[worker] = node
 

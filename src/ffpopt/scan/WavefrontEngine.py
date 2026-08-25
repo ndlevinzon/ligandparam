@@ -18,7 +18,6 @@ from ffpopt.Struct import ListOfStruct, Struct
 from .WavefrontMixins import (
     apply_slim_node_result,
     apply_wavefront_minimum_to_node,
-    atomic_pickle_dump,
     clear_los_calc,
     clone_struct_geometry,
     ensure_soft_opt_attrs,
@@ -27,6 +26,7 @@ from .WavefrontMixins import (
     load_wavefront_pickle,
     mark_node_failed,
     merge_standard_wavefront_kwargs,
+    pickle_checkpoint_keep_calc_cache,
     pickle_load_compat,
     precheck_geometry_clash,
     replace_node_with_pickle,
@@ -138,28 +138,61 @@ def _run_node(node: "WavefrontNode") -> "WavefrontNode":
     return node
 
 
-def GetGridNeighbors(bidx, grid, validbins=None):
-    from ndfes.GridUtils import LinearPtsToMeshPts
-    lol = []
-    for idim in range(len(grid.dims)):
-        if grid.dims[idim].isper:
-            ilo = bidx[idim]-1
-            ihi = bidx[idim]+2
-            lol.append( [i % grid.dims[idim].size for i in range(ilo,ihi) ] )
-        else:
-            ilo = max( bidx[idim]-1, 0 )
-            ihi = min( bidx[idim]+2, grid.dims[idim].size )
-            lol.append( [i for i in range(ilo,ihi) ] )
-    pts = LinearPtsToMeshPts(lol)
-    newpts = []
-    for pt in pts:
-        b = [int(round(x)) for x in pt]
-        if b != bidx:
-            if validbins is not None:
-                gidx = grid.CptGlbIdxFromBinIdx(b)
-                if gidx in validbins:
-                    newpts.append(b)
+def GetGridNeighbors(bidx, grid, validbins=None, *, stencil: str = "von_neumann"):
+    """Return neighbor bin indices of ``bidx``.
+
+    Default ``von_neumann`` is axis-aligned only (2 * ndim bins): enough to
+    fill an N-D grid. ``moore`` is the full 3**ndim - 1 stencil, including
+    diagonals (extra multi-starts, not required for coverage).
+    """
+    bidx = [int(round(x)) for x in bidx]
+    ndim = len(grid.dims)
+
+    def _keep(b):
+        if validbins is None:
+            return True
+        gidx = grid.CptGlbIdxFromBinIdx(b)
+        return gidx in validbins
+
+    if stencil == "moore":
+        from ndfes.GridUtils import LinearPtsToMeshPts
+
+        lol = []
+        for idim in range(ndim):
+            if grid.dims[idim].isper:
+                ilo = bidx[idim] - 1
+                ihi = bidx[idim] + 2
+                lol.append([i % grid.dims[idim].size for i in range(ilo, ihi)])
             else:
+                ilo = max(bidx[idim] - 1, 0)
+                ihi = min(bidx[idim] + 2, grid.dims[idim].size)
+                lol.append([i for i in range(ilo, ihi)])
+        pts = LinearPtsToMeshPts(lol)
+        newpts = []
+        for pt in pts:
+            b = [int(round(x)) for x in pt]
+            if b != bidx and _keep(b):
+                newpts.append(b)
+        return newpts
+
+    if stencil not in ("von_neumann", "axis"):
+        raise ValueError(
+            f"Unknown neighbor stencil {stencil!r}; use 'von_neumann' or 'moore'"
+        )
+
+    newpts = []
+    for idim in range(ndim):
+        dim = grid.dims[idim]
+        for step in (-1, 1):
+            b = list(bidx)
+            j = bidx[idim] + step
+            if dim.isper:
+                b[idim] = j % dim.size
+            elif 0 <= j < dim.size:
+                b[idim] = j
+            else:
+                continue
+            if _keep(b):
                 newpts.append(b)
     return newpts
 
@@ -612,6 +645,9 @@ class Wavefront:
         self.verbose = False
         self.convergence_threshold = convergence_threshold
         self._resume_queue = None
+        self._pending_by_loc = {}
+        self._inflight_locs = set()
+        self._deferred_seeds = {}
         self.grid = copy.deepcopy(grid) if grid is not None else None
         self.conlist = copy.deepcopy(conlist) if conlist is not None else None
         self.reslist = copy.deepcopy(reslist) if reslist is not None else None
@@ -1014,6 +1050,7 @@ class Wavefront:
                             for node in level.nodes
                             if node.active and not node.complete)
 
+        self._rebuild_occupancy(pending)
         self._resume_queue = list(pending)
         self.save_checkpoint()
         cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
@@ -1037,6 +1074,8 @@ class Wavefront:
             pool=pool,
             run_node_job=_run_node_job,
             on_complete=self._on_complete,
+            on_dispatch=self._mark_dispatch,
+            on_skip=self._finish_loc,
             set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
             save_checkpoint=self.save_checkpoint,
             cleanup_completed=self._cleanup_completed,
@@ -1158,12 +1197,145 @@ class Wavefront:
 
         """
         self._evaluate_node(node)
-        if not node.active:
-            return []
-        if self.max_levels > 0 and node.level + 1 > self.max_levels:
-            print(f"Reached maximum levels: {self.max_levels}. Stopping calculation.")
-            raise ValueError("Too many levels, something is wrong with the wavefront algorithm.")
-        return self.spawn_neighbors(node)
+        spawned = []
+        if node.active:
+            if self.max_levels > 0 and node.level + 1 > self.max_levels:
+                print(f"Reached maximum levels: {self.max_levels}. Stopping calculation.")
+                raise ValueError("Too many levels, something is wrong with the wavefront algorithm.")
+            spawned.extend(self.spawn_neighbors(node))
+        extra = self._finish_loc(node)
+        if extra is not None:
+            spawned.append(extra)
+        return spawned
+
+    def _ensure_occupancy(self) -> None:
+        if getattr(self, "_pending_by_loc", None) is None:
+            self._pending_by_loc = {}
+        if getattr(self, "_inflight_locs", None) is None:
+            self._inflight_locs = set()
+        if getattr(self, "_deferred_seeds", None) is None:
+            self._deferred_seeds = {}
+
+    @staticmethod
+    def _seed_rank(energy) -> float:
+        if energy is None:
+            return float("inf")
+        try:
+            val = float(energy)
+        except (TypeError, ValueError):
+            return float("inf")
+        if not np.isfinite(val):
+            return float("inf")
+        return val
+
+    def _loc_key(self, node=None, *, angle=None, rcs=None):
+        """Stable occupancy key: 1-D snapped angle, N-D global bin index."""
+        if self.is_nd:
+            coords = rcs if rcs is not None else node.rcs
+            bidx = self.grid.GetBinIdx(coords)
+            return self.grid.CptGlbIdxFromBinIdx(bidx)
+        ang = angle if angle is not None else node.angle
+        return float(self.nearest_angle(ang, self.delta) % 360)
+
+    def _rebuild_occupancy(self, pending) -> None:
+        """Index pending nodes by loc; drop duplicate locs from the deque."""
+        from collections import deque as _deque
+
+        self._ensure_occupancy()
+        self._pending_by_loc = {}
+        self._inflight_locs = set()
+        kept = _deque()
+        for node in list(pending):
+            loc = self._loc_key(node)
+            if loc in self._pending_by_loc:
+                continue
+            if getattr(node, "seed_energy", None) is None:
+                node.seed_energy = float("inf")
+            self._pending_by_loc[loc] = node
+            kept.append(node)
+        pending.clear()
+        pending.extend(kept)
+
+    def _mark_dispatch(self, node: WavefrontNode) -> None:
+        self._ensure_occupancy()
+        loc = self._loc_key(node)
+        self._pending_by_loc.pop(loc, None)
+        self._inflight_locs.add(loc)
+
+    def _finish_loc(self, node: WavefrontNode):
+        """Free occupancy for ``node`` and enqueue the best deferred seed, if any."""
+        self._ensure_occupancy()
+        loc = self._loc_key(node)
+        self._pending_by_loc.pop(loc, None)
+        self._inflight_locs.discard(loc)
+        deferred = self._deferred_seeds.pop(loc, None)
+        if deferred is None:
+            return None
+        return self._enqueue_visit(
+            loc,
+            struct=deferred["struct"],
+            seed_energy=deferred["energy"],
+            level_id=deferred.get("level", (node.level or 0) + 1),
+            angle=node.angle,
+            rcs=getattr(node, "rcs", None),
+        )
+
+    def _enqueue_visit(
+        self,
+        loc,
+        *,
+        struct,
+        seed_energy,
+        level_id,
+        angle=None,
+        rcs=None,
+    ):
+        """Return a new pending node, or None if loc is already queued/in-flight.
+
+        A better (lower) ``seed_energy`` replaces the pending seed in place, or
+        is stored as a deferred seed if that loc is already running.
+        """
+        self._ensure_occupancy()
+        rank = self._seed_rank(seed_energy)
+        pending = self._pending_by_loc.get(loc)
+        if pending is not None:
+            old = self._seed_rank(getattr(pending, "seed_energy", None))
+            if rank < old:
+                pending.struct = struct
+                pending.seed_energy = rank
+                print(f"Coalesce pending loc={loc}: better seed E={rank} < {old}")
+            return None
+        if loc in self._inflight_locs:
+            cur = self._deferred_seeds.get(loc)
+            if cur is None or rank < self._seed_rank(cur.get("energy")):
+                self._deferred_seeds[loc] = {
+                    "struct": struct,
+                    "energy": rank,
+                    "level": level_id,
+                }
+                print(f"Defer seed loc={loc}: in-flight, E={rank}")
+            return None
+        level = self._get_or_create_level(level_id)
+        if self.is_nd:
+            node = level.add_node(
+                self.los,
+                struct,
+                conlist=self.conlist,
+                reslist=self.reslist,
+                grid=self.grid,
+                rcs=rcs,
+            )
+        else:
+            node = level.add_node(
+                self.los,
+                struct,
+                self.con,
+                angle=angle,
+                workdir=self.workdir,
+            )
+        node.seed_energy = rank
+        self._pending_by_loc[loc] = node
+        return node
 
     def _rebuild_level_energies(self) -> None:
         if self.is_nd:
@@ -1199,10 +1371,8 @@ class Wavefront:
         # Refresh the derived per-level convergence history so any checkpoint is
         # immediately consumable by ffpopt-WavefrontAnimate.py.
         self._rebuild_level_energies()
-        if self.los is not None:
-            self.los.clear_runtime_caches()
         slim_completed_nodes_for_checkpoint(self)
-        atomic_pickle_dump(self, self.checkpoint)
+        pickle_checkpoint_keep_calc_cache(self, self.checkpoint, self.los)
         print(f"Checkpoint saved to {self.checkpoint}.")
 
     def _slim_nodes_for_checkpoint(self) -> None:
@@ -1318,24 +1488,22 @@ class Wavefront:
         """
         if not node.active:
             raise ValueError("Cannot spawn neighbors for an inactive node.")
-        next_level = self._get_or_create_level(node.level + 1)
+        next_level_id = node.level + 1
         lower = self.nearest_angle(node.angle - self.delta, self.delta) % 360
         upper = self.nearest_angle(node.angle + self.delta, self.delta) % 360
-        lower_node = next_level.add_node(
-            self.los,
-            node.opt_geom,
-            self.con,
-            angle=lower,
-            workdir=self.workdir,
-        )
-        upper_node = next_level.add_node(
-            self.los,
-            node.opt_geom,
-            self.con,
-            angle=upper,
-            workdir=self.workdir,
-        )
-        return [lower_node, upper_node]
+        spawned = []
+        for ang in (lower, upper):
+            loc = self._loc_key(angle=ang)
+            child = self._enqueue_visit(
+                loc,
+                struct=node.opt_geom,
+                seed_energy=node.energy,
+                level_id=next_level_id,
+                angle=ang,
+            )
+            if child is not None:
+                spawned.append(child)
+        return spawned
 
     def calculate_threads(self) -> None:
             """Apply the wavefront algorithm to optimize a dihedral scan.
@@ -1390,6 +1558,7 @@ class Wavefront:
                                 for node in level.nodes
                                 if node.active and not node.complete)
 
+            self._rebuild_occupancy(pending)
             self._resume_queue = list(pending)
             self.save_checkpoint()
             cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
@@ -1426,6 +1595,8 @@ class Wavefront:
                 pool=pool,
                 run_node_job=_run_node_job,
                 on_complete=self._on_complete,
+                on_dispatch=self._mark_dispatch,
+                on_skip=self._finish_loc,
                 set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
                 save_checkpoint=self.save_checkpoint,
                 cleanup_completed=self._cleanup_completed,
@@ -1514,6 +1685,7 @@ class Wavefront:
                                 for node in level.nodes
                                 if node.active and not node.complete)
 
+            self._rebuild_occupancy(pending)
             self._resume_queue = list(pending)
             self.save_checkpoint()
             cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
@@ -1529,6 +1701,8 @@ class Wavefront:
                 tag_result=TAG_RESULT,
                 tag_stop=TAG_STOP,
                 on_complete=self._on_complete,
+                on_dispatch=self._mark_dispatch,
+                on_skip=self._finish_loc,
                 set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
                 save_checkpoint=self.save_checkpoint,
                 cleanup_completed=self._cleanup_completed,
@@ -1665,41 +1839,23 @@ class Wavefront:
             """
             if not node.active:
                 raise ValueError("Cannot spawn neighbors for an inactive node.")
-            next_level = self._get_or_create_level(node.level + 1)
-
-            # TIM RIGHT HERE. THIS NEEDS A N-D LAYER ALGORTHIM WITH CHECKS TO MAKE
-            # SURE THINGS ARE IN RANGE *AND* THE PROPOSED BINS ARE WITHIN self.bins
-            # BECAUSE IN THE FUTURE THE BINS DICT MAY ONLY HAVE A SUBSECTION
-            
-            # lower = self.nearest_angle(node.angle - self.delta, self.delta) % 360
-            # upper = self.nearest_angle(node.angle + self.delta, self.delta) % 360
-            # lower_node = next_level.add_node(self.los,
-            #                                  node.opt_geom,
-            #                                  self.con,
-            #                                  angle=lower)
-            # upper_node = next_level.add_node(self.los,
-            #                                  node.opt_geom,
-            #                                  self.con,
-            #                                  angle=upper)
-            # return [lower_node, upper_node]
-
+            next_level_id = node.level + 1
             bidx = self.grid.GetBinIdx(node.rcs)
-            bins = GetGridNeighbors(bidx,self.grid,validbins=self.bins)
+            bins = GetGridNeighbors(bidx, self.grid, validbins=self.bins)
             nodes = []
             for newbin in bins:
                 gidx = self.grid.CptGlbIdxFromBinIdx(newbin)
                 rcs = self.bins[gidx].center
-                #print(f"spawn_neighbors {gidx} {newbin} {rcs}")
-                nodes.append(next_level.add_node(
-                    self.los,
-                    node.opt_geom,
-                    conlist=self.conlist,
-                    reslist=self.reslist,
-                    grid=self.grid,
+                child = self._enqueue_visit(
+                    gidx,
+                    struct=node.opt_geom,
+                    seed_energy=node.energy,
+                    level_id=next_level_id,
                     rcs=rcs,
-                ))
-                print(f"Spawn  node {nodes[-1].node_pkl} from {node.node_pkl}")
-                
+                )
+                if child is not None:
+                    print(f"Spawn  node {child.node_pkl} from {node.node_pkl}")
+                    nodes.append(child)
             return nodes
 
     def _evaluate_node_nd(self, node: WavefrontNode) -> None:
