@@ -8,6 +8,7 @@ from ffpopt.dihed.DihedFourier import (
     parmed_dihedral_type_list_from_prims,
     parmed_dihedral_types_from_prims,
 )
+from ffpopt.dihed.DihedParmEd import ChangeDihedrals, WriteParmedScript
 from ffpopt.dihed.DihedFitSolve import (
     IsolatedLinearSolve,
     build_fixed_geometry_ll_cache,
@@ -327,7 +328,6 @@ class SystemType(object):
             A new Parm object with the dihedral parameters set according to the instances.
         
         """
-        from ffpopt.dihed.Dihedrals import ChangeDihedrals
         from ffpopt.AmberParm import CopyParm
 
         p = CopyParm(self.mol)

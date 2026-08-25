@@ -651,6 +651,18 @@ def apply_wavefront_minimum_to_node(
     return decision
 
 
+def print_wavefront(msg: str, *, flush: bool = True) -> None:
+    """Print one wavefront line with a leading ``[wavefront]`` scope.
+
+    The hierarchical console formatter peels this into ``[ffpopt] [wavefront]``
+    (or ``[ligandparam] [wavefront]``), matching ``[affdo]`` / ``[twist]``.
+    """
+    from ffpopt.runtime.Console import ascii_for_stdio
+
+    text = msg if msg.lstrip().startswith("[") else f"[wavefront] {msg}"
+    print(ascii_for_stdio(text), flush=flush)
+
+
 def format_wavefront_progress(
     wavefront: Any,
     pending: int,
@@ -750,7 +762,7 @@ def load_wavefront_pickle(filename: str, *, restore_soft_opt: bool = True):
                 ensure()
             else:
                 ensure_soft_opt_attrs(node)
-    print("Wavefront object loaded from", filename)
+    print_wavefront(f"wavefront object loaded from {filename}")
     return wavefront
 
 

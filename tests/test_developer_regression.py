@@ -631,6 +631,24 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertIn("[affdo]", line)
         self.assertIn("extras: whole_ligand=True", line)
 
+    def test_wavefront_scope_peels_on_console(self):
+        from ffpopt.runtime.Console import format_console_line
+        from ffpopt.scan.WavefrontMixins import print_wavefront
+
+        line = format_console_line(
+            "[wavefront] starting wavefront calculation", tag="ffpopt"
+        )
+        self.assertIn("[ffpopt]", line)
+        self.assertIn("[wavefront]", line)
+        self.assertIn("starting wavefront calculation", line)
+
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            print_wavefront("no checkpoint file found at /tmp/ckpt.pkl")
+        out = buf.getvalue()
+        self.assertTrue(out.isascii())
+        self.assertIn("[wavefront] no checkpoint file found at /tmp/ckpt.pkl", out)
+
     def test_attach_console_handlers_idempotent(self):
         from ffpopt.runtime.Console import attach_console_handlers
 
@@ -1964,6 +1982,31 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIs(NonlinearSolve, DihedFitSolve.NonlinearSolve)
         self.assertTrue(isinstance(FitInputType, type))
         self.assertTrue(callable(FindPuckers))
+
+        from ffpopt.dihed import DihedFitTypes, DihedMath
+        self.assertIs(DihedFitTypes.WriteParmedScript, DihedParmEd.WriteParmedScript)
+        self.assertIs(DihedFitTypes.ChangeDihedrals, DihedParmEd.ChangeDihedrals)
+        self.assertIs(DihedFitSolve.shape_match_delta, DihedMath.shape_match_delta)
+
+    def test_system_write_output_calls_parmed_script(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from ffpopt.dihed.DihedFitTypes import SystemType
+
+        dfcn = SimpleNamespace(idxs=None)
+        pinst = SimpleNamespace(
+            ptype=SimpleNamespace(dfcns=dfcn),
+            dihedidxs=[[0, 1, 2, 3]],
+        )
+        system = SystemType.__new__(SystemType)
+        system.output = "it01.py"
+        system.mol = object()
+        system._fit_owner = SimpleNamespace(scee=1.2, scnb=2.0)
+        system.pinstances = [pinst]
+        with patch("ffpopt.dihed.DihedFitTypes.WriteParmedScript") as writer:
+            system.write_output()
+        writer.assert_called_once()
+        self.assertEqual(writer.call_args.args[0], "it01.py")
 
     def test_geomopt_facade_exports(self):
         from ffpopt.geom import GeomOptAse, GeomOptParallel

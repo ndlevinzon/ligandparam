@@ -29,6 +29,7 @@ from .WavefrontMixins import (
     pickle_checkpoint_keep_calc_cache,
     pickle_load_compat,
     precheck_geometry_clash,
+    print_wavefront,
     replace_node_with_pickle,
     require_main_guard_for_spawn,
     run_mp_spawn_drain_loop,
@@ -716,10 +717,10 @@ class Wavefront:
         for node in getattr(self, "_resume_queue", None) or []:
             if hasattr(node, "_ensure_soft_opt_attrs"):
                 node._ensure_soft_opt_attrs()
-        print("Number of times restarted:", len(self.restarted))
+        print_wavefront(f"number of times restarted: {len(self.restarted)}")
         self.restarted.append(prev_options)
         
-        print("Restart options updated.")
+        print_wavefront("restart options updated")
 
     def theory_change(self, #stdargs: StandardArgs,
                       los: ListOfStruct,
@@ -750,7 +751,7 @@ class Wavefront:
         dihedral_angles = list(self.min_energies.keys())
         dihedral_angles.sort()
         for angle in dihedral_angles[::stride]:
-            print(angle)
+            print_wavefront(f"theory_change add node at angle {angle}")
             old = self.min_structures[angle]
             # Re-bind geometry onto the new ListOfStruct template so parm/topology
             # match the updated theory (critical when seeding itNN from orig).
@@ -775,7 +776,7 @@ class Wavefront:
         self.levels.append(new_starting_level)
         self.los = los
         clear_los_calc(los)
-        print("Theory changed and new starting level added.")
+        print_wavefront("theory changed and new starting level added")
 
 
 
@@ -796,7 +797,7 @@ class Wavefront:
             This function does not return anything, but it initializes the wavefront calculation.
             
         """
-        print("Starting wavefront calculation...")
+        print_wavefront("starting wavefront calculation")
         self.init_min()
         #Add the initial level
         self.add_level()
@@ -807,18 +808,23 @@ class Wavefront:
         if chosen_second is not None:
             extra_dih = chosen_second
         
-        print("Generating conformers and adding initial nodes...")
+        print_wavefront("generating conformers and adding initial nodes")
         min_geoms = []
         
         for i in range(self.num_conformers):
             angle_increment = (360 // self.num_conformers) * i
-            print(f"Generating conformer {i+1} with angle increment {angle_increment} degrees.")
+            print_wavefront(
+                f"generating conformer {i+1} with angle increment {angle_increment} deg"
+            )
             min_geoms.append(self.init_conformer(self.struct, self.con, extra_dih, angle_increment))
 
         for i in range(self.starting_nodes):
             # Add the initial node with the minimum geometry angle
             add_ang = (360//self.delta//self.starting_nodes * i *self.delta)
-            print(f"Adding starting node at angle: {self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360}")
+            print_wavefront(
+                "adding starting node at angle: "
+                f"{self.nearest_angle(self.min_geom_ang + add_ang, self.delta) % 360}"
+            )
             if self.init_check(self.struct, self.con, self.nearest_angle(self.min_geom_ang + add_ang, self.delta)% 360):
                 self.levels[0].add_node(
                     self.los,
@@ -841,9 +847,9 @@ class Wavefront:
 
         if not self.levels[0].nodes:
             native = self.nearest_angle(self.min_geom_ang, self.delta) % 360
-            print(
-                "[wavefront] all seed angles failed the hard-twist clash "
-                f"check; seeding native angle {native} deg so the scan can start"
+            print_wavefront(
+                "all seed angles failed the hard-twist clash check; "
+                f"seeding native angle {native} deg so the scan can start"
             )
             self.levels[0].add_node(
                 self.los,
@@ -886,21 +892,32 @@ class Wavefront:
         new_atoms = copy.deepcopy(struct)
         extra_con = ",".join([str(x) for x in extra_con_in]) if extra_con_in else None
         if extra_con is not None:
-            print(f"Generating conformer with extra dihedral constraint: {extra_con} at angle {angle_increment}")
+            print_wavefront(
+                f"generating conformer with extra dihedral {extra_con} "
+                f"at angle {angle_increment}"
+            )
             extra_con = Constraint.from_str(extra_con, graph=self.struct.GetGraph())
             extra_con.value = angle_increment
             if self.init_check(new_atoms, con, con.value, extra_con=extra_con, extra_angle=angle_increment):
                 conf_min_geom = GeomOpt(self.los, new_atoms, constraints=[con, extra_con])
             else:
-                print(f"Skipping conformer generation for angle {angle_increment} due to invalid initial geometry.")
+                print_wavefront(
+                    f"skipping conformer generation for angle {angle_increment} "
+                    "(invalid initial geometry)"
+                )
                 conf_min_geom = self.init_conformer(struct, con, extra_con_in, angle_increment=angle_increment + self.delta, iter_count=iter_count + 1)
         else:
-            print(f"Generating conformer without extra dihedral constraint at angle {angle_increment}")
-            print(f"This typically means that there were no adjacent dihedrals found.")
+            print_wavefront(
+                f"generating conformer without extra dihedral at angle {angle_increment}"
+            )
+            print_wavefront("no adjacent dihedrals found for extra-conformer generation")
             if self.init_check(new_atoms, con, con.value):
                 conf_min_geom = GeomOpt(self.los, new_atoms, constraints=[con])
             else:
-                print(f"Skipping conformer generation for angle {angle_increment} due to invalid initial geometry.")
+                print_wavefront(
+                    f"skipping conformer generation for angle {angle_increment} "
+                    "(invalid initial geometry)"
+                )
                 conf_min_geom = self.init_conformer(struct, con, extra_con_in, angle_increment=angle_increment + self.delta, iter_count=iter_count + 1)
         
         return conf_min_geom
@@ -954,8 +971,10 @@ class Wavefront:
             myatoms.get_positions(), struct.data["bonds"], min_dist=0.8
         )
         if clashed:
-            print(f"Warning: Distance between atom {i} and atom {j} is {dist:.3f} Ang (< 0.8 Ang)")
-            print(f"Ommitting this node due to close proximity of atoms.")
+            print_wavefront(
+                f"warning: distance between atom {i} and atom {j} is {dist:.3f} Ang "
+                "(< 0.8 Ang); omitting this node"
+            )
             return False
         return True
 
@@ -1090,8 +1109,10 @@ class Wavefront:
         cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
         self._print_progress(0, 0)
         results = self.sort_results()
-        print("[wavefront] finished this scan "
-              f"(angles={len(self.min_energies)}, checkpoint={self.checkpoint})")
+        print_wavefront(
+            f"finished this scan (angles={len(self.min_energies)}, "
+            f"checkpoint={self.checkpoint})"
+        )
         return results
 
     def _print_progress(self, pending: int, in_flight: int) -> None:
@@ -1200,7 +1221,9 @@ class Wavefront:
         spawned = []
         if node.active:
             if self.max_levels > 0 and node.level + 1 > self.max_levels:
-                print(f"Reached maximum levels: {self.max_levels}. Stopping calculation.")
+                print_wavefront(
+                    f"reached maximum levels: {self.max_levels}; stopping"
+                )
                 raise ValueError("Too many levels, something is wrong with the wavefront algorithm.")
             spawned.extend(self.spawn_neighbors(node))
         extra = self._finish_loc(node)
@@ -1373,7 +1396,7 @@ class Wavefront:
         self._rebuild_level_energies()
         slim_completed_nodes_for_checkpoint(self)
         pickle_checkpoint_keep_calc_cache(self, self.checkpoint, self.los)
-        print(f"Checkpoint saved to {self.checkpoint}.")
+        print_wavefront(f"checkpoint saved to {self.checkpoint}")
 
     def _slim_nodes_for_checkpoint(self) -> None:
         """Drop bulky redundant arrays from completed nodes before pickling."""
@@ -1546,7 +1569,7 @@ class Wavefront:
             # the work the checkpoint recorded as pending/in-flight (falling back to
             # any active, incomplete node for checkpoints predating _resume_queue).
 
-            print("Entered calculate_threads")
+            print_wavefront("entered calculate_threads")
             
             if not self.levels:
                 self.init_calculation()
@@ -1611,9 +1634,11 @@ class Wavefront:
             cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
             self._print_progress(0, 0)
             results = self.sort_results()
-            print("[wavefront] finished this scan "
-                  f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
-                  f"checkpoint={getattr(self, 'checkpoint', None)})")
+            print_wavefront(
+                "finished this scan "
+                f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
+                f"checkpoint={getattr(self, 'checkpoint', None)})"
+            )
             return results
 
     def calculate_mpi(self) -> None:
@@ -1717,9 +1742,11 @@ class Wavefront:
             self._print_progress(0, 0)
 
             results = self.sort_results()
-            print("[wavefront] finished this scan "
-                  f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
-                  f"checkpoint={getattr(self, 'checkpoint', None)})")
+            print_wavefront(
+                "finished this scan "
+                f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
+                f"checkpoint={getattr(self, 'checkpoint', None)})"
+            )
             return results
 
     def plot_wavefront(self,
@@ -1914,7 +1941,7 @@ class Wavefront:
             if is_mpi_worker():
                 return
             
-            print("Starting wavefront calculation...")
+            print_wavefront("starting wavefront calculation")
             #Add the initial level
             self.add_level()
 
@@ -1934,7 +1961,10 @@ class Wavefront:
                 bidx = self.grid.GetBinIdx(rc)
                 oldrc = [x for x in rc]
                 if None in bidx:
-                    print(f"Skipping initial structure {s.data['name']} because reaction coordinates {rc} are out of bounds")
+                    print_wavefront(
+                        f"skipping initial structure {s.data['name']} "
+                        f"(reaction coordinates {rc} out of bounds)"
+                    )
                     continue
                 rc   = self.grid.GetBinCenter(bidx)
                 self.levels[0].add_node(
@@ -1947,10 +1977,14 @@ class Wavefront:
                     node_id=s.data["name"],
                 )
                 num_added += 1
-                print(f"init_node {bidx} {rc} {self.levels[0].nodes[-1].node_pkl}")
+                print_wavefront(
+                    f"init_node {bidx} {rc} {self.levels[0].nodes[-1].node_pkl}"
+                )
             if num_added == 0:
                 from mpi4py import MPI
-                print("Failed to initialize the wavefront method from the initial conformers")
+                print_wavefront(
+                    "failed to initialize the wavefront from the initial conformers"
+                )
                 MPI.COMM_WORLD.Abort()
 
     def _theory_change_nd(self, 
@@ -1982,7 +2016,9 @@ class Wavefront:
             gidxs = list(self.min_bins.keys())
             gidxs.sort()
             for gidx in gidxs[::stride]:
-                print(f"theory_change add node {gidx}, {self.min_bins[gidx].center}")
+                print_wavefront(
+                    f"theory_change add node {gidx}, {self.min_bins[gidx].center}"
+                )
                 new_starting_level.add_node(
                     los,
                     self.min_bins[gidx].struct,
@@ -1996,7 +2032,7 @@ class Wavefront:
             #self.min_structures = {}
             #self.min_nodes = {}
             self.levels.append(new_starting_level)
-            print("Theory changed and new starting level added.")
+            print_wavefront("theory changed and new starting level added")
 
     def _print_progress_nd(self, pending: int, in_flight: int) -> None:
             """ Print a one-line live progress summary for the calculation queue.
@@ -2088,17 +2124,16 @@ class Wavefront:
 
     def print_summary(self) -> None:
         """Print a summary of the wavefront results."""
-        print("Wavefront Summary:")
-        print(f"Total Levels: {len(self.levels)}")
-        print("Number of Nodes per Level:")
+        print_wavefront("summary")
+        print_wavefront(f"total levels: {len(self.levels)}")
+        print_wavefront("number of nodes per level:")
         for i, level in enumerate(self.levels):
-            print(f"Level {i+1}: {len(level.nodes)} nodes")
+            print_wavefront(f"  level {i+1}: {len(level.nodes)} nodes")
         total = sum(len(level.nodes) for level in self.levels)
-        print("Total Nodes: ", total)
+        print_wavefront(f"total nodes: {total}")
         if self.levels:
-            print(
-                "Average number of nodes per level: ",
-                total / len(self.levels),
+            print_wavefront(
+                f"average nodes per level: {total / len(self.levels)}"
             )
 
         failed = []
@@ -2112,26 +2147,24 @@ class Wavefront:
                 elif node.energy is None or not np.isfinite(node.energy):
                     failed.append(node)
 
-        print(f"Failed nodes: {len(failed)}")
+        print_wavefront(f"failed nodes: {len(failed)}")
         if failed:
             for node in failed[:20]:
-                print(
+                print_wavefront(
                     f"  loc={node.rcs if getattr(node, 'is_nd', False) else node.angle} "
                     f"id={node.node_id} "
                     f"error={getattr(node, 'error', None)}"
                 )
             if len(failed) > 20:
-                print(f"  ... and {len(failed) - 20} more")
-        print(f"Soft-accepted nodes (no spawn): {len(soft)}")
+                print_wavefront(f"  ... and {len(failed) - 20} more")
+        print_wavefront(f"soft-accepted nodes (no spawn): {len(soft)}")
         if failed:
-            print(
-                f"Wavefront calculation finished with {len(failed)} failed "
-                f"node(s)."
+            print_wavefront(
+                f"finished with {len(failed)} failed node(s)"
             )
         else:
-            print(
-                "[wavefront] summary: no failed nodes "
-                f"({len(soft)} soft-accepted)."
+            print_wavefront(
+                f"summary: no failed nodes ({len(soft)} soft-accepted)"
             )
     
     
@@ -2256,9 +2289,9 @@ def find_adjacent_dihedrals(con: Constraint, los: ListOfStruct) -> tuple[list[in
         if chosen_first and chosen_second:
             break
     if chosen_first is None and chosen_second is None:
-        print("No adjacent dihedrals found for conformer generation.")
+        print_wavefront("no adjacent dihedrals found for conformer generation")
     else:
-        print(chosen_first, chosen_second)
+        print_wavefront(f"adjacent dihedrals: {chosen_first} {chosen_second}")
     return chosen_first, chosen_second
 
 def wavefront_loader(filename: str) -> Wavefront:
@@ -2375,7 +2408,9 @@ def run_dihed_wavefront(
         starting_checkpoint_path = checkpoint_path
 
     if starting_checkpoint_path.exists():
-        print(f"Checkpoint file {starting_checkpoint_path} exists. Loading previous wavefront run.")
+        print_wavefront(
+            f"checkpoint {starting_checkpoint_path} exists; loading previous run"
+        )
         wf_run = pickle_load_compat(starting_checkpoint_path)
         wf_run.restart_options(
             inps,
@@ -2385,9 +2420,12 @@ def run_dihed_wavefront(
         )
         if not isinstance(wf_run, Wavefront):
             raise TypeError("Checkpoint file does not contain a valid Wavefront object.")
-        print("Wavefront run loaded successfully.")
+        print_wavefront("wavefront run loaded successfully")
     else:
-        print(f"No checkpoint file found at {starting_checkpoint_path}. Starting a new wavefront run.")
+        print_wavefront(
+            f"no checkpoint file found at {starting_checkpoint_path}; "
+            "starting a new wavefront run"
+        )
         wf_run = Wavefront(
             inps, inps[0], con,
             delta=args.delta,
@@ -2400,7 +2438,7 @@ def run_dihed_wavefront(
         )
 
     if args.wf_change_theory:
-        print("Changing theory of the calculator for all nodes in the wavefront calculation.")
+        print_wavefront("changing theory of the calculator for all nodes")
         wf_run.theory_change(inps, stride=args.wf_theory_stride)
 
     wf_run.calculate()
@@ -2419,22 +2457,22 @@ def run_dihed_wavefront(
     structures.save(args.out)
 
     for i, angle in enumerate(angles):
-        print(f"Angle: {angle}, Energy: {energies[i]}")
-    print(f"[wavefront] finished this scan -> {args.out}")
+        print_wavefront(f"angle={angle} energy={energies[i]}")
+    print_wavefront(f"finished this scan -> {args.out}")
 
     dat = out_path.with_suffix(".dat")
     with open(dat, "w") as fh:
         for a, e, n in zip(angles, energies, energies_noshift):
             fh.write(f"{a} {e} {n}\n")
-    print(f"Data written to {dat}.")
+    print_wavefront(f"data written to {dat}")
 
     pkl_path = out_path.with_suffix(".pkl")
     pickle.dump(wf_run, open(pkl_path, "wb"))
-    print(f"Wavefront run saved to {pkl_path}.")
+    print_wavefront(f"wavefront run saved to {pkl_path}")
     wf_fname = str(out_path.parent / f"wf_workflow_{out_path.with_suffix('.png').name}")
     plot_wavefront(wf_run.levels, delta=args.delta, filename=wf_fname)
     wf_run.print_summary()
-    print(f"Wavefront plot saved as '{wf_fname}'.")
+    print_wavefront(f"wavefront plot saved as {wf_fname}")
 
     return {
         "wf_run": wf_run,
@@ -2555,9 +2593,8 @@ def run_ndim_dihed_wavefront(
 
     if starting_checkpoint_path.exists():
         if not is_worker:
-            print(
-                f"Checkpoint file {starting_checkpoint_path} exists. "
-                "Loading previous wavefront run."
+            print_wavefront(
+                f"checkpoint {starting_checkpoint_path} exists; loading previous run"
             )
         wf_run = pickle_load_compat(starting_checkpoint_path)
         wf_run.restart_options(
@@ -2570,12 +2607,12 @@ def run_ndim_dihed_wavefront(
         if not isinstance(wf_run, Wavefront):
             raise TypeError("Checkpoint file does not contain a valid Wavefront object.")
         if not is_worker:
-            print("Wavefront run loaded successfully.")
+            print_wavefront("wavefront run loaded successfully")
     else:
         if not is_worker:
-            print(
-                f"No checkpoint file found at {starting_checkpoint_path}. "
-                "Starting a new wavefront run."
+            print_wavefront(
+                f"no checkpoint file found at {starting_checkpoint_path}; "
+                "starting a new wavefront run"
             )
         wf_run = Wavefront(
             los,
@@ -2591,10 +2628,7 @@ def run_ndim_dihed_wavefront(
 
     if args.wf_change_theory:
         if not is_worker:
-            print(
-                "Changing theory of the calculator for all nodes in the "
-                "wavefront calculation."
-            )
+            print_wavefront("changing theory of the calculator for all nodes")
         wf_run.theory_change(los, stride=args.wf_theory_stride)
 
     wf_run.calculate()
@@ -2620,25 +2654,25 @@ def run_ndim_dihed_wavefront(
     structures.save(args.out)
 
     for i, loc in enumerate(rcs):
-        print(f"Angle: {loc}, Energy: {energies[i]}")
-    print(f"[wavefront] finished this scan -> {args.out}")
+        print_wavefront(f"angle={loc} energy={energies[i]}")
+    print_wavefront(f"finished this scan -> {args.out}")
 
     out_path = Path(args.out).resolve()
     dat = out_path.with_suffix(".dat")
     with open(dat, "w") as fh:
         for a, e, n in zip(rcs, energies, energies_noshift):
             fh.write(f"{a} {e} {n}\n")
-    print(f"Data written to {dat}.")
+    print_wavefront(f"data written to {dat}")
 
     pkl_path = out_path.with_suffix(".pkl")
     pickle.dump(wf_run, open(pkl_path, "wb"))
-    print(f"Wavefront run saved to {pkl_path}.")
+    print_wavefront(f"wavefront run saved to {pkl_path}")
     wf_pngfile = str(out_path.parent / f"wf_workflow_{out_path.with_suffix('.png').name}")
     wf_xmlfile = str(Path(wf_pngfile).with_suffix(".xml"))
     wf_run.plot_wavefront(pngfile=wf_pngfile, xmlfile=wf_xmlfile)
     wf_run.print_summary()
-    print(f"Wavefront plot saved as '{wf_pngfile}'.")
-    print(f"Energies saved as '{wf_xmlfile}'.")
+    print_wavefront(f"wavefront plot saved as {wf_pngfile}")
+    print_wavefront(f"energies saved as {wf_xmlfile}")
 
     return {
         "wf_run": wf_run,
