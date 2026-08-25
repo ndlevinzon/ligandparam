@@ -52,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Env defaults JSON** - all user ``FFPOPT_*`` knobs live in ``ffpopt/pkgdata/files/env_defaults.json`` (commented JSONC; this is the store the code reads). Overlay with ``FFPOPT_DEFAULTS=/path.json``; per-key ``export FFPOPT_*=`` still wins.
 - **Multi-centroid HL pooling** - centroid-0 HL and ``orig`` share one job queue; extra ConfSearch starts run only for jagged torsions (Fourier RMSE vs ``FFPOPT_CENTROID_FOURIER_MAX``, default 0.5 kcal) and those centroidxbond jobs share one pool.
 - **Whole-ligand core use** - ``--whole-ligand --fast`` no longer serializes 2-bond batches behind a 1xnproc wavefront. Top-level twist keeps a nested bondxwavefront split (e.g. 8x5 on 44 cores). Fragment spawn workers still flatten to one axis. Pack size is ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8).
+- **Wavefront node logs** - min-update (``New angle detected``), seed coalesce/defer, opt error/fail, spawn, pickle reuse, and precheck lines now use ``[wavefront]``.
 
 ### Fixed
 

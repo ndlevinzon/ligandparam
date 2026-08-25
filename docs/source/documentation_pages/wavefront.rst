@@ -257,7 +257,8 @@ Stdout uses a leading ``[scope]`` token. The console formatter peels it
 into ``TIMESTAMP [ffpopt:...] [scope] ...``:
 
 * ``[wavefront]`` - checkpoint found/missing, starting scan, rigid-rotate
-  seed, MM-then-HL staging, progress, summary, finished
+  seed, MM-then-HL staging, min-update / coalesce, node fail, progress,
+  summary, finished
 * ``[affdo]`` - soft-dihed k-ramp, extras, extended-fit chi^2
 * ``[twist]`` - bond batches, skip_existing, GenDihedFit orchestration
 * ``[ffpopt]`` - geomeTRIC / ASE recovery, isolated LS rank notes

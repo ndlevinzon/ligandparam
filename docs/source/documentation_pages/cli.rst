@@ -80,8 +80,8 @@ Notes
   ``EXPORT`` still wins. ``--multi-centroid`` scans extra ConfSearch starts
   only when centroid-0 Fourier RMSE exceeds ``FFPOPT_CENTROID_FOURIER_MAX``.
 * Console logs use a single timestamp and hierarchical ``[tag]`` brackets
-  (``ffpopt.runtime.Console``). Wavefront init/progress lines use
-  ``[wavefront]``; AFFDO extras / soft-dihed k-ramp use ``[affdo]``;
+  (``ffpopt.runtime.Console``). Wavefront scan / node / coalesce / fail
+  lines use ``[wavefront]``; AFFDO extras / soft-dihed k-ramp use ``[affdo]``;
   twist orchestration uses ``[twist]``. See :doc:`wavefront`.
 
 See :doc:`dihedrals` for models and file flow, :doc:`wavefront` for scan

@@ -109,7 +109,7 @@ def apply_slim_node_result(node: Any, result: dict, *, clone_fn=None) -> None:
 def write_node_pickle(node: Any, *, verbose: bool = False) -> None:
     """Pickle ``node`` without ``los`` (restored after write)."""
     if verbose:
-        print(
+        print_wavefront(
             f"Saving node {node.node_pkl}  (exists? {Path(node.node_pkl).is_file()})"
         )
     los = node.los
@@ -695,7 +695,7 @@ def mark_node_failed(
     node.energy = np.inf
     node.forces = np.zeros((len(node.struct.data["elements"]), 3))
     loc = where if where is not None else getattr(node, "angle", getattr(node, "rcs", "?"))
-    print(f"Node {node.node_id} failed at {loc}: {msg}")
+    print_wavefront(f"Node {node.node_id} failed at {loc}: {msg}")
     write_node_pickle(node, verbose=False)
 
 
@@ -927,7 +927,7 @@ def apply_wavefront_minimum_to_node(
     if not getattr(node, "active", True):
         return {"update_min": False, "active": False, "reason": "already_inactive"}
     if node.energy is None or not np.isfinite(node.energy):
-        print(
+        print_wavefront(
             format_minimum_decision_message(
                 "nonfinite", loc=loc, energy=node.energy, old=incumbent_energy, noun=noun
             )
@@ -949,7 +949,7 @@ def apply_wavefront_minimum_to_node(
     recovery = getattr(node, "opt_recovery", None)
     if decision["update_min"]:
         on_update(node, reason, old)
-    print(
+    print_wavefront(
         format_minimum_decision_message(
             reason,
             loc=loc,
@@ -1093,7 +1093,11 @@ def replace_node_with_pickle(node: Any, *, found_msg: Optional[str] = None) -> N
     filename = Path(f"{node.node_pkl}")
     if not filename.is_file():
         return
-    print(found_msg if found_msg is not None else f"Found existing pickle file for node: {node.node_id}")
+    print_wavefront(
+        found_msg
+        if found_msg is not None
+        else f"Found existing pickle file for node: {node.node_id}"
+    )
     los = node.los
     loaded_node = pickle_load_compat(filename)
     node.__dict__.update(loaded_node.__dict__)
@@ -1104,7 +1108,7 @@ def replace_node_with_pickle(node: Any, *, found_msg: Optional[str] = None) -> N
         ensure()
     else:
         ensure_soft_opt_attrs(node)
-    print("Node data replaced with pickle data.")
+    print_wavefront("Node data replaced with pickle data.")
 
 
 def precheck_geometry_clash(
@@ -1129,18 +1133,19 @@ def precheck_geometry_clash(
         pos = myatoms.get_positions()
         clashed, i, j, dist = has_nonbonded_clash(pos, bonds, min_dist=min_dist)
         if clashed:
-            print(
-                f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Ang (< {min_dist} Ang)"
+            print_wavefront(
+                f"Precheck clash: atom {i} and atom {j} at {dist:.3f} Ang "
+                f"(< {min_dist} Ang)"
             )
             return "clash_precheck"
         broken = covalent_geometry_error(
             pos, bonds, myatoms.get_atomic_numbers()
         )
         if broken:
-            print(f"Precheck broken geometry: {broken}")
+            print_wavefront(f"Precheck broken geometry: {broken}")
             return "broken_geometry"
     except Exception as e:
-        print(f"Precheck failed due to error: {e}")
+        print_wavefront(f"Precheck failed due to error: {e}")
         return f"precheck_error: {e}"
     return None
 

@@ -435,13 +435,16 @@ class WavefrontNode:
                 self.opt_recovery = opt_recovery_label(self.opt_geom)
                 self.soft_opt = is_soft_opt_recovery(self.opt_geom)
                 if self.soft_opt:
-                    print(
+                    print_wavefront(
                         f"Node {self.node_id} soft-accepted opt "
                         f"(recovery={self.opt_recovery}); will not spawn neighbors"
                     )
                 finalize_successful_node_opt(self)
             except Exception as e:
-                print(f"Node {self.node_id} optimization error: {type(e).__name__}: {e}")
+                print_wavefront(
+                    f"Node {self.node_id} optimization error: "
+                    f"{type(e).__name__}: {e}"
+                )
                 self._mark_failed("optimization_error", e)
 
     def _write_checkpoint(self) -> None:
@@ -452,7 +455,7 @@ class WavefrontNode:
         """Remove the node pickle and geomeTRIC scratch for this node."""
         filename = Path(f"{self.node_pkl}")
         if Path.is_file(filename):
-            print("Cleaning up node pickle file:", self.node_pkl)
+            print_wavefront(f"Cleaning up node pickle file: {self.node_pkl}")
             os.remove(filename)
         from ffpopt.geom.Geometric import (
             cleanup_geometric_scratch,
@@ -1142,7 +1145,7 @@ class Wavefront:
 
         """
         total_angles = 360 // self.delta if self.delta else 0
-        print(
+        print_wavefront(
             format_wavefront_progress(
                 self,
                 pending,
@@ -1335,7 +1338,9 @@ class Wavefront:
             if rank < old:
                 pending.struct = struct
                 pending.seed_energy = rank
-                print(f"Coalesce pending loc={loc}: better seed E={rank} < {old}")
+                print_wavefront(
+                    f"Coalesce pending loc={loc}: better seed E={rank} < {old}"
+                )
             return None
         if loc in self._inflight_locs:
             cur = self._deferred_seeds.get(loc)
@@ -1345,7 +1350,7 @@ class Wavefront:
                     "energy": rank,
                     "level": level_id,
                 }
-                print(f"Defer seed loc={loc}: in-flight, E={rank}")
+                print_wavefront(f"Defer seed loc={loc}: in-flight, E={rank}")
             return None
         level = self._get_or_create_level(level_id)
         if self.is_nd:
@@ -1890,7 +1895,9 @@ class Wavefront:
                     rcs=rcs,
                 )
                 if child is not None:
-                    print(f"Spawn  node {child.node_pkl} from {node.node_pkl}")
+                    print_wavefront(
+                        f"Spawn node {child.node_pkl} from {node.node_pkl}"
+                    )
                     nodes.append(child)
             return nodes
 
@@ -2059,7 +2066,7 @@ class Wavefront:
 
             """
             total_num_rcs = len(self.bins)
-            print(
+            print_wavefront(
                 format_wavefront_progress(
                     self,
                     pending,

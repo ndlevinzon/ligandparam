@@ -748,6 +748,40 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertTrue(out.isascii())
         self.assertIn("[wavefront] no checkpoint file found at /tmp/ckpt.pkl", out)
 
+    def test_wavefront_node_lifecycle_logs_are_scoped(self):
+        from ffpopt.scan.WavefrontMixins import mark_node_failed, print_wavefront
+
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            print_wavefront("New angle detected: 0, Energy: 5.711224")
+            print_wavefront("Coalesce pending loc=350.0: better seed E=5.711224 < inf")
+            print_wavefront(
+                "Node 0 optimization error: BrokenGeometryError: "
+                "ASE pre-opt fmax=94.5 eV/Ang exceeds 50"
+            )
+        out = buf.getvalue()
+        self.assertTrue(out.isascii())
+        for line in out.splitlines():
+            self.assertTrue(line.startswith("[wavefront] "), line)
+
+        node = SimpleNamespace(
+            node_id=0,
+            node_pkl="node.pckl",
+            struct=SimpleNamespace(data={"elements": ["C"]}),
+            angle=0,
+            los=None,
+        )
+        buf = io.StringIO()
+        with patch("ffpopt.scan.WavefrontMixins.write_node_pickle"):
+            with patch("sys.stdout", buf):
+                mark_node_failed(
+                    node,
+                    "optimization_error",
+                    RuntimeError("ASE pre-opt fmax=94.5 eV/Ang exceeds 50"),
+                )
+        fail_out = buf.getvalue()
+        self.assertIn("[wavefront] Node 0 failed at 0: optimization_error:", fail_out)
+
     def test_attach_console_handlers_idempotent(self):
         from ffpopt.runtime.Console import attach_console_handlers
 
