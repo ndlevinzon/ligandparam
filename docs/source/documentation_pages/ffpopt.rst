@@ -12,10 +12,10 @@ Package layout
 
    ffpopt/
    +-- runtime/     # console logging, progress boards, CPU budget, --fast presets
-   +-- scan/        # WaveFront, WaveFrontND, wavefront_mixins, ScanAnalysis
-   +-- workflows/   # twist, fragmented, whole-ligand, bond_batches
-   +-- dihed/       # Dihedrals, math, fit_ext, pucker
-   +-- geom/        # GeomOpt, Constraints, Restraints, geometric, linear_torsion
+   +-- scan/        # WavefrontEngine; WaveFront / WaveFrontND facades; mixins
+   +-- workflows/   # twist, fragmented, whole-ligand, bond batches
+   +-- dihed/       # Dihedrals facade; FitTypes, Fourier, ParmEd, solvers, pucker
+   +-- geom/        # GeomOpt, Constraints, Restraints, Geometric, linear-torsion
    +-- affdo/       # log, charges, multi-centroid profiles
    +-- ase/, cpefit/, confsearch/, ...
 
@@ -82,6 +82,10 @@ at the fragmented-workflow boundary via
 Wavefront evaluate policy
 -------------------------
 
+How the scan expands, which neighbors it visits, and which opts it skips
+are documented in :doc:`wavefront` (seed coalescing, von Neumann stencil,
+calculator cache, ``--fast`` presets, soft-dihed k-ramp).
+
 Profile minima and neighbor spawn share one policy in
 ``ffpopt.scan.WavefrontMixins.evaluate_wavefront_minimum`` (1-D and N-D):
 
@@ -92,8 +96,9 @@ Profile minima and neighbor spawn share one policy in
 * Hard below ``min - threshold``: update and spawn.
 
 ``loose`` / ``*-loose`` recoveries are treated like soft for spawn.
-``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` is a wall-time trade (coarser Delta,
-looser converge); it does not change this policy beyond soft/loose handling.
+``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` is a wall-time trade (looser
+converge, shorter maxiter); it does not coarsen ``delta`` and does not
+change this policy beyond soft/loose handling.
 Packaged defaults for every ``export FFPOPT_*`` knob are in
 ``ffpopt/pkgdata/files/env_defaults.json``.
 
@@ -128,5 +133,5 @@ Module reference
    :show-inheritance:
 
 Runtime package is ``src/ffpopt``. An optional ``ffpopt-main/`` checkout is
-upstream reference only. See also ``src/ffpopt/GLOSSARY.md`` and
-``src/ffpopt/README.md``.
+upstream reference only. See also :doc:`wavefront`, ``src/ffpopt/GLOSSARY.md``,
+and ``src/ffpopt/README.md``.

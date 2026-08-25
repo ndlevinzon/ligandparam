@@ -45,9 +45,9 @@ What pulls the score **up**
   owns logging / setup / ``new_files`` tracking; thin stages implement
   ``_run``.
 * **Write-once helpers:** Gaussian recipe configure, wavefront mixins
-  (MP + MPI drain, evaluate policy), ``dihed.math`` / ``ipc_slim``,
-  ``runtime/`` (console, CPU budget, non-daemon pools), scission
-  ``safe_name`` / DIHE key helpers.
+  (MP + MPI drain, evaluate policy, seed occupancy), ``DihedMath`` /
+  ``DihedFitSolve``, ``runtime/`` (console, CPU budget, non-daemon pools),
+  scission ``safe_name`` / DIHE key helpers.
 * **Thin public facades:** ``Dihedrals``, ``WaveFront``, and
   ``WaveFrontND`` re-export a single implementation (fit types / Fourier /
   ParmEd / solvers; one ``Wavefront`` class in ``WavefrontEngine``).
@@ -199,8 +199,10 @@ How to extend safely
    :class:`~ligandparam.Parametrization.Recipe` ``execute`` logging.
 2. **New stage:** subclass ``AbstractStage``, implement ``_run`` unless
    you need custom control flow; keep constructor kwargs explicit.
-3. **Wavefront behavior change:** change mixins / policy helpers first;
-   keep 1-D and N-D engines as thin orchestration.
+3. **Wavefront behavior change:** change :mod:`ffpopt.scan.WavefrontMixins`
+   or occupancy / neighbor helpers on the unified ``Wavefront`` class in
+   ``WavefrontEngine`` first; keep ``WaveFront.py`` / ``WaveFrontND.py`` as
+   re-export facades.
 4. **Tests:** add a developer regression for wiring/contracts; keep
    install validation focused on imports and CLI entry points.
 
@@ -210,5 +212,6 @@ Related pages
 * :doc:`overview` - repository layout and product flow
 * :doc:`recipes` - recipe catalog
 * :doc:`stages` - stage catalog
-* :doc:`ffpopt` / :doc:`scission` - companion packages
+* :doc:`ffpopt` / :doc:`wavefront` / :doc:`scission` - companion packages
+  and scan algorithms
 * :doc:`cli` - supported entry points

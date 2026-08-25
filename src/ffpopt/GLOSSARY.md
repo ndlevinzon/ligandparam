@@ -45,13 +45,34 @@ common confusions with similar terms.
 until neighboring energies agree within a threshold.
 
 **Detail.** Replaces the older sequential forward/reverse `DihedScan` path in
-modern twist workflows. Driven by `ffpopt.scan.WaveFront.run_dihed_wavefront`
-(1-D) or `ffpopt.scan.WaveFrontND` (N-D). Soft/loose recoveries follow
-`evaluate_wavefront_minimum` in `wavefront_mixins` (soft seeds once; hard
-replaces soft only if not higher). Loaders map older pickle module names
-onto `ffpopt.scan.WaveFront`.
+modern twist workflows. One implementation (`ffpopt.scan.WavefrontEngine`)
+with 1-D / N-D facades (`WaveFront`, `WaveFrontND`). Neighbors, spawn, and
+recovery follow `evaluate_wavefront_minimum`. Speedups: seed coalescing
+(one pending job per loc), N-D von Neumann stencil, persistent calculator
+cache (restored after checkpoint; never pickled into spawn workers), reused
+spawn pools, flattened fragment `nproc`. Soft-dihed k-ramp is `[affdo]`;
+scan lifecycle lines are `[wavefront]`. New pickles are
+`ffpopt.scan.WavefrontEngine.Wavefront`; loaders still map historical
+`ffpopt.WaveFront` / `ffpopt.WaveFrontND` names.
 
-**Authoritative source.** `src/ffpopt/scan/WaveFront.py`
+**Authoritative source.** `src/ffpopt/scan/WavefrontEngine.py`; Sphinx
+`docs/source/documentation_pages/wavefront.rst`
+
+### Seed coalescing
+
+**Definition.** At most one pending wavefront job per grid location; a
+cheaper parent energy replaces the queued seed, or is deferred if that loc
+is already in flight.
+
+**Authoritative source.** `src/ffpopt/scan/WavefrontEngine.py` (`_enqueue_visit`)
+
+### Von Neumann stencil
+
+**Definition.** N-D neighbor set of axis-aligned bins only (`2 * ndim`),
+enough to fill the grid. Contrast Moore (`3**ndim - 1`, includes diagonals).
+
+**Authoritative source.** `src/ffpopt/scan/WavefrontEngine.py` (`GetGridNeighbors`)
+
 
 ### Twist workflow
 
@@ -86,7 +107,7 @@ profiles match a chosen high-level model along rotatable bonds.
 scanned dihedral (shape match). Convergence heuristics can drop bonds that
 already match.
 
-**Authoritative source.** `src/ffpopt/workflows/twist.py:run_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/workflows/DihedTwist.py:run_dihed_twist_workflow`
 
 ### Shape-match chi^2
 
@@ -96,8 +117,8 @@ free vertical offset (not independent HL/LL min-shifts).
 **Detail.** Under fixed geometry, FCs enter linearly and are solved with
 bounded `lsq_linear`. Phase is kept at 0 for this pass.
 
-**Authoritative source.** `src/ffpopt/dihed/Dihedrals.py` (`shape_match_delta`,
-`NonlinearSolve`)
+**Authoritative source.** `src/ffpopt/dihed/DihedMath.py` (`shape_match_delta`);
+`src/ffpopt/dihed/DihedFitSolve.py` (`NonlinearSolve`)
 
 ### bytype (global) vs bespoke parameters
 
@@ -108,7 +129,7 @@ quartets via a Parmed Python patch script.
 **Detail.** Fragmented / scission merges **require** `bytype=True` because
 fragment atom names do not exist in the parent topology.
 
-**Authoritative source.** `src/ffpopt/workflows/fragmented.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/ffpopt/workflows/FragmentedTwist.py:run_fragmented_dihed_twist_workflow`
 
 ### nprim
 
@@ -117,7 +138,7 @@ per torsion parameter family.
 
 **Detail.** Default is 3 (periods 1, 2, and 3).
 
-**Authoritative source.** `src/ffpopt/dihed/Dihedrals.py` (GenDihedFit / `nprim`)
+**Authoritative source.** `src/ffpopt/dihed/DihedFitTypes.py` (`nprim` on `ParamType`)
 
 ## Operational terms
 

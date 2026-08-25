@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Wavefront algorithms page** - Sphinx ``wavefront.rst`` documents expansion,
+  evaluate/spawn policy, seed coalescing, N-D von Neumann neighbors, calculator
+  cache, reused spawn pools, ``nproc`` flatten vs nest, ``--fast`` presets,
+  soft-dihed k-ramp, and ``[wavefront]`` / ``[affdo]`` log scopes.
+- **Seed coalescing** - at most one pending wavefront job per grid location;
+  cheaper parent energy replaces the queued seed (or is deferred if in-flight).
+- **N-D von Neumann neighbors** - default stencil is axis-aligned only
+  (``2 * ndim``); ``moore`` keeps the old cube including diagonals.
+- **Checkpoint calc-cache restore** - serial checkpoints unbind then restore
+  ``ListOfStruct._ffpopt_calc_cache`` so XTB/sander is not rebuilt every node.
+- **``[wavefront]`` log scopes** - checkpoint/startup/progress/summary prints
+  use the same ``[routine]`` convention as ``[affdo]`` / ``[twist]``.
 - **AFFDO-style whole-ligand extras** (default off; fragmented path unchanged):
   - ``--whole-ligand`` / ``run_whole_ligand_dihed_twist_workflow`` - full-ligand twist without scission
   - ``--multi-centroid N`` - ConfSearch starts + smoothest HL profile (Fourier + roughness)
@@ -21,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Unified wavefront engine** - 1-D and N-D share ``WavefrontEngine.Wavefront``;
+  ``WaveFront.py`` / ``WaveFrontND.py`` are pickle-stable re-export facades.
+  ``Dihedrals.py`` is a thin facade over FitTypes / Fourier / ParmEd / solvers.
 - **ffpopt layout** - domain code grouped into ``workflows/``, ``dihed/``, ``geom/``, and ``affdo/``. Small siblings merged (centroid+profile select; geomeTRIC compat+in-process driver). ``Workflows.py`` split by entry point. Root import-redirect shims removed; callers use the canonical packages (``python -m ffpopt.geom.Geometric``).
 - **PascalCase library modules** - snake_case ``src/`` modules renamed to descriptive PascalCase (``TwistHelpers``, ``AffdoLog``, ``LigandIo``, ...) to match existing ffpopt domain files. Package directories stay lowercase. Hyphenated ``ffpopt.bin`` CLIs unchanged.
 - **Git case-only names** - Windows ``core.ignorecase`` left ``log.py`` / ``scripts.py`` / ``cli.py`` in the index while imports expect ``Log`` / ``Scripts`` / ``Cli``. Re-recorded with two-step ``git mv`` so Linux checkouts match.
@@ -49,6 +64,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **``--soft-dihed-restraint`` seed clash** - hard-twist clash checks no longer snap the scanned dihedral before opt (that rejected every bulky whole-ligand seed). If every seed still fails, a native-angle node is forced so the wavefront can start.
 - **Soft-dihedral k-doubling + selective hard IC** - if the harmonic misses the ``+/-tol`` band, ``k`` doubles up to ``--soft-dihed-kmax`` / ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000 kcal/mol/rad^2) from the last coordinates. A hard-IC opt then runs from those coords unless the restrained min is already within 0.05 deg of ``phi0`` (bias then ~0.003 kcal/mol).
 - **``--fit-full`` duplicate periodicity** - rounding optimized Fourier periods onto the same integer made ParmEd reject ``DihedralTypeList.append`` (``Cannot add two DihedralType instances with the same periodicity``). Same-``n`` terms are now merged (phase 0 vs 180 subtracts; same phase sums) before frcmod / parm7 write.
+- **GenDihedFit missing imports after Dihedrals split** - ``shape_match_delta`` in ``IsolatedLinearSolve`` and ``WriteParmedScript`` in ``SystemType.write_output``.
+- **Spawn pickle of live sander calculators** - ``ListOfStruct.__getstate__`` drops ``_ffpopt_calc_cache`` so nested wavefront pools do not serialize ``sander.pysander.InputOptions``.
 
 ---
 

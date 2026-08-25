@@ -67,9 +67,10 @@ CLI
 
    lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
 
-``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` applies coarser wavefront / looser
-geomeTRIC presets (wall-time trade). Explicit ``--delta`` and related knobs
-still win when not left at library defaults.
+``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1`` loosens geomeTRIC / ASE converge
+and shortens maxiter (wall-time trade). Scan ``delta`` stays 10 deg.
+Explicit ``--delta`` and related knobs still win when not left at library
+defaults. See :doc:`wavefront`.
 
 Python stage (also used when ``dihed_correct=True`` on FreeLigand / LazyLigand /
 DPFreeLigand). Recipe kwargs ``dihed_delta`` and ``dihed_fragment_config``
@@ -116,7 +117,8 @@ GenDihedFit matches **profile shape**, not absolute energy zero:
 * Fixed-geometry path: analytical torsions + bounded ``lsq_linear``
 * HL/LL scan JSONs are always angle-aligned before fitting
 
-See ``src/ffpopt/README.md`` for the wavefront soft/hard evaluate policy.
+See ``src/ffpopt/README.md`` and :doc:`wavefront` for the wavefront
+expansion, spawn policy, and wall-time algorithms.
 
 geomeTRIC notes
 ---------------
@@ -131,7 +133,8 @@ system instead of aborting.
 
 Soft / loose recoveries (``soft-maxiter``, ``*-soft``, ``loose``, ``*-loose``)
 may fill the profile but follow the soft spawn policy (seed once; do not
-displace a lower soft min with a worse hard point).
+displace a lower soft min with a worse hard point). ``--soft-dihed-restraint``
+uses a harmonic k-ramp then an optional hard IC; see :doc:`wavefront`.
 
 If opts are still unstable:
 
@@ -149,4 +152,4 @@ Requirements
 * Calculator stack for the chosen ``--model``
 * For ``xtb``: ``pip install ".[tblite,dihed]"``
 
-See :doc:`ffpopt`, :doc:`scission`, and :doc:`cli`.
+See :doc:`ffpopt`, :doc:`wavefront`, :doc:`scission`, and :doc:`cli`.

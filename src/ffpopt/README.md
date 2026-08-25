@@ -25,9 +25,9 @@ entrypoints, domain packages.
 | Path | Concern |
 |------|---------|
 | ``runtime/`` | ``Console``, ``ProgressBoard``, ``CpuBudget``, ``FastWavefront`` |
-| ``scan/`` | ``WaveFront``, ``WaveFrontND``, ``WavefrontMixins``, ``ScanAnalysis`` |
+| ``scan/`` | ``WavefrontEngine`` (1-D + N-D); ``WaveFront`` / ``WaveFrontND`` facades; ``WavefrontMixins``; ``ScanAnalysis`` |
 | ``workflows/`` | Twist, fragmented, whole-ligand orchestration + bond batches |
-| ``dihed/`` | GenDihedFit types/solvers, ``math``, extended fit, pucker |
+| ``dihed/`` | Thin ``Dihedrals`` facade; ``DihedFitTypes``, Fourier, ParmEd, solvers, pucker |
 | ``geom/`` | ``GeomOpt``, constraints/restraints, geomeTRIC driver, linear-torsion |
 | ``affdo/`` | Opt-in extras: log, centroid profiles, Boltzmann charges |
 | ``ase/``, ``cpefit/``, ``confsearch/``, ``constants/``, ``scosmo/``, ``bin/`` | Specialty stacks + CLIs |
@@ -105,7 +105,17 @@ the prior LL checkpoint when available. Spawn splits are flattened (never
 bondxwavefront nested); HL and ``orig`` scans pipeline in one queue. Under
 ``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
 (``FFPOPT_QDPI2_OPT``), and XTB/QDpi2 use ASE-first. ``--fast`` remains a
-wall-time trade (coarser Delta, looser converge).
+wall-time trade (looser converge, shorter maxiter). Scan ``delta`` stays 10
+deg.
+
+**Scan algorithms** (full write-up: Sphinx ``wavefront`` page):
+
+* **Seed coalescing** - one pending job per loc; cheaper parent energy wins.
+* **N-D von Neumann neighbors** - axis-aligned only (``moore`` optional).
+* **Calculator cache** - keep XTB/sander across serial checkpoints; never
+  pickle live sander handles into spawn workers.
+* **Reused spawn pool** - sequential bonds in one process share workers.
+* **Soft-dihed k-ramp** - harmonic ``k`` doubles to 8000, then optional hard IC.
 
 ## Dihedral fit chi^2
 

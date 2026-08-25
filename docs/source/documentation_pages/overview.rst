@@ -23,9 +23,9 @@ As of version **1.5**, the installable tree under ``src/`` is:
    |   +-- ...
    +-- ffpopt/               # torsion / dihedral fitting (lig-dihed-correct)
    |   +-- runtime/          # console, progress boards, CPU budget, --fast
-   |   +-- scan/             # WaveFront, WaveFrontND, wavefront_mixins
+   |   +-- scan/             # WavefrontEngine + WaveFront / WaveFrontND facades
    |   +-- workflows/        # twist, fragmented, whole-ligand
-   |   +-- dihed/            # GenDihedFit types + solvers
+   |   +-- dihed/            # thin Dihedrals facade; FitTypes / Fourier / ParmEd / solvers
    |   +-- geom/             # GeomOpt, constraints, geomeTRIC
    |   +-- affdo/            # optional AFFDO extras
    |   +-- ...
@@ -39,9 +39,9 @@ checkouts (often gitignored) are upstream reference trees only - not a runtime
 dependency.
 
 Canonical imports use ``ffpopt.workflows``, ``ffpopt.scan``, ``ffpopt.geom``,
-and ``ffpopt.runtime``. Older wavefront checkpoints pickle classes as
-``ffpopt.WaveFront.*``; loaders register those names onto ``scan.WaveFront``
-in ``sys.modules``.
+and ``ffpopt.runtime``. New wavefront checkpoints pickle as
+``ffpopt.scan.WavefrontEngine.Wavefront``. Loaders still map historical
+``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` names onto the ``scan`` facades.
 
 Multi-orientation RESP
 ----------------------
@@ -72,7 +72,7 @@ Two ffpopt modes:
   parent. Use when fragments would distort coupled rotors. Optional extras:
   ``--soft-dihed-restraint``, ``--multi-centroid``, ``--fit-full``.
 
-See also :doc:`cli`, :doc:`ffpopt`, and :doc:`scission`.
+See also :doc:`cli`, :doc:`ffpopt`, :doc:`wavefront`, and :doc:`scission`.
 
 For how we intend the code to stay maintainable (SOLID, DRY, KISS, YAGNI,
 separation of concerns) and a maintainability score, see

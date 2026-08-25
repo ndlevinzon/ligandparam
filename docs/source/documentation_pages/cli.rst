@@ -72,15 +72,17 @@ Notes
   the original ``{label}.frcmod``; the ``.lib`` is unchanged. Fragment mode
   writes scan intermediates under a fragments directory; ``--whole-ligand``
   writes per-batch ``whole-twist.log`` / ``WHOLE_STATUS.txt``.
-* ``--fast`` enables coarser wavefront / looser geomeTRIC presets
-  (``FFPOPT_FAST_WAVEFRONT=1``). Explicit non-default knobs still win.
+* ``--fast`` loosens geomeTRIC / ASE converge and maxiter (``delta`` stays
+  10 deg). Explicit non-default knobs still win.
   All ``export FFPOPT_*`` defaults ship in
   ``ffpopt/pkgdata/files/env_defaults.json`` (the values the code reads).
   Copy/edit that file and set ``FFPOPT_DEFAULTS`` to overlay it; per-key
   ``EXPORT`` still wins. ``--multi-centroid`` scans extra ConfSearch starts
   only when centroid-0 Fourier RMSE exceeds ``FFPOPT_CENTROID_FOURIER_MAX``.
 * Console logs use a single timestamp and hierarchical ``[tag]`` brackets
-  (``ffpopt.runtime.Console``).
+  (``ffpopt.runtime.Console``). Wavefront init/progress lines use
+  ``[wavefront]``; AFFDO extras / soft-dihed k-ramp use ``[affdo]``;
+  twist orchestration uses ``[twist]``. See :doc:`wavefront`.
 
-See :doc:`dihedrals` for models and file flow, and :doc:`examples/07_DihedCorrect`
-for a worked narrative.
+See :doc:`dihedrals` for models and file flow, :doc:`wavefront` for scan
+algorithms, and :doc:`examples/07_DihedCorrect` for a worked narrative.

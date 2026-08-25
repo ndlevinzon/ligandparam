@@ -105,7 +105,8 @@ Env knobs (`FFPOPT_*`) live in [`src/ffpopt/pkgdata/files/env_defaults.json`](sr
 - **Gaussian** geometry + ESP / RESP; **Amber** Antechamber / `parmchk2` / LEaP
 - **ffpopt fragment twist** (scission + per-fragment wavefront + DIHE merge)
 - **ffpopt whole-ligand twist** (`--whole-ligand` plus optional soft restraint / multi-centroid / full fit)
-- **ASCII console** for Slurm latin-1 logs
+- **Wavefront scans** that expand from seeds (coalesced pending jobs, von Neumann N-D neighbors, `--fast` presets; see docs *Wavefront scans*)
+- **ASCII console** for Slurm latin-1 logs (`[wavefront]`, `[twist]`, `[affdo]` scopes)
 - **CLI** for batch param, fragmentation, SMILES -> PDB, Sage conversion
 
 ---

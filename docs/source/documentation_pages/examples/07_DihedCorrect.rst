@@ -65,4 +65,5 @@ After ``lig-dihed-correct --whole-ligand``:
 
 Use ``chaps.lib`` (unchanged) with ``chaps.dihed.frcmod`` in LEaP.
 
-See :doc:`../dihedrals` and :doc:`../cli` for models and options.
+See :doc:`../dihedrals`, :doc:`../wavefront`, and :doc:`../cli` for models,
+scan algorithms, and options.
