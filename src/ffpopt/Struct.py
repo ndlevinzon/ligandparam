@@ -840,14 +840,15 @@ class ListOfStruct(object):
 
         
     def __getstate__(self):
-        import copy
-        # Copy the object's state dictionary
+        # Copy so live calculators stay on this process. Spawn workers and
+        # checkpoints must not serialize sander/XTB/DFT handles (unpickleable
+        # C objects such as sander.pysander.InputOptions).
         state = self.__dict__.copy()
-        #print(state.keys())
-        # Remove the specific attribute
-        if 'calc' in state:
-            #del state['calc']
-            state['calc'] = None
+        state["calc"] = None
+        if "_ffpopt_calc_cache" in state:
+            state["_ffpopt_calc_cache"] = None
+        if "_ffpopt_qdpi2_full_cache" in state:
+            state["_ffpopt_qdpi2_full_cache"] = None
         return state
         
     @classmethod

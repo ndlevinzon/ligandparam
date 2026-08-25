@@ -1919,6 +1919,28 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIs(los.calc, calc)
         self.assertIs(los._ffpopt_calc_cache, cache)
 
+    def test_list_of_struct_pickle_drops_calc_cache(self):
+        import pickle
+        from ffpopt.Struct import ListOfStruct
+
+        class Boom:
+            def __getstate__(self):
+                raise TypeError("cannot pickle boom")
+
+        los = ListOfStruct.__new__(ListOfStruct)
+        los.structs = []
+        los.args = None
+        los.calc = Boom()
+        los._ffpopt_calc_cache = ("k", Boom())
+        los._ffpopt_qdpi2_full_cache = ("k2", Boom())
+
+        restored = pickle.loads(pickle.dumps(los))
+        self.assertIsNone(restored.calc)
+        self.assertIsNone(restored._ffpopt_calc_cache)
+        self.assertIsNone(restored._ffpopt_qdpi2_full_cache)
+        self.assertIsInstance(los.calc, Boom)
+        self.assertEqual(los._ffpopt_calc_cache[0], "k")
+
     def test_dihed_facade_exports(self):
         from ffpopt.dihed import DihedFitSolve, DihedFourier, DihedParmEd
         from ffpopt.dihed.Dihedrals import (
