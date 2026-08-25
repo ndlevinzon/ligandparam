@@ -139,7 +139,7 @@ conda activate ligandparam
 pip install -e ".[dihed,tblite]"
 ```
 
-`pip install 'ligandparam[jax]'` (no `-e`, no `.`) pulls **PyPI 1.0.0** and can uninstall a local 1.5.x tree. From the clone:
+`pip install 'ligandparam[jax]'` (no `-e`, no `.`) pulls **PyPI 1.0.0** and can uninstall a local 1.6.x tree. From the clone:
 
 ```bash
 pip install -e '.[jax]'          # or: conda install -c conda-forge jax jaxlib
@@ -254,7 +254,7 @@ tests/
 3. Keep stdout, comments, and docs ASCII (`+/-`, `deg`, `chi^2`, `->`)
 4. Open a PR that says why the change is needed
 
-Release: bump `version` in `pyproject.toml` and `__version__` in `src/ligandparam/__init__.py`, commit, `git tag 1.5.1 && git push origin --tags`.
+Release: bump `version` in `pyproject.toml` and `__version__` in `src/ligandparam/__init__.py`, commit, `git tag 1.6.0 && git push origin --tags`.
 
 ---
 

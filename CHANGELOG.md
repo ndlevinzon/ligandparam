@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.6.0] - 2026-08-25
+
 ### Added
 
 - **MM then HL** - under ``--fast``, HL wavefront nodes sander-relax (or
@@ -246,7 +250,8 @@ Prior releases focused on core RESP / FreeLigand recipes, orientation protocols 
 
 ---
 
-[Unreleased]: https://github.com/piskulichz/ligandparam/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/piskulichz/ligandparam/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/piskulichz/ligandparam/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/piskulichz/ligandparam/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/piskulichz/ligandparam/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/piskulichz/ligandparam/compare/v1.4.0...v1.4.1

@@ -10,7 +10,7 @@ a concrete step (Gaussian ESP, RESP fitting, Leap, ...).
 Repository layout
 -----------------
 
-As of version **1.5**, the installable tree under ``src/`` is:
+As of version **1.6**, the installable tree under ``src/`` is:
 
 .. code-block:: text
 

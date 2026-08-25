@@ -1,7 +1,7 @@
 Welcome to ligandparam's documentation!
 ========================================
 
-``ligandparam`` **1.5** is a modular Python toolkit for Amber ligand
+``ligandparam`` **1.6** is a modular Python toolkit for Amber ligand
 parameterization. Workflows are expressed as **recipes** (ordered lists of
 **stages**) that wrap familiar tools such as Antechamber, Gaussian,
 ``parmchk2``, and LEaP.
