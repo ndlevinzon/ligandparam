@@ -6,6 +6,7 @@ from ffpopt.dihed.DihedFourier import (
     MultiDihedFcn,
     PrimDihedFcn,
     amber_dihed_period,
+    merge_duplicate_period_prims,
     parmed_dihedral_types_from_prims,
 )
 

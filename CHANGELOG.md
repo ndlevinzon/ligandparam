@@ -72,7 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **``--soft-dihed-restraint`` seed clash** - hard-twist clash checks no longer snap the scanned dihedral before opt (that rejected every bulky whole-ligand seed). If every seed still fails, a native-angle node is forced so the wavefront can start.
 - **Soft-dihedral k-doubling + selective hard IC** - if the harmonic misses the ``+/-tol`` band, ``k`` doubles up to ``--soft-dihed-kmax`` / ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000 kcal/mol/rad^2) from the last coordinates. A hard-IC opt then runs from those coords unless the restrained min is already within 0.05 deg of ``phi0`` (bias then ~0.003 kcal/mol).
 - **``--fit-full`` duplicate periodicity** - rounding optimized Fourier periods onto the same integer made ParmEd reject ``DihedralTypeList.append`` (``Cannot add two DihedralType instances with the same periodicity``). Same-``n`` terms are now merged (phase 0 vs 180 subtracts; same phase sums) before frcmod / parm7 write.
-- **GenDihedFit missing imports after Dihedrals split** - ``shape_match_delta`` in ``IsolatedLinearSolve`` and ``WriteParmedScript`` in ``SystemType.write_output``.
+- **GenDihedFit missing imports after Dihedrals split** - ``shape_match_delta`` in ``IsolatedLinearSolve``, ``WriteParmedScript`` in ``SystemType.write_output``, and ``merge_duplicate_period_prims`` in ``WriteParmedScript`` (``--fit-full`` apply).
 - **Spawn pickle of live sander calculators** - ``ListOfStruct.__getstate__`` drops ``_ffpopt_calc_cache`` so nested wavefront pools do not serialize ``sander.pysander.InputOptions``.
 
 ---

@@ -1793,6 +1793,28 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(len(typs), 1)
         self.assertEqual(int(typs[0].per), 2)
 
+    def test_write_parmed_script_merges_duplicate_periods(self):
+        from types import SimpleNamespace
+        from ffpopt.dihed.DihedFourier import PrimDihedFcn
+        from ffpopt.dihed.DihedParmEd import WriteParmedScript
+
+        atoms = [
+            SimpleNamespace(name=n, residue=SimpleNamespace(name="LIG"))
+            for n in ("C1", "C2", "C3", "C4")
+        ]
+        p = SimpleNamespace(atoms=atoms)
+        dfcn = SimpleNamespace(
+            idxs=[0, 1, 2, 3],
+            prims=[PrimDihedFcn(1.0, 0.0, 2), PrimDihedFcn(0.5, 180.0, 2)],
+        )
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "it01.py"
+            WriteParmedScript(str(path), p, [dfcn], scee=1.2, scnb=2.0)
+            text = path.read_text(encoding="utf-8")
+        self.assertIn("addDihedral", text)
+        self.assertEqual(text.count("addDihedral("), 1)
+        self.assertIn("0.5", text)
+
     def test_constraints_to_geometric(self):
         from ffpopt.geom.Constraints import Constraint, to_geometric
 
