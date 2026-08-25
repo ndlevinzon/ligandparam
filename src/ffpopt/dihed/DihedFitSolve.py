@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ffpopt.dihed.DihedFourier import GetDihedClasses
+from ffpopt.dihed.DihedMath import shape_match_delta
 from ffpopt.dihed.DihedParmEd import DeleteDihedrals, GetMultiDihedFcnFromIdxs
 
 def EnergyScansWithoutDihedrals(mol,list_of_los,cons):
