@@ -27,9 +27,11 @@ How the scan expands
 1. **Seed.** Optimize the unconstrained minimum (1-D) or each starting
    conformer (N-D). Snap the scanned dihedral(s) onto the ``delta`` grid
    and enqueue those bins.
-2. **Optimize a node.** Constrained (or softly restrained) geometry
-   optimization at that bin. geomeTRIC is the default; ASE BFGS / L-BFGS /
-   FIRE is the recovery ladder. Sander LL scans default to ASE-first.
+2. **Optimize a node.** Rigid-rotate the ``RotateMask`` branch by wrapped
+   ``dphi`` (clash-check; revert to the parent Cartesian on overlap), then
+   constrained (or softly restrained) geometry optimization at that bin.
+   geomeTRIC is the default; ASE BFGS / L-BFGS / FIRE is the recovery
+   ladder. Sander LL scans default to ASE-first.
 3. **Evaluate.** ``evaluate_wavefront_minimum``
    (in ``WavefrontMixins``)
    decides whether this energy becomes the bin minimum and whether the
@@ -99,6 +101,17 @@ Without coalescing, bulky whole-ligand rotors enqueue many redundant
 visits to the same angle. Occupancy is rebuilt from the resume queue on
 checkpoint restart.
 
+Rigid-rotate seed
+~~~~~~~~~~~~~~~~~
+
+Neighbor (and first) nodes still copy the parent Cartesian. geomeTRIC
+would otherwise slam a large IC step (e.g. current 11 deg, target 250
+deg). ``RotateMask`` bipartitions about bond ``b-c`` so atom ``d``
+moves; wrapped ``dphi`` is applied with a Rodrigues rotation, then the
+same 0.8 Ang nonbonded / covalent precheck. Clash or a broken bond
+reverts to the parent coords and the existing constraint / restraint
+still holds. Same frozen (or soft) target; far fewer TRIC steps.
+
 N-D neighbor stencil
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -112,13 +125,16 @@ Soft dihedral k-ramp
 ~~~~~~~~~~~~~~~~~~~~
 
 ``--soft-dihed-restraint`` (typical for ``--whole-ligand`` detergents)
-does **not** hard-snap the scanned dihedral before opt. The optimizer
-sees a harmonic spring (default ``k=500`` kcal/mol/rad^2, ``+/-0.5``
-deg). If the angle is still out of band, ``k`` doubles from the last
-coordinates up to ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000). A hard-IC
-opt then runs from those coords unless ``|dphi| <= 0.05`` deg (bias then
-~0.003 kcal/mol, skipped). Clash checks use the current coordinates, not
-a hard-twisted copy. Logs: ``[affdo]``.
+does **not** hard-snap the scanned dihedral before opt. Before GeomOpt,
+``seed_struct_rigid_dihed_rotates`` applies wrapped ``dphi`` to the
+``RotateMask`` branch (shortest arc about ``b-c``) and clash-checks; a
+clash keeps the parent Cartesian. The optimizer then sees a harmonic
+spring (default ``k=500`` kcal/mol/rad^2, ``+/-0.5`` deg). If the angle
+is still out of band, ``k`` doubles from the last coordinates up to
+``FFPOPT_SOFT_DIHED_KMAX`` (default 8000). A hard-IC opt then runs from
+those coords unless ``|dphi| <= 0.05`` deg (bias then ~0.003 kcal/mol,
+skipped). Precheck still does not hard-snap. Logs: ``[wavefront]`` for
+the rigid rotate, ``[affdo]`` for the k-ramp.
 
 geomeTRIC recovery
 ~~~~~~~~~~~~~~~~~~
@@ -142,6 +158,18 @@ scee/scnb (SciPy L-BFGS-B or JAX).
 
 Algorithms that keep wall-time down
 -----------------------------------
+
+MM then HL
+~~~~~~~~~~
+
+Under ``--fast`` (or ``FFPOPT_MM_THEN_HL=1``), each HL node is a cheap
+constrained min then one dear refine. Sander is used when a ``parm7``
+is on the structure; otherwise tblite GFN-FF. Soft-dihed k-ramps run
+entirely on MM; one XTB/QDpi2 opt follows at the final k (in-band) or
+after the MM hard IC. Sander / GFN-FF scans skip this (already cheap).
+Force off with ``FFPOPT_MM_THEN_HL=0``. MM failure falls back to HL from
+the parent Cartesian. Logs: ``[wavefront]`` for the staging, ``[affdo]``
+for k-ramp details.
 
 Persistent calculator cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -209,9 +237,10 @@ GenDihedFit / compare release cores so siblings can grow.
      - 0.03
 
 Also under ``--fast``: QDpi2 optimizes with XTB-only forces then a full
-QDpi2 single-point (``FFPOPT_QDPI2_OPT``); XTB/QDpi2 use ASE-first;
-shorter ASE ladder. Packaged defaults for every ``FFPOPT_*`` knob:
-``ffpopt/pkgdata/files/env_defaults.json``.
+QDpi2 single-point (``FFPOPT_QDPI2_OPT``); HL nodes MM-relax (sander or
+GFN-FF) then one XTB/QDpi2 opt (``FFPOPT_MM_THEN_HL``); XTB/QDpi2 use
+ASE-first; shorter ASE ladder. Packaged defaults for every ``FFPOPT_*``
+knob: ``ffpopt/pkgdata/files/env_defaults.json``.
 
 Pipelined HL + orig, skip_existing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -227,8 +256,8 @@ Logging
 Stdout uses a leading ``[scope]`` token. The console formatter peels it
 into ``TIMESTAMP [ffpopt:...] [scope] ...``:
 
-* ``[wavefront]`` - checkpoint found/missing, starting scan, progress,
-  summary, finished
+* ``[wavefront]`` - checkpoint found/missing, starting scan, rigid-rotate
+  seed, MM-then-HL staging, progress, summary, finished
 * ``[affdo]`` - soft-dihed k-ramp, extras, extended-fit chi^2
 * ``[twist]`` - bond batches, skip_existing, GenDihedFit orchestration
 * ``[ffpopt]`` - geomeTRIC / ASE recovery, isolated LS rank notes

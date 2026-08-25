@@ -452,6 +452,105 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
         replace_node_with_pickle(node)
         self.assertEqual(node.los, "keep")
 
+    def _butane_like_struct(self):
+        from ffpopt.Struct import Struct
+
+        # Planar cis-like C-C-C-C (dihedral ~0); RotateMask moves atom 3.
+        pos = [
+            [0.0, 1.54, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.54, 0.0, 0.0],
+            [1.54, 1.54, 0.0],
+        ]
+        return Struct(
+            {
+                "positions": pos,
+                "elements": ["C", "C", "C", "C"],
+                "charges": [0.0, 0.0, 0.0, 0.0],
+                "names": ["C1", "C2", "C3", "C4"],
+                "types": ["c", "c", "c", "c"],
+                "bonds": [[0, 1], [1, 2], [2, 3]],
+                "spin": 1,
+                "energy": None,
+                "forces": None,
+            }
+        )
+
+    def test_rotate_coords_about_bond_hits_wrapped_target(self):
+        import numpy as np
+        from ffpopt.AmberParm import RotateMask, bonds2graph
+        from ffpopt.geom.Geometry import CptDihed, rotate_coords_about_bond
+        from ffpopt.scan.WavefrontMixins import (
+            _wrapped_dihed_delta_deg,
+            signed_wrapped_dihed_delta_deg,
+        )
+
+        crd = np.array(
+            [
+                [0.0, 1.54, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.54, 0.0, 0.0],
+                [1.54, 1.54, 0.0],
+            ]
+        )
+        idxs = [0, 1, 2, 3]
+        obs = float(CptDihed(crd[0], crd[1], crd[2], crd[3]))
+        target = 250.0
+        dphi = signed_wrapped_dihed_delta_deg(obs, target)
+        self.assertLess(abs(dphi), 180.0 + 1e-9)
+        mask = RotateMask(bonds2graph([[0, 1], [1, 2], [2, 3]]), idxs)
+        out = rotate_coords_about_bond(crd, 1, 2, dphi, mask)
+        new = float(CptDihed(out[0], out[1], out[2], out[3]))
+        self.assertLess(_wrapped_dihed_delta_deg(new, target), 1e-6)
+        np.testing.assert_allclose(out[0], crd[0], atol=1e-12)
+        np.testing.assert_allclose(out[1], crd[1], atol=1e-12)
+
+    def test_seed_struct_rigid_dihed_rotates_and_clash_fallback(self):
+        import numpy as np
+        from unittest.mock import patch
+        from ffpopt.geom.Geometry import CptDihed
+        from ffpopt.scan.WavefrontMixins import (
+            _wrapped_dihed_delta_deg,
+            dihed_seed_targets,
+            seed_struct_rigid_dihed_rotates,
+        )
+
+        struct = self._butane_like_struct()
+        idxs = [0, 1, 2, 3]
+        crd = np.asarray(struct.data["positions"], dtype=float)
+        obs = float(CptDihed(crd[0], crd[1], crd[2], crd[3]))
+        target = (obs + 90.0 + 360.0) % 360.0
+        node = SimpleNamespace(
+            is_nd=False,
+            constraints=[SimpleNamespace(idxs=idxs, value=target)],
+            angle=target,
+        )
+        self.assertEqual(dihed_seed_targets(node), [(idxs, float(target))])
+
+        rotated = seed_struct_rigid_dihed_rotates(
+            struct, [(idxs, target)], node_id=1
+        )
+        self.assertIsNot(rotated, struct)
+        new = np.asarray(rotated.data["positions"], dtype=float)
+        self.assertLess(
+            _wrapped_dihed_delta_deg(
+                float(CptDihed(new[0], new[1], new[2], new[3])), target
+            ),
+            1e-6,
+        )
+
+        with patch(
+            "ffpopt.geom.Constraints.has_nonbonded_clash",
+            return_value=(True, 0, 3, 0.1),
+        ):
+            kept = seed_struct_rigid_dihed_rotates(
+                struct, [(idxs, target)], node_id=2
+            )
+        self.assertIs(kept, struct)
+        np.testing.assert_allclose(
+            np.asarray(kept.data["positions"], dtype=float), crd
+        )
+
 
 class TestScissionHelpers(unittest.TestCase):
     def test_safe_name_and_param_key(self):
@@ -979,6 +1078,116 @@ class TestAffdoLogging(unittest.TestCase):
                 opt_fn=fake_opt_hold,
             )
         self.assertEqual(calls, [500.0, 1000.0])
+
+    def test_mm_then_hl_policy_and_two_stage_opts(self):
+        import numpy as np
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from ffpopt.runtime.EnvDefaults import clear_defaults_cache
+        from ffpopt.runtime.FastWavefront import (
+            cheap_preopt_model_name,
+            mm_then_hl_enabled,
+        )
+        from ffpopt.scan.WavefrontMixins import (
+            geomopt_mm_then_hl,
+            run_soft_dihed_opt,
+        )
+
+        self.assertFalse(mm_then_hl_enabled("sander", fast=True))
+        self.assertFalse(mm_then_hl_enabled("gfnff", fast=True))
+        self.assertFalse(mm_then_hl_enabled("xtb", fast=False))
+        self.assertTrue(mm_then_hl_enabled("xtb", fast=True))
+        self.assertTrue(mm_then_hl_enabled("qdpi2", fast=True))
+        with patch.dict(os.environ, {"FFPOPT_MM_THEN_HL": "0"}):
+            clear_defaults_cache()
+            self.assertFalse(mm_then_hl_enabled("xtb", fast=True))
+        with patch.dict(os.environ, {"FFPOPT_MM_THEN_HL": "1"}):
+            clear_defaults_cache()
+            self.assertTrue(mm_then_hl_enabled("xtb", fast=False))
+        clear_defaults_cache()
+
+        with tempfile.NamedTemporaryFile(suffix=".parm7") as fh:
+            struct = SimpleNamespace(data={"parm": fh.name})
+            self.assertEqual(cheap_preopt_model_name(struct), "sander")
+        import importlib.util
+
+        noparm = cheap_preopt_model_name(
+            SimpleNamespace(data={"parm": "/no/such/parm7"})
+        )
+        if importlib.util.find_spec("tblite") is not None:
+            self.assertEqual(noparm, "gfnff")
+        else:
+            self.assertIsNone(noparm)
+
+        class Seed:
+            def __init__(self, pos):
+                self.data = {
+                    "positions": np.asarray(pos, float),
+                    "elements": ["C"] * 4,
+                }
+
+            def clone_geometry(self, coords=None, ene=None, frcs=None):
+                return Seed(self.data["positions"] if coords is None else coords)
+
+            def Update(self, ene, coords, frcs):
+                self.data["positions"] = np.asarray(coords, float)
+
+        class Geom:
+            def __init__(self, pos):
+                self.data = {"positions": np.asarray(pos, float), "energy": 0.0}
+
+        calls = []
+
+        def fake_opt(los, struct, constraints=None, restraints=None, geom_prefix=None):
+            model = getattr(los.args, "model", "?")
+            pos = np.array(struct.data["positions"], dtype=float, copy=True)
+            kind = "soft" if restraints else ("hard" if constraints else "free")
+            calls.append((model, kind, float(pos.reshape(-1)[0])))
+            shift = 1.0 if model == "sander" else 10.0
+            return Geom(pos + shift)
+
+        hl = SimpleNamespace(args=SimpleNamespace(model="xtb"))
+        cheap = SimpleNamespace(args=SimpleNamespace(model="sander"))
+        out = geomopt_mm_then_hl(
+            hl,
+            Seed(np.zeros((4, 3))),
+            constraints=["c"],
+            opt_fn=fake_opt,
+            cheap_los=cheap,
+            node_id=1,
+        )
+        self.assertEqual([c[0] for c in calls], ["sander", "xtb"])
+        self.assertEqual([c[1] for c in calls], ["hard", "hard"])
+        self.assertAlmostEqual(calls[1][2], 1.0)
+        np.testing.assert_allclose(out.data["positions"], np.full((4, 3), 11.0))
+
+        calls.clear()
+        los = SimpleNamespace(
+            args=SimpleNamespace(
+                model="xtb",
+                soft_dihed_k=500.0,
+                soft_dihed_kmax=500.0,
+                soft_dihed_tol=0.5,
+            )
+        )
+        with patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.within_tolerance",
+            lambda self, crds: True,
+        ), patch(
+            "ffpopt.geom.Restraints.HarmonicDihedRestraint.GetCrdValue",
+            lambda self, crds: 0.01,
+        ):
+            run_soft_dihed_opt(
+                los,
+                Seed(np.zeros((4, 3))),
+                ["hard"],
+                [0, 1, 2, 3],
+                0.0,
+                "x",
+                opt_fn=fake_opt,
+                cheap_los=cheap,
+            )
+        self.assertEqual(calls, [("sander", "soft", 0.0), ("xtb", "soft", 1.0)])
 
     def test_format_boltzmann_summary(self):
         from ffpopt.affdo.AffdoLog import format_boltzmann_summary
@@ -1951,11 +2160,13 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         los.calc = Boom()
         los._ffpopt_calc_cache = ("k", Boom())
         los._ffpopt_qdpi2_full_cache = ("k2", Boom())
+        los._ffpopt_mm_preopt_los = ("sander", Boom())
 
         restored = pickle.loads(pickle.dumps(los))
         self.assertIsNone(restored.calc)
         self.assertIsNone(restored._ffpopt_calc_cache)
         self.assertIsNone(restored._ffpopt_qdpi2_full_cache)
+        self.assertIsNone(restored._ffpopt_mm_preopt_los)
         self.assertIsInstance(los.calc, Boom)
         self.assertEqual(los._ffpopt_calc_cache[0], "k")
 

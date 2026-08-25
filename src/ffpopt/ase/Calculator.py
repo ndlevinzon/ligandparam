@@ -163,6 +163,12 @@ class GenCalculator(Calculator):
             from .TbliteScf import make_tblite_calculator
 
             self.calc = make_tblite_calculator(charge=self.charge)
+        elif self.mode in ("GFNFF", "GFN-FF", "GFN_FF"):
+            from .TbliteScf import make_tblite_calculator
+
+            self.calc = make_tblite_calculator(
+                charge=self.charge, method="GFN-FF"
+            )
         elif "MACE" in self.mode:
             from mace.calculators import MACECalculator
             import importlib

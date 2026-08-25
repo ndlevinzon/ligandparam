@@ -10,10 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **MM then HL** - under ``--fast``, HL wavefront nodes sander-relax (or
+  GFN-FF) at the target angle, then one XTB/QDpi2 opt from those coords.
+  Soft-dihed k-ramps on MM, one HL at final k or after the MM hard IC.
+  ``FFPOPT_MM_THEN_HL=0`` restores full-HL opts.
 - **Wavefront algorithms page** - Sphinx ``wavefront.rst`` documents expansion,
   evaluate/spawn policy, seed coalescing, N-D von Neumann neighbors, calculator
   cache, reused spawn pools, ``nproc`` flatten vs nest, ``--fast`` presets,
-  soft-dihed k-ramp, and ``[wavefront]`` / ``[affdo]`` log scopes.
+  soft-dihed k-ramp, rigid-rotate seed, MM-then-HL, and ``[wavefront]`` /
+  ``[affdo]`` log scopes.
+- **Rigid-rotate seed** - wavefront nodes Rodrigues-rotate the ``RotateMask``
+  branch by wrapped ``dphi`` before GeomOpt (clash-check; keep parent coords
+  on overlap) so TRIC does not slam large dihedral gaps.
 - **Seed coalescing** - at most one pending wavefront job per grid location;
   cheaper parent energy replaces the queued seed (or is deferred if in-flight).
 - **N-D von Neumann neighbors** - default stencil is axis-aligned only

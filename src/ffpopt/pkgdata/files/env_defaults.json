@@ -29,6 +29,13 @@
   // under --fast). 1/0 to force.
   "FFPOPT_ASE_FIRST": null,
 
+  // MM-relax then one HL opt per node. null = on under --fast for xtb/qdpi2
+  // (not sander). 1/0 to force. Soft-dihed: k-ramp on MM, one HL at final k
+  // or after the MM hard IC.
+  "FFPOPT_MM_THEN_HL": null,
+  // Cheap engine: sander | gfnff. null = sander if parm7 exists, else GFN-FF.
+  "FFPOPT_MM_THEN_HL_MODEL": null,
+
   // QDpi2 opt force terms: both | xtb | dp. null = xtb under --fast, else both.
   "FFPOPT_QDPI2_OPT": null,
 

@@ -145,8 +145,63 @@ def CptDihed(a,b,c,d):
     else :
         return -np.degrees(np.arccos(cosa))
 
-    
 
+def rotate_coords_about_bond(coords, b, c, delta_deg, mask):
+    """Rigid-rotate masked atoms about bond ``b-c`` by ``delta_deg``.
+
+    Rodrigues rotation about the axis ``coords[c] - coords[b]``, centered at
+    ``coords[b]``. Atoms on the axis (including ``b`` and ``c``) are unchanged.
+    Used to Cartesian-seed a dihedral before GeomOpt so geomeTRIC does not
+    have to slam a large wrapped ``dphi`` through TRIC.
+
+    Parameters
+    ----------
+    coords : array-like, shape (N, 3)
+        Cartesian coordinates (Ang).
+    b, c : int
+        0-based indices of the rotatable bond (dihedral atoms 2 and 3).
+    delta_deg : float
+        Signed rotation in degrees (right-hand about ``b -> c``).
+    mask : sequence of bool or 0/1
+        Length ``N``; truthy entries move.
+
+    Returns
+    -------
+    numpy.ndarray, shape (N, 3)
+        Copied coordinates with the masked branch rotated.
+    """
+    crd = np.array(coords, dtype=float, copy=True)
+    m = np.asarray(mask, dtype=bool)
+    if m.shape[0] != crd.shape[0]:
+        raise ValueError(
+            "rotate mask length %s does not match n_atoms %s"
+            % (m.shape[0], crd.shape[0])
+        )
+    if not np.any(m):
+        return crd
+    b = int(b)
+    c = int(c)
+    axis = crd[c] - crd[b]
+    nrm = float(np.linalg.norm(axis))
+    if nrm < 1e-12:
+        return crd
+    u = axis / nrm
+    theta = np.deg2rad(float(delta_deg))
+    ct = np.cos(theta)
+    st = np.sin(theta)
+    rel = crd[m] - crd[b]
+    # pypy-safe cross (np.cross is missing there); u x rel for rows of rel
+    cross = np.stack(
+        (
+            u[1] * rel[:, 2] - u[2] * rel[:, 1],
+            u[2] * rel[:, 0] - u[0] * rel[:, 2],
+            u[0] * rel[:, 1] - u[1] * rel[:, 0],
+        ),
+        axis=1,
+    )
+    udot = rel @ u
+    crd[m] = crd[b] + rel * ct + cross * st + np.outer(udot, u) * (1.0 - ct)
+    return crd
 
 
 def CptDistAndGrd(ca,cb):

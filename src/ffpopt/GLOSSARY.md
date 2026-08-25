@@ -66,6 +66,30 @@ is already in flight.
 
 **Authoritative source.** `src/ffpopt/scan/WavefrontEngine.py` (`_enqueue_visit`)
 
+### Rigid-rotate seed
+
+**Definition.** Cartesian twist of the `RotateMask` branch by wrapped `dphi`
+before GeomOpt; a clash or broken bond keeps the parent coordinates.
+
+**Detail.** Neighbor nodes still copy the parent Cartesian. Without this,
+geomeTRIC slams a large TRIC step (e.g. 11 deg vs 250 deg). The frozen
+constraint or soft restraint is unchanged.
+
+**Authoritative source.** `src/ffpopt/scan/WavefrontMixins.py`
+(`seed_struct_rigid_dihed_rotates`)
+
+### MM then HL
+
+**Definition.** Cheap constrained min (sander or GFN-FF) at the scanned
+angle, then one high-level (XTB / QDpi2) refine from those coordinates.
+
+**Detail.** Default on under `--fast` for non-MM models (`FFPOPT_MM_THEN_HL`).
+Soft-dihed runs the k-ramp on MM and does one HL opt at the final k or after
+the MM hard IC. Stored node energies are always the HL values.
+
+**Authoritative source.** `src/ffpopt/scan/WavefrontMixins.py`
+(`geomopt_mm_then_hl`, `run_soft_dihed_opt`)
+
 ### Von Neumann stencil
 
 **Definition.** N-D neighbor set of axis-aligned bins only (`2 * ndim`),

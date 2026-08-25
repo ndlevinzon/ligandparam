@@ -20,9 +20,11 @@ from .WavefrontMixins import (
     apply_wavefront_minimum_to_node,
     clear_los_calc,
     clone_struct_geometry,
+    dihed_seed_targets,
     ensure_soft_opt_attrs,
     finalize_successful_node_opt,
     format_wavefront_progress,
+    geomopt_mm_then_hl,
     load_wavefront_pickle,
     mark_node_failed,
     merge_standard_wavefront_kwargs,
@@ -34,6 +36,7 @@ from .WavefrontMixins import (
     require_main_guard_for_spawn,
     run_mp_spawn_drain_loop,
     run_mpi_spawn_drain_loop,
+    seed_struct_rigid_dihed_rotates,
     slim_completed_nodes_for_checkpoint,
     slim_node_result,
     write_node_pickle,
@@ -386,6 +389,11 @@ class WavefrontNode:
                     self.reslist.rests[ic].value = self.rcs[ncon + ic]
             else:
                 self.constraints[0].value = self.angle
+            self.struct = seed_struct_rigid_dihed_rotates(
+                self.struct,
+                dihed_seed_targets(self),
+                node_id=self.node_id,
+            )
             precheck_err = self._precheck_geometry()
             if precheck_err is not None:
                 self._mark_failed(precheck_err)
@@ -416,12 +424,13 @@ class WavefrontNode:
                     if self.is_nd:
                         cons = self.conlist.cons if self.conlist is not None else None
                         rest = self.reslist.rests if self.reslist is not None else None
-                    self.opt_geom = GeomOpt(
+                    self.opt_geom = geomopt_mm_then_hl(
                         self.los,
                         self.struct,
                         constraints=cons,
                         restraints=rest,
                         geom_prefix=geom_prefix,
+                        node_id=self.node_id,
                     )
                 self.opt_recovery = opt_recovery_label(self.opt_geom)
                 self.soft_opt = is_soft_opt_recovery(self.opt_geom)

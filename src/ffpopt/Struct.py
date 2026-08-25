@@ -849,6 +849,8 @@ class ListOfStruct(object):
             state["_ffpopt_calc_cache"] = None
         if "_ffpopt_qdpi2_full_cache" in state:
             state["_ffpopt_qdpi2_full_cache"] = None
+        if "_ffpopt_mm_preopt_los" in state:
+            state["_ffpopt_mm_preopt_los"] = None
         return state
         
     @classmethod
@@ -905,6 +907,10 @@ class ListOfStruct(object):
             self.calc = None
         if hasattr(self, "_ffpopt_calc_cache"):
             self._ffpopt_calc_cache = None
+        if hasattr(self, "_ffpopt_qdpi2_full_cache"):
+            self._ffpopt_qdpi2_full_cache = None
+        if hasattr(self, "_ffpopt_mm_preopt_los"):
+            self._ffpopt_mm_preopt_los = None
 
 
     def GetByName(self,name):

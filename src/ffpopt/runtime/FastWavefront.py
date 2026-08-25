@@ -193,9 +193,79 @@ def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
     return split_nproc_for_items(total_cores, n_jobs, prefer_depth=False)
 
 
+def is_sander_like_model(model: str | None) -> bool:
+    m = (model or "").strip().lower()
+    return m in {"sander", "amber", "mm"} or m.startswith("sander")
+
+
 def is_xtb_like_model(model: str | None) -> bool:
     m = (model or "").strip().lower()
     return m in {"xtb", "gfn2-xtb", "gfn2", "tblite"} or m.startswith("xtb")
+
+
+def is_gfnff_model(model: str | None) -> bool:
+    m = (model or "").strip().lower().replace("_", "-")
+    return m in {"gfnff", "gfn-ff"} or m.startswith("gfn-ff")
+
+
+def is_cheap_mm_model(model: str | None) -> bool:
+    """True for Amber sander / GFN-FF (already cheap; never MM-then-HL)."""
+    return is_sander_like_model(model) or is_gfnff_model(model)
+
+
+def mm_then_hl_enabled(model: str | None, *, fast: Optional[bool] = None) -> bool:
+    """Whether HL GeomOpt should MM-relax first, then one HL refine.
+
+    Never for sander / GFN-FF (already the cheap model). Otherwise:
+
+    * ``FFPOPT_MM_THEN_HL=0|1`` forces off / on
+    * ``null`` (default): on under ``--fast`` / ``FFPOPT_FAST_WAVEFRONT=1``
+    """
+    if is_cheap_mm_model(model):
+        return False
+    raw = env_value("FFPOPT_MM_THEN_HL")
+    if raw is not None:
+        return as_bool(raw)
+    return fast_wavefront_enabled(fast)
+
+
+def _amber_parm_path(struct) -> Optional[str]:
+    data = getattr(struct, "data", None)
+    if not isinstance(data, dict):
+        return None
+    parm = data.get("parm")
+    if not parm:
+        return None
+    from pathlib import Path
+
+    path = Path(str(parm))
+    return str(path) if path.is_file() else None
+
+
+def cheap_preopt_model_name(struct) -> Optional[str]:
+    """Cheap engine for MM-then-HL: sander if a parm7 exists, else GFN-FF.
+
+    Override with ``FFPOPT_MM_THEN_HL_MODEL=sander|gfnff``. Returns ``None``
+    when that engine cannot run (no parm, or tblite missing for GFN-FF).
+    """
+    raw = env_value("FFPOPT_MM_THEN_HL_MODEL")
+    want = str(raw).strip().lower().replace("_", "-") if raw else ""
+    has_parm = _amber_parm_path(struct) is not None
+
+    def _gfnff_ok() -> bool:
+        import importlib.util
+
+        return importlib.util.find_spec("tblite") is not None
+
+    if want in {"sander", "amber", "mm"}:
+        return "sander" if has_parm else None
+    if want in {"gfnff", "gfn-ff"}:
+        return "gfnff" if _gfnff_ok() else None
+    if has_parm:
+        return "sander"
+    if _gfnff_ok():
+        return "gfnff"
+    return None
 
 
 def is_qdpi2_model(model: str | None) -> bool:

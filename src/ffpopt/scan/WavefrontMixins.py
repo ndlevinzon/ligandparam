@@ -40,6 +40,10 @@ def clear_los_calc(los) -> None:
         los.calc = None
     if hasattr(los, "_ffpopt_calc_cache"):
         los._ffpopt_calc_cache = None
+    if hasattr(los, "_ffpopt_qdpi2_full_cache"):
+        los._ffpopt_qdpi2_full_cache = None
+    if hasattr(los, "_ffpopt_mm_preopt_los"):
+        los._ffpopt_mm_preopt_los = None
 
 
 def ensure_soft_opt_attrs(node: Any) -> None:
@@ -135,6 +139,8 @@ def pickle_checkpoint_keep_calc_cache(obj: Any, path, los) -> None:
     """
     calc = getattr(los, "calc", None) if los is not None else None
     cache = getattr(los, "_ffpopt_calc_cache", None) if los is not None else None
+    qdpi = getattr(los, "_ffpopt_qdpi2_full_cache", None) if los is not None else None
+    mm_preopt = getattr(los, "_ffpopt_mm_preopt_los", None) if los is not None else None
     if los is not None:
         clearer = getattr(los, "clear_runtime_caches", None)
         if callable(clearer):
@@ -147,6 +153,10 @@ def pickle_checkpoint_keep_calc_cache(obj: Any, path, los) -> None:
                 los.calc = calc
             if cache is not None:
                 los._ffpopt_calc_cache = cache
+            if qdpi is not None:
+                los._ffpopt_qdpi2_full_cache = qdpi
+            if mm_preopt is not None:
+                los._ffpopt_mm_preopt_los = mm_preopt
 
 
 def uses_soft_dihed_restraint(los) -> bool:
@@ -154,8 +164,9 @@ def uses_soft_dihed_restraint(los) -> bool:
 
     Whole-ligand bulky rotors (detergents) clash if the seed angle is snapped
     with a hard IC before opt. ``--soft-dihed-restraint`` exists so the
-    optimizer can rotate under a harmonic; clash checks must use the current
-    coordinates, not a hard-twisted copy.
+    optimizer can rotate under a harmonic. ``seed_struct_rigid_dihed_rotates``
+    still Cartesian-twists the ``RotateMask`` branch (and reverts on clash);
+    the precheck must not additionally hard-snap.
     """
     args = getattr(los, "args", None)
     return bool(getattr(args, "soft_dihed_restraint", False))
@@ -198,10 +209,258 @@ def _struct_from_opt_geom(seed, opt_geom):
     )
 
 
+def signed_wrapped_dihed_delta_deg(observed, target) -> float:
+    """Signed wrapped delta ``target - observed`` in ``(-180, 180]`` deg."""
+    return (float(target) - float(observed) + 180.0) % 360.0 - 180.0
+
+
 def _wrapped_dihed_delta_deg(observed, target) -> float:
     """Absolute wrapped dihedral difference in degrees."""
-    d = (float(observed) - float(target) + 180.0) % 360.0 - 180.0
-    return abs(d)
+    return abs(signed_wrapped_dihed_delta_deg(observed, target))
+
+
+# Skip a Cartesian branch twist when already this close (matches hard-IC skip).
+RIGID_ROTATE_SKIP_DEG = 0.05
+# Treat the Rodrigues step as failed if the dihedral is still this far off.
+RIGID_ROTATE_HIT_DEG = 1.0
+
+
+def dihed_seed_targets(node) -> list[tuple[list[int], float]]:
+    """Dihedral ``(idxs, target_deg)`` pairs to Cartesian-seed before GeomOpt."""
+    items = []
+    if getattr(node, "is_nd", False):
+        conlist = getattr(node, "conlist", None)
+        if conlist is not None:
+            items.extend(list(getattr(conlist, "cons", conlist)))
+        reslist = getattr(node, "reslist", None)
+        if reslist is not None:
+            items.extend(list(getattr(reslist, "rests", reslist)))
+    else:
+        items.extend(list(getattr(node, "constraints", None) or []))
+    out: list[tuple[list[int], float]] = []
+    for item in items:
+        idxs = getattr(item, "idxs", None)
+        val = getattr(item, "value", None)
+        if idxs is None or val is None or len(idxs) != 4:
+            continue
+        out.append(([int(x) for x in idxs], float(val)))
+    return out
+
+
+def _format_dihed_idxs(idxs) -> str:
+    return "-".join(str(int(x)) for x in idxs)
+
+
+def seed_struct_rigid_dihed_rotates(
+    struct,
+    targets,
+    *,
+    min_dist: float = 0.8,
+    node_id=None,
+):
+    """Rigid-rotate each dihedral's ``RotateMask`` branch, then clash-check.
+
+    Neighbor seeds still copy the parent Cartesian. Applying wrapped ``dphi``
+    here (shortest arc about ``b-c``) puts the moving branch near the target
+    before geomeTRIC, so TRIC does not slam e.g. 11 deg toward 250 deg.
+
+    If any nonbonded clash or broken covalent geometry appears, return the
+    original ``struct`` unchanged (opt then starts from the parent, as before).
+
+    Parameters
+    ----------
+    struct : ffpopt.Struct.Struct
+        Parent / seed geometry.
+    targets : sequence of (idxs, target_deg)
+        Four-index dihedrals and target angles in degrees.
+    min_dist : float
+        Nonbonded clash threshold (Ang), same as wavefront precheck.
+    node_id : optional
+        Included in ``[wavefront]`` log lines.
+
+    Returns
+    -------
+    struct
+        Cloned geometry with rotated coordinates, or the input if skipped.
+    """
+    if not targets:
+        return struct
+
+    from ffpopt.AmberParm import RotateMask, bonds2graph
+    from ffpopt.geom.Constraints import covalent_geometry_error, has_nonbonded_clash
+    from ffpopt.geom.Geometry import CptDihed, rotate_coords_about_bond
+
+    crd = np.array(struct.data["positions"], dtype=float, copy=True)
+    get_graph = getattr(struct, "GetGraph", None)
+    graph = get_graph() if callable(get_graph) else bonds2graph(struct.data["bonds"])
+
+    applied = []
+    for idxs, target in targets:
+        a, b, c, d = (int(x) for x in idxs)
+        obs = float(CptDihed(crd[a], crd[b], crd[c], crd[d]))
+        if not np.isfinite(obs):
+            continue
+        dphi = signed_wrapped_dihed_delta_deg(obs, target)
+        if abs(dphi) < RIGID_ROTATE_SKIP_DEG:
+            continue
+        mask = RotateMask(graph, [a, b, c, d])
+        trial = rotate_coords_about_bond(crd, b, c, dphi, mask)
+        new = float(CptDihed(trial[a], trial[b], trial[c], trial[d]))
+        if not np.isfinite(new) or _wrapped_dihed_delta_deg(new, target) > RIGID_ROTATE_HIT_DEG:
+            continue
+        crd = trial
+        applied.append((_format_dihed_idxs(idxs), dphi, obs, new))
+
+    if not applied:
+        return struct
+
+    tag = f"Node {node_id}: " if node_id is not None else ""
+    bonds = struct.data["bonds"]
+    clashed, i, j, dist = has_nonbonded_clash(crd, bonds, min_dist=min_dist)
+    if clashed:
+        print_wavefront(
+            f"{tag}rigid-rotate clash atoms {i}-{j} at {dist:.3f} Ang; "
+            "keeping parent coords"
+        )
+        return struct
+
+    numbers = None
+    getter = getattr(struct, "GetAtomicNumbers", None)
+    if callable(getter):
+        try:
+            numbers = getter()
+        except Exception:
+            numbers = None
+    if numbers is not None:
+        broken = covalent_geometry_error(crd, bonds, numbers)
+        if broken:
+            print_wavefront(
+                f"{tag}rigid-rotate broke covalent geometry ({broken}); "
+                "keeping parent coords"
+            )
+            return struct
+
+    bits = [
+        f"{name} by {dphi:+.1f} deg ({obs:.1f} -> {new:.1f})"
+        for name, dphi, obs, new in applied
+    ]
+    print_wavefront(f"{tag}rigid-rotated {'; '.join(bits)}")
+    return clone_struct_geometry(struct, crd)
+
+
+def _los_model_name(los) -> str:
+    args = getattr(los, "args", None)
+    if isinstance(args, dict):
+        return str(args.get("model") or "sander")
+    return str(getattr(args, "model", None) or "sander")
+
+
+def _copy_los_args_with_model(args, model: str):
+    """Shallow-copy CLI args with ``model`` and ASE-first MM preopt."""
+    if args is None:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(model=model, geometric_opt=False, no_opt=False)
+    if isinstance(args, dict):
+        out = dict(args)
+        out["model"] = model
+        out["geometric_opt"] = False
+        return out
+    import copy
+
+    out = copy.copy(args)
+    out.model = model
+    out.geometric_opt = False
+    return out
+
+
+def make_cheap_preopt_los(los, model: str):
+    """Shallow-copy ``los`` onto a cheap engine with its own calc cache."""
+    import copy
+
+    cheap = copy.copy(los)
+    cheap.args = _copy_los_args_with_model(getattr(los, "args", None), model)
+    cheap.calc = None
+    cheap._ffpopt_calc_cache = None
+    cheap._ffpopt_qdpi2_full_cache = None
+    cheap._ffpopt_mm_preopt_los = None
+    return cheap
+
+
+def get_cheap_preopt_los(los, struct):
+    """Cached cheap ``ListOfStruct`` for MM-then-HL, or ``None`` to skip."""
+    from ffpopt.runtime.FastWavefront import (
+        cheap_preopt_model_name,
+        mm_then_hl_enabled,
+    )
+
+    if los is None or not mm_then_hl_enabled(_los_model_name(los)):
+        return None
+    cheap_name = cheap_preopt_model_name(struct)
+    if cheap_name is None:
+        return None
+    cached = getattr(los, "_ffpopt_mm_preopt_los", None)
+    if cached is not None and cached[0] == cheap_name:
+        return cached[1]
+    cheap = make_cheap_preopt_los(los, cheap_name)
+    los._ffpopt_mm_preopt_los = (cheap_name, cheap)
+    return cheap
+
+
+def _geom_prefix_stage(geom_prefix, stage: str):
+    if geom_prefix is None:
+        return None
+    text = str(geom_prefix).strip()
+    return f"{text}_{stage}" if text else None
+
+
+def geomopt_mm_then_hl(
+    los,
+    struct,
+    constraints=None,
+    restraints=None,
+    geom_prefix=None,
+    *,
+    opt_fn=None,
+    node_id=None,
+    cheap_los=None,
+):
+    """Constrained min on MM (sander / GFN-FF), then one HL opt from those coords.
+
+    On MM failure, HL still runs from the input ``struct`` (current behavior).
+    """
+    if opt_fn is None:
+        from ffpopt.geom.GeomOpt import GeomOpt as opt_fn
+
+    start = struct
+    if cheap_los is None:
+        cheap_los = get_cheap_preopt_los(los, struct)
+    if cheap_los is not None:
+        tag = f"Node {node_id}: " if node_id is not None else ""
+        cheap_model = _los_model_name(cheap_los)
+        try:
+            print_wavefront(f"{tag}MM preopt ({cheap_model}), then HL")
+            mm_geom = opt_fn(
+                cheap_los,
+                struct,
+                constraints=constraints,
+                restraints=restraints,
+                geom_prefix=_geom_prefix_stage(geom_prefix, "mm"),
+            )
+            start = _struct_from_opt_geom(struct, mm_geom)
+        except Exception as exc:
+            print_wavefront(
+                f"{tag}MM preopt failed ({type(exc).__name__}: {exc}); "
+                "HL from parent coords"
+            )
+            start = struct
+    return opt_fn(
+        los,
+        start,
+        constraints=constraints,
+        restraints=restraints,
+        geom_prefix=geom_prefix,
+    )
 
 
 def run_soft_dihed_opt(
@@ -214,6 +473,7 @@ def run_soft_dihed_opt(
     *,
     node_id=None,
     opt_fn=None,
+    cheap_los=None,
 ):
     """Soft harmonic dihedral opt with k-doubling, then a hard IC if needed.
 
@@ -222,6 +482,9 @@ def run_soft_dihed_opt(
     opt then runs from those coords unless the restrained min is already
     within ``SOFT_DIHED_HARD_IC_SKIP_DEG`` of ``phi0`` (bias is then far below
     DFT noise).
+
+    When MM-then-HL is on, the k-ramp (and optional MM hard IC) run on sander
+    / GFN-FF; one HL opt follows at the final k or after that hard IC.
     """
     from ffpopt.geom.Restraints import HarmonicDihedRestraint
 
@@ -239,11 +502,24 @@ def run_soft_dihed_opt(
     else:
         kmax = float(kmax_arg)
 
+    if cheap_los is None:
+        cheap_los = get_cheap_preopt_los(los, struct)
+    ramp_los = cheap_los if cheap_los is not None else los
+    two_stage = cheap_los is not None
+    ramp_prefix = (
+        _geom_prefix_stage(geom_prefix, "mm") if two_stage else geom_prefix
+    )
+
     tag = f"Node {node_id}" if node_id is not None else "soft-dihed"
+    if two_stage:
+        print_wavefront(
+            f"{tag}: MM k-ramp ({_los_model_name(cheap_los)}), then one HL"
+        )
     ks = soft_dihed_k_schedule(k0, kmax)
     start = struct
     last_geom = None
     last_z = None
+    last_rest = None
     skip_hard = False
 
     for i, k in enumerate(ks):
@@ -252,11 +528,11 @@ def run_soft_dihed_opt(
         )
         try:
             last_geom = opt_fn(
-                los,
+                ramp_los,
                 start,
                 constraints=None,
                 restraints=[rest],
-                geom_prefix=geom_prefix,
+                geom_prefix=ramp_prefix,
             )
         except Exception as exc:
             if last_geom is None:
@@ -267,6 +543,7 @@ def run_soft_dihed_opt(
                 flush=True,
             )
             break
+        last_rest = rest
         crds = last_geom.data["positions"]
         try:
             ok = rest.within_tolerance(crds)
@@ -319,7 +596,7 @@ def run_soft_dihed_opt(
                 flush=True,
             )
 
-    if skip_hard and last_geom is not None:
+    if skip_hard and last_geom is not None and not two_stage:
         return last_geom
 
     hard_start = (
@@ -327,6 +604,41 @@ def run_soft_dihed_opt(
         if last_geom is not None
         else struct
     )
+
+    if two_stage:
+        if skip_hard and last_rest is not None:
+            print(
+                f"[affdo] {tag}: one HL opt at final k={last_rest.k_kcal:g}",
+                flush=True,
+            )
+            return opt_fn(
+                los,
+                hard_start,
+                constraints=None,
+                restraints=[last_rest],
+                geom_prefix=geom_prefix,
+            )
+        try:
+            mm_hard = opt_fn(
+                cheap_los,
+                hard_start,
+                constraints=constraints,
+                geom_prefix=_geom_prefix_stage(geom_prefix, "mm"),
+            )
+            hard_start = _struct_from_opt_geom(struct, mm_hard)
+        except Exception as exc:
+            print_wavefront(
+                f"{tag}: MM hard IC failed ({type(exc).__name__}: {exc}); "
+                "HL hard IC from last soft coords"
+            )
+        print(f"[affdo] {tag}: one HL hard IC (warm start)", flush=True)
+        return opt_fn(
+            los,
+            hard_start,
+            constraints=constraints,
+            geom_prefix=geom_prefix,
+        )
+
     return opt_fn(
         los,
         hard_start,

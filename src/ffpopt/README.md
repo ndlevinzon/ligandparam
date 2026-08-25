@@ -104,7 +104,8 @@ compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start ``itNN`` from
 the prior LL checkpoint when available. Spawn splits are flattened (never
 bondxwavefront nested); HL and ``orig`` scans pipeline in one queue. Under
 ``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
-(``FFPOPT_QDPI2_OPT``), and XTB/QDpi2 use ASE-first. ``--fast`` remains a
+(``FFPOPT_QDPI2_OPT``), HL nodes MM-relax then one XTB/QDpi2
+(``FFPOPT_MM_THEN_HL``), and XTB/QDpi2 use ASE-first. ``--fast`` remains a
 wall-time trade (looser converge, shorter maxiter). Scan ``delta`` stays 10
 deg.
 
@@ -115,6 +116,10 @@ deg.
 * **Calculator cache** - keep XTB/sander across serial checkpoints; never
   pickle live sander handles into spawn workers.
 * **Reused spawn pool** - sequential bonds in one process share workers.
+* **Rigid-rotate seed** - ``RotateMask`` branch twisted by wrapped ``dphi``
+  before GeomOpt; clash reverts to the parent Cartesian.
+* **MM then HL** - under ``--fast``, sander (or GFN-FF) min at the target,
+  then one XTB/QDpi2 refine. Soft-dihed: k-ramp on MM, one HL at final k.
 * **Soft-dihed k-ramp** - harmonic ``k`` doubles to 8000, then optional hard IC.
 
 ## Dihedral fit chi^2
