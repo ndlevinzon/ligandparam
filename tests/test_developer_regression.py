@@ -1811,9 +1811,44 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             path = Path(td) / "it01.py"
             WriteParmedScript(str(path), p, [dfcn], scee=1.2, scnb=2.0)
             text = path.read_text(encoding="utf-8")
+            self.assertFalse((path.parent / "it01.py.tmp").exists())
         self.assertIn("addDihedral", text)
         self.assertEqual(text.count("addDihedral("), 1)
         self.assertIn("0.5", text)
+        self.assertIn("p.save(", text)
+
+    def test_gendihedfit_outputs_complete_rejects_truncated_py(self):
+        from ffpopt.workflows.TwistHelpers import gendihedfit_outputs_complete
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            py_path = td / "it01.py"
+            frcmod = td / "it01.frcmod"
+            py_path.write_text("#!/usr/bin/env python3\nprint('truncated')\n", encoding="utf-8")
+            frcmod.write_text("FORCE_FIELD_TYPE PARM99\n", encoding="utf-8")
+            self.assertFalse(gendihedfit_outputs_complete(py_path, frcmod))
+            py_path.write_text(
+                "p = load_file(args.iparm)\np.save(args.oparm,overwrite=True)\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(gendihedfit_outputs_complete(py_path, frcmod))
+            frcmod.unlink()
+            self.assertFalse(gendihedfit_outputs_complete(py_path, frcmod))
+
+    def test_run_fit_script_inprocess_raises_if_parm7_missing(self):
+        from ffpopt.workflows.TwistHelpers import _run_fit_script_inprocess
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            script = td / "it01.py"
+            iparm = td / "orig.parm7"
+            oparm = td / "it01.parm7"
+            script.write_text("print('no p.save')\n", encoding="utf-8")
+            iparm.write_text("placeholder\n", encoding="utf-8")
+            with self.assertRaises(FileNotFoundError) as ctx:
+                _run_fit_script_inprocess(script, iparm, oparm)
+            self.assertIn("without writing", str(ctx.exception))
+            self.assertFalse(oparm.exists())
 
     def test_constraints_to_geometric(self):
         from ffpopt.geom.Constraints import Constraint, to_geometric

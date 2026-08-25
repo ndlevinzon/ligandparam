@@ -110,6 +110,12 @@ def _run_fit_script_inprocess(
         runpy.run_path(script, run_name="__main__")
     finally:
         sys.argv = old_argv
+    if not Path(oparm).is_file():
+        raise FileNotFoundError(
+            f"fit script {script} finished without writing {oparm}. "
+            "A truncated itNN.py (GenDihedFit crash mid-write) has no p.save; "
+            "delete itNN.py / itNN.frcmod and rerun so GenDihedFit rewrites them."
+        )
 
 
 def _run_ffpopt_bin(
@@ -401,6 +407,29 @@ def scan_outputs_complete(path: Path, delta=None) -> bool:
         return True
     expected = max(1, 360 // int(delta))
     return n == expected
+
+
+def gendihedfit_outputs_complete(py_path: PathLike, frcmod_path: PathLike | None = None) -> bool:
+    """True when ``skip_existing`` may reuse a GenDihedFit ``itNN.py``.
+
+    A crash inside ``WriteParmedScript`` leaves a truncated ``itNN.py`` with no
+    ``p.save`` (and usually no ``itNN.frcmod``). Reusing that script "succeeds"
+    without writing ``itNN.parm7``, then PrepareInput dies on a missing parm.
+    """
+    py_path = Path(py_path)
+    if frcmod_path is None:
+        frcmod_path = py_path.with_suffix(".frcmod")
+    else:
+        frcmod_path = Path(frcmod_path)
+    if not py_path.is_file() or py_path.stat().st_size < 1:
+        return False
+    if not frcmod_path.is_file() or frcmod_path.stat().st_size < 1:
+        return False
+    try:
+        text = py_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "p.save(" in text
 
 
 def _is_sander_ll_model(model: str | None) -> bool:
@@ -1097,7 +1126,8 @@ def _run_gendihedfit(
     nlmaxiter : int
         Forwarded as ``--nlmaxiter`` to ``ffpopt-GenDihedFit.py``.
     skip_existing : bool
-        If True and ``<citname>.py`` already exists, the call is skipped.
+        If True and ``<citname>.py`` plus ``<citname>.frcmod`` already exist
+        (and the script contains ``p.save``), the call is skipped.
     logger
         Optional logger for progress messages.
     workdir : pathlib.Path, optional
@@ -1109,8 +1139,8 @@ def _run_gendihedfit(
     py_out = _in_workdir(workdir, f"{citname}.py").resolve()
     frcmod_out = _in_workdir(workdir, f"{citname}.frcmod").resolve()
     fit_json = str(_in_workdir(workdir, f"{citname}.fit.json").resolve())
-    if skip_existing and py_out.exists():
-        log.info("[twist] %s exists - skipping GenDihedFit.", py_out)
+    if skip_existing and gendihedfit_outputs_complete(py_out, frcmod_out):
+        log.info("[twist] %s + %s exist - skipping GenDihedFit.", py_out, frcmod_out)
         return
     log.info("[twist] GenDihedFit -> %s (cwd=%s)", py_out, _subprocess_cwd(workdir))
     extra = list(fit_cli_args or [])
@@ -1274,6 +1304,7 @@ def _apply_fit_and_prepare(
     log.info("[twist] applying fit -> %s (in-process: %s)", parm_out, py_script)
     sys.stdout.flush()
     _run_fit_script_inprocess(py_script, origparm_path, parm_out.resolve())
+    _require_files([parm_out], step="apply fit script")
     log.info("[twist] fit script finished -> %s", parm_out.resolve())
     sys.stdout.flush()
     log.info("[twist] PrepareInput -> %s", json_out)

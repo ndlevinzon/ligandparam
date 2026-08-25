@@ -272,92 +272,88 @@ def WriteParmedScript(fname,p,dfcns,scee=1.2,scnb=2.0): #,bytype):
     None
     
     """
-    from collections import defaultdict as ddict
-    from ffpopt.dihed.DihedParmEd import FindDihedrals
-    
+    from pathlib import Path
+    import os
+
     aidxs = [ idx for dfcn in dfcns for idx in dfcn.idxs ]
     aidxs = list(set(aidxs))
     resname = p.atoms[aidxs[0]].residue.name
-    
-    fh = open(fname,"w")
-    fh.write("#!/usr/bin/env python3\n")
-    fh.write("import sys\n")
-    fh.write("import argparse\n")
-    fh.write("from parmed import load_file\n")
-    fh.write("from parmed.tools.actions import deleteDihedral, addDihedral\n")
-    fh.write("from parmed.amber.mask import AmberMask\n")
 
-    fh.write("parser = argparse.ArgumentParser(\"replace dihedral parameters\")\n")
-    fh.write(f"parser.add_argument(\"--resname\",default=\"{resname}\",help=\"Name of the residue, default: {resname}\",type=str)\n")
-    fh.write("parser.add_argument(\"iparm\",help=\"Input parm7\")\n")
-    fh.write("parser.add_argument(\"oparm\",help=\"Output parm7\")\n")
-    fh.write("args = parser.parse_args()\n")
-    fh.write("rname = args.resname\n")
+    out_path = Path(fname)
+    tmp_path = out_path.with_name(out_path.name + ".tmp")
+    fh = open(tmp_path, "w")
+    try:
+        fh.write("#!/usr/bin/env python3\n")
+        fh.write("import sys\n")
+        fh.write("import argparse\n")
+        fh.write("from parmed import load_file\n")
+        fh.write("from parmed.tools.actions import deleteDihedral, addDihedral\n")
+        fh.write("from parmed.amber.mask import AmberMask\n")
 
-    fh.write(f"scee = {float(scee)}\n")
-    fh.write(f"scnb = {float(scnb)}\n")
+        fh.write("parser = argparse.ArgumentParser(\"replace dihedral parameters\")\n")
+        fh.write(f"parser.add_argument(\"--resname\",default=\"{resname}\",help=\"Name of the residue, default: {resname}\",type=str)\n")
+        fh.write("parser.add_argument(\"iparm\",help=\"Input parm7\")\n")
+        fh.write("parser.add_argument(\"oparm\",help=\"Output parm7\")\n")
+        fh.write("args = parser.parse_args()\n")
+        fh.write("rname = args.resname\n")
 
-    
-    fh.write("if args.iparm == args.oparm:\n")
-    fh.write("    raise Exception(\"The 2 filenames must be different\")\n\n")
-    
-    fh.write("print(f\"[fit-apply] loading {args.iparm}\", flush=True)\n")
-    fh.write("p = load_file( args.iparm )\n")
-    fh.write("print(f\"[fit-apply] loaded {len(p.atoms)} atoms, {len(p.dihedrals)} dihedrals\", flush=True)\n\n")
-    
+        fh.write(f"scee = {float(scee)}\n")
+        fh.write(f"scnb = {float(scnb)}\n")
 
-    #if not bytype:
-    if True:
+        fh.write("if args.iparm == args.oparm:\n")
+        fh.write("    raise Exception(\"The 2 filenames must be different\")\n\n")
+
+        fh.write("print(f\"[fit-apply] loading {args.iparm}\", flush=True)\n")
+        fh.write("p = load_file( args.iparm )\n")
+        fh.write("print(f\"[fit-apply] loaded {len(p.atoms)} atoms, {len(p.dihedrals)} dihedrals\", flush=True)\n\n")
+
         for aidx in aidxs:
-            res = p.atoms[aidx].residue.name
             name = p.atoms[aidx].name
             mask = ":%s@%s"%("{rname}",name)
             fh.write(f"mask=f\"{mask}\"\n")
             fh.write("res = [i for i in AmberMask(p,mask).Selected()]\n")
             fh.write("if len(res) == 0:\n")
             fh.write("    raise Exception(f\"No atoms matching {mask}\")\n")
-            
 
-    fh.write("\n\n")
-    n_ops = len(dfcns)
-    fh.write(f"print(\"[fit-apply] updating {n_ops} dihedral(s)\", flush=True)\n")
-    for idfcn, dfcn in enumerate(dfcns):
-        allmasks = [ [ ":%s@%s"%("{rname}",p.atoms[idx].name)
-                       for idx in dfcn.idxs ] ]
-        idxs_label = "-".join(str(i) for i in dfcn.idxs)
+        fh.write("\n\n")
+        n_ops = len(dfcns)
+        fh.write(f"print(\"[fit-apply] updating {n_ops} dihedral(s)\", flush=True)\n")
+        for idfcn, dfcn in enumerate(dfcns):
+            allmasks = [ [ ":%s@%s"%("{rname}",p.atoms[idx].name)
+                           for idx in dfcn.idxs ] ]
+            idxs_label = "-".join(str(i) for i in dfcn.idxs)
 
-        for masks in allmasks:
-            mstr = ",".join(["f\"%s\""%(mask) for mask in masks])
-            # Do not embed mstr in the print string - it contains f\"...\" and
-            # would produce a SyntaxError in the generated script.
-            fh.write(
-                f"print(\"[fit-apply]   {idfcn+1}/{n_ops} delete+add "
-                f"idxs={idxs_label}\", flush=True)\n"
-            )
-            fh.write(f"deleteDihedral(p,{mstr}).execute()\n")
-            for prim in merge_duplicate_period_prims(dfcn.prims, label=idxs_label):
-                fh.write(f"addDihedral(p,{mstr},{prim.fc},{prim.per},{prim.phase},scee,scnb).execute()\n")
-            fh.write("\n\n")
+            for masks in allmasks:
+                mstr = ",".join(["f\"%s\""%(mask) for mask in masks])
+                # Do not embed mstr in the print string - it contains f\"...\" and
+                # would produce a SyntaxError in the generated script.
+                fh.write(
+                    f"print(\"[fit-apply]   {idfcn+1}/{n_ops} delete+add "
+                    f"idxs={idxs_label}\", flush=True)\n"
+                )
+                fh.write(f"deleteDihedral(p,{mstr}).execute()\n")
+                for prim in merge_duplicate_period_prims(dfcn.prims, label=idxs_label):
+                    fh.write(f"addDihedral(p,{mstr},{prim.fc},{prim.per},{prim.phase},scee,scnb).execute()\n")
+                fh.write("\n\n")
 
-    fh.write("print(f\"[fit-apply] saving {args.oparm}\", flush=True)\n")
-    fh.write("p.save(args.oparm,overwrite=True)\n")
-    fh.write("print(f\"[fit-apply] finished applying -> {args.oparm}\", flush=True)\n")
-    fh.close()
-
-    
-
-
-
-
-
-
-
-    
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-
-
+        fh.write("print(f\"[fit-apply] saving {args.oparm}\", flush=True)\n")
+        fh.write("p.save(args.oparm,overwrite=True)\n")
+        fh.write("print(f\"[fit-apply] finished applying -> {args.oparm}\", flush=True)\n")
+        fh.close()
+        fh = None
+        os.replace(tmp_path, out_path)
+    finally:
+        if fh is not None:
+            try:
+                fh.close()
+            except Exception:
+                pass
+        if tmp_path.is_file() and (
+            not out_path.is_file() or tmp_path.resolve() != out_path.resolve()
+        ):
+            try:
+                if tmp_path.is_file():
+                    os.remove(tmp_path)
+            except OSError:
+                pass
 

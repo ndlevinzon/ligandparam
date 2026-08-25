@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **``--fit-full`` duplicate periodicity** - rounding optimized Fourier periods onto the same integer made ParmEd reject ``DihedralTypeList.append`` (``Cannot add two DihedralType instances with the same periodicity``). Same-``n`` terms are now merged (phase 0 vs 180 subtracts; same phase sums) before frcmod / parm7 write.
 - **GenDihedFit missing imports after Dihedrals split** - ``shape_match_delta`` in ``IsolatedLinearSolve``, ``WriteParmedScript`` in ``SystemType.write_output``, and ``merge_duplicate_period_prims`` in ``WriteParmedScript`` (``--fit-full`` apply).
 - **Spawn pickle of live sander calculators** - ``ListOfStruct.__getstate__`` drops ``_ffpopt_calc_cache`` so nested wavefront pools do not serialize ``sander.pysander.InputOptions``.
+- **Truncated GenDihedFit ``itNN.py`` treated as complete** - ``skip_existing`` reused a script that existed after a crash mid-``WriteParmedScript`` (no ``p.save``). Apply then "succeeded" without ``itNN.parm7``, and PrepareInput died. Skip now requires ``.py`` + ``.frcmod`` and ``p.save(``; apply raises if the parm7 is missing; script write is atomic (``.tmp`` then replace).
 
 ---
 
