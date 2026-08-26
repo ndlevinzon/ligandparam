@@ -40,6 +40,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now uses geomeTRIC (not ASE-first); sander/GFN-FF may continue past
   the explode fmax with small steps. A failed bond is logged and
   dropped from the fit so sibling torsions keep running.
+- **Dihedral FC cap** - barrier-only still wrote PK of thousands because
+  unbounded ``lstsq`` seeded the fit, then ``x0 +/- 2/5`` kept that
+  explosion. Fourier force constants are now clipped and bounded at
+  ``FFPOPT_DIHED_FC_MAX`` (default 25 kcal/mol).
 
 ### Added
 

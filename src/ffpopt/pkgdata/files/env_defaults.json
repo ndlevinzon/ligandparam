@@ -106,6 +106,10 @@
   "FFPOPT_DIHED_FIT_REOPT": false,
   // barrier | torsion | full. CLI --fit-mode / --fit-full still win.
   "FFPOPT_FIT_MODE": "barrier",
+  // Absolute |PK| cap (kcal/mol) for Fourier force constants. Unbounded
+  // lstsq on coupled 1-4 paths (e.g. sulfate s6-o) otherwise writes
+  // thousands of kcal/mol into the frcmod.
+  "FFPOPT_DIHED_FC_MAX": 25.0,
   // lsq | lbfgsb | jax. CLI --fit-backend still wins.
   "FFPOPT_FIT_BACKEND": "lsq",
   // Amber 1-4 electrostatic / VDW scale (used when the CLI omits them).

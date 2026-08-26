@@ -610,6 +610,7 @@ class TestEnvDefaults(unittest.TestCase):
         self.assertEqual(data["FFPOPT_XTB_GUESS"], "eeq")
         self.assertTrue(data["FFPOPT_BOND_BATCH"])
         self.assertEqual(data["FFPOPT_FIT_MODE"], "barrier")
+        self.assertEqual(data["FFPOPT_DIHED_FC_MAX"], 25.0)
         with patch.dict(os.environ, {}, clear=False):
             for key in (
                 "FFPOPT_FAST_WAVEFRONT",
@@ -2626,6 +2627,15 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             system.write_output()
         writer.assert_called_once()
         self.assertEqual(writer.call_args.args[0], "it01.py")
+
+    def test_clip_dihed_fcs_caps_unbounded_lstsq(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitSolve import clip_dihed_fcs, dihed_fc_abs_max
+
+        cap = dihed_fc_abs_max()
+        self.assertEqual(cap, 25.0)
+        out = clip_dihed_fcs([6439.0, -1278.0, 1.4], where="test")
+        np.testing.assert_allclose(out, [cap, -cap, 1.4])
 
     def test_geomopt_facade_exports(self):
         from ffpopt.geom import GeomOptAse, GeomOptParallel

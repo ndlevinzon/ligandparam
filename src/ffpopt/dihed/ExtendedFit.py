@@ -197,16 +197,17 @@ def set_extended_params(finp, x) -> None:
 def extended_bounds(finp, x0):
     """L-BFGS-B bounds for the extended parameter vector."""
     import numpy as np
+    from ffpopt.dihed.DihedFitSolve import dihed_fc_abs_max
 
     x0 = np.asarray(x0, dtype=float)
     lo = np.empty_like(x0)
     hi = np.empty_like(x0)
+    cap = dihed_fc_abs_max()
     ipar = 0
     for pname in finp.ptypedict:
         nprim = finp.ptypedict[pname].nprim
-        # FCs
-        lo[ipar : ipar + nprim] = x0[ipar : ipar + nprim] - 2.0
-        hi[ipar : ipar + nprim] = x0[ipar : ipar + nprim] + 5.0
+        lo[ipar : ipar + nprim] = -cap
+        hi[ipar : ipar + nprim] = cap
         ipar += nprim
         if getattr(finp, "opt_phase", False):
             lo[ipar : ipar + nprim] = -180.0

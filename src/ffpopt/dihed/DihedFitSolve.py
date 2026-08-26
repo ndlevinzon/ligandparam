@@ -6,6 +6,30 @@ from ffpopt.dihed.DihedFourier import GetDihedClasses
 from ffpopt.dihed.DihedMath import shape_match_delta
 from ffpopt.dihed.DihedParmEd import DeleteDihedrals, GetMultiDihedFcnFromIdxs
 
+
+def dihed_fc_abs_max() -> float:
+    """Absolute |PK| cap (kcal/mol) for fitted Fourier force constants."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return max(1.0, float(env_float("FFPOPT_DIHED_FC_MAX", 25.0)))
+
+
+def clip_dihed_fcs(x, *, where: str = "fit"):
+    """Clip a force-constant vector to ``+/- FFPOPT_DIHED_FC_MAX`` kcal/mol."""
+    import numpy as np
+
+    cap = dihed_fc_abs_max()
+    arr = np.asarray(x, dtype=float)
+    clipped = np.clip(arr, -cap, cap)
+    n_hit = int(np.sum(np.abs(arr - clipped) > 1e-9))
+    if n_hit:
+        peak = float(np.max(np.abs(arr))) if arr.size else 0.0
+        print(
+            f"[ffpopt] clipped {n_hit} dihedral FC(s) to +/-{cap:g} kcal/mol "
+            f"(peak was {peak:.3g}) at {where}"
+        )
+    return clipped
+
 def EnergyScansWithoutDihedrals(mol,list_of_los,cons):
     """ Calculate energies for a list of scans without dihedrals.
     
@@ -165,6 +189,7 @@ def IsolatedLinearSolve(mol,idxs,losll,hlenes,nprim,pname):
             A[:,iprim] = prim.CptEterm(angs)
         A_c = A - np.mean(A, axis=0, keepdims=True)
         x, _residues, rank, singular = np.linalg.lstsq(A_c, y_c, rcond=None)
+        x = clip_dihed_fcs(x, where=f"IsolatedLinearSolve({pname})")
         if rank < nprim:
             print(
                 f"[ffpopt] IsolatedLinearSolve({pname}) class {ifcn}: "
@@ -321,7 +346,7 @@ def joint_linear_solve_from_caches(finp, caches):
         "cond": cond,
         "residuals": residuals,
     }
-    return np.asarray(x, dtype=float), info
+    return clip_dihed_fcs(x, where="joint LS"), info
 
 
 def build_fixed_geometry_ll_cache(system, args):
@@ -652,7 +677,11 @@ def NonlinearSolve(args,finp):
                     scnb0=float(getattr(finp, "scnb", 2.0)),
                 )
 
-    x = finp.make_initial_guesses(args=args, caches=finp._ll_cache)
+    x = clip_dihed_fcs(
+        finp.make_initial_guesses(args=args, caches=finp._ll_cache),
+        where="initial guess",
+    )
+    finp.set_params(x)
     n = finp.get_num_params()
     if n == 0:
         print("[ffpopt] NonlinearSolve: no parameters to fit")
@@ -687,8 +716,9 @@ def NonlinearSolve(args,finp):
         print(f"[ffpopt] Final shape-match chi^2 = {chisq:.6e}")
         return
 
-    xlo = x[:] - 2.0
-    xhi = x[:] + 5.0
+    cap = dihed_fc_abs_max()
+    xlo = np.full_like(x, -cap, dtype=float)
+    xhi = np.full_like(x, cap, dtype=float)
 
     if not reopt:
         # Fixed-geometry FCs enter linearly - bounded linear least squares.
