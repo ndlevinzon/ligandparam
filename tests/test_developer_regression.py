@@ -730,6 +730,52 @@ class TestLoggingContracts(unittest.TestCase):
         self.assertTrue(line.isascii())
         self.assertIn("+/-0.5 deg", line)
 
+    def test_success_quote_skips_comments_and_empty(self):
+        from ligandparam.Log import (
+            dihed_correct_ok,
+            format_reminder_line,
+            load_quotes,
+            log_success_quote,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "quotes.txt"
+            path.write_text(
+                "# comment\n\n  first quote  \n\"wrapped\"\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(load_quotes(path), ["first quote", "wrapped"])
+            empty = root / "empty.txt"
+            empty.write_text("# only comments\n\n", encoding="utf-8")
+            self.assertEqual(load_quotes(empty), [])
+            self.assertIsNone(log_success_quote(quotes_path=empty))
+
+            self.assertEqual(
+                format_reminder_line("hello"),
+                'LIGANDPARAM reminds you: "hello"',
+            )
+            self.assertFalse(dihed_correct_ok(None))
+            self.assertFalse(dihed_correct_ok({"merged_frcmod": "/no/such.frcmod"}))
+            frc = root / "out.frcmod"
+            frc.write_text("DIHE\n", encoding="utf-8")
+            self.assertTrue(dihed_correct_ok({"merged_frcmod": str(frc)}))
+            self.assertFalse(
+                dihed_correct_ok(
+                    {
+                        "merged_frcmod": str(frc),
+                        "fragments": [{"fragment_id": "f1", "status": "failed"}],
+                    }
+                )
+            )
+            self.assertFalse(
+                dihed_correct_ok({"merged_frcmod": str(frc)}, dry_run=True)
+            )
+            with patch("sys.stdout", io.StringIO()) as buf:
+                picked = log_success_quote(quotes_path=path)
+            self.assertIn(picked, ("first quote", "wrapped"))
+            self.assertIn('LIGANDPARAM reminds you: "', buf.getvalue())
+
     def test_print_affdo_strips_non_ascii(self):
         from ffpopt.affdo.AffdoLog import print_affdo
 

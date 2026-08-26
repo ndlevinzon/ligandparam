@@ -136,6 +136,7 @@ exclude = ["ligandparam.deprecated", "ligandparam.deprecated.*"]
 
 [tool.setuptools.package-data]
 ffpopt = ["bin/*.py", "pkgdata/**/*", "GLOSSARY.md", "README.md"]
+ligandparam = ["pkgdata/**/*"]
 scission = ["README.md"]
 
 [tool.ruff]

@@ -357,6 +357,10 @@ def main(argv: list[str] | None = None) -> int:
             key,
             result.get(key) or result.get("merged_frcmod") or result.get("out_frcmod"),
         )
+        from ligandparam.Log import dihed_correct_ok, log_success_quote
+
+        if dihed_correct_ok(result, dry_run=args.dry_run):
+            log_success_quote(logger)
     return 0
 
 

@@ -1,0 +1,2 @@
+# One quote per line. Empty lines and lines starting with # are ignored.
+# Paste quotes below this line.

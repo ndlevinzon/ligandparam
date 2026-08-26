@@ -54,6 +54,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Success quote** - after ``lig-dihed-correct`` writes a dihedral
+  frcmod with no failed fragments, stdout logs
+  ``LIGANDPARAM reminds you: "..."`` from a random line in
+  ``src/ligandparam/pkgdata/quotes.txt`` (one quote per line).
+
 - **Two-phase fragment CPU schedule** - cheap 1-D fragments (1-2 fit
   bonds) share ``-n`` in parallel first. Correlated / AFFDO-style
   fragments (3+ bonds) stay queued and do not reserve cores. After the
