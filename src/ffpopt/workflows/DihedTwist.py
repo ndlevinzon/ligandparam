@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -540,24 +541,43 @@ def run_dihed_twist_workflow(
                 pass
 
     def _lease_nproc(phase: str) -> int:
-        """Return cores for this scan phase (re-lease when a shared budget exists)."""
+        """Return cores for this scan phase (wait rather than starve on 1)."""
         if budget_path is None or not budget_owner:
             return nproc
-        from ffpopt.runtime.CpuBudget import CpuBudget, cpu_lease_weight
+        from ffpopt.runtime.CpuBudget import CpuBudget, cpu_lease_weight, cpu_min_lease
 
         n_bonds = len(scans)
         weight = cpu_lease_weight(n_bonds, correlated=correlated_bonds)
-        budget = CpuBudget(budget_path, budget_tot)
-        leased = max(1, int(budget.lease(str(budget_owner), weight=weight)))
-        log.info(
-            "[twist] %s leased %s/%s cores (owner=%s weight=%s)",
-            phase,
-            leased,
-            budget_tot,
-            budget_owner,
-            weight,
-        )
-        return leased
+        min_lease = cpu_min_lease(budget_tot)
+        waited = False
+        while True:
+            budget = CpuBudget(budget_path, budget_tot)
+            leased = int(budget.lease(str(budget_owner), weight=weight))
+            if leased >= min_lease:
+                log.info(
+                    "[twist] %s leased %s/%s cores (owner=%s weight=%s%s)",
+                    phase,
+                    leased,
+                    budget_tot,
+                    budget_owner,
+                    weight,
+                    ", after wait" if waited else "",
+                )
+                return leased
+            waited = True
+            snap = budget.snapshot()
+            log.info(
+                "[twist] %s waiting for >=%s cores (got %s, free=%s, "
+                "alive=%s, owner=%s)",
+                phase,
+                min_lease,
+                leased,
+                snap.get("free"),
+                snap.get("n_alive"),
+                budget_owner,
+            )
+            _prog(phase, f"waiting for CPU (>= {min_lease} cores)")
+            time.sleep(1.0)
 
     def _release_lease(phase: str) -> None:
         """Drop this fragment's lease during serial non-scan work so siblings grow."""

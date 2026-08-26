@@ -371,6 +371,7 @@ def _run_fragment_twist_job(job: dict) -> dict:
         if budget is not None:
             try:
                 budget.release(fragment_id)
+                budget.dec_alive()
                 frag_log.info(
                     "[frag-twist] %s released CPU lease", fragment_id
                 )
@@ -744,7 +745,7 @@ def run_fragmented_dihed_twist_workflow(
 
     # Drop stale leases from a prior killed / timed-out parent so finished
     # owners cannot starve unfinished fragments on restart.
-    CpuBudget(budget_path, nproc, clear_leases=True)
+    CpuBudget(budget_path, nproc, clear_leases=True, n_alive=len(runnable))
 
     from ffpopt.runtime.ProgressBoard import FragmentBoardWatcher, FragmentProgressStore
 
@@ -798,11 +799,16 @@ def run_fragmented_dihed_twist_workflow(
             prefer_depth=prefer_depth,
             flatten_nested=False,
         )
+        from ffpopt.runtime.CpuBudget import cpu_min_lease
+
+        min_lease = cpu_min_lease(nproc)
         for job in runnable:
             job["budget_path"] = str(budget_path)
             job["budget_total"] = int(nproc)
             # Hint only; workers lease dynamically from the shared budget.
-            job["wf_nproc"] = max(1, int(nproc // max(1, n_frag_workers)))
+            job["wf_nproc"] = max(
+                min_lease, int(nproc // max(1, n_frag_workers))
+            )
             job["status_path"] = str(status_path)
             store.register(
                 job["fragment_id"],

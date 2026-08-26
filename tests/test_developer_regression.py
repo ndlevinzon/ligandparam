@@ -2948,6 +2948,18 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertGreaterEqual(weighted[oid], 3)
             self.assertLessEqual(weighted[oid], 4)
 
+        packed = fair_share_leases(
+            11, [f"f{i}" for i in range(11)], min_each=2
+        )
+        self.assertLessEqual(len(packed), 5)
+        self.assertTrue(all(v >= 2 for v in packed.values()))
+        self.assertEqual(sum(packed.values()), 11)
+
+        reserved = fair_share_leases(
+            44, ["first"], min_each=2, virtual_units=10
+        )
+        self.assertEqual(reserved["first"], 4)
+
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
         from ffpopt.workflows.TwistHelpers import _is_sander_ll_model, _wf_kwargs_for_scan_model
         from ffpopt.runtime.FastWavefront import (
@@ -3051,16 +3063,51 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / ".cpu_budget.json"
-            b = CpuBudget(path, 44)
+            b = CpuBudget(path, 44, n_alive=2)
             b.lease("tail", weight=8)
             b.lease("a", weight=1)
             snap = b.snapshot()
             self.assertEqual(snap["weights"]["tail"], 8)
             self.assertGreater(snap["leases"]["tail"], snap["leases"]["a"])
+            self.assertGreaterEqual(min(snap["leases"].values()), 2)
             b.release("a")
+            b.dec_alive()
             grown = CpuBudget(path, 44).lease("tail", weight=8)
             self.assertEqual(grown, 44)
             self.assertNotIn("a", CpuBudget(path, 44).snapshot()["leases"])
+
+    def test_cpu_budget_never_starves_on_one_core(self):
+        from ffpopt.runtime.CpuBudget import CpuBudget, cpu_min_lease
+
+        self.assertGreaterEqual(cpu_min_lease(44), 2)
+        self.assertEqual(cpu_min_lease(1), 1)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / ".cpu_budget.json"
+            b = CpuBudget(path, 44, n_alive=11)
+            first = b.lease("fragment_10", weight=1)
+            self.assertEqual(first, 4)
+            self.assertNotEqual(first, 1)
+            CpuBudget(path, 1)
+            self.assertEqual(CpuBudget(path, 1).snapshot()["total"], 44)
+            for i in range(10):
+                b.dec_alive()
+            b.release("fragment_10")
+            last = CpuBudget(path, 44).lease("fragment_10", weight=1)
+            self.assertEqual(last, 44)
+            fit_sib = CpuBudget(path, 44, clear_leases=True, n_alive=2)
+            fit_sib.lease("fragment_11", weight=1)
+            fit_sib.release("fragment_11")
+            leftover = CpuBudget(path, 44).lease("fragment_10", weight=1)
+            self.assertEqual(leftover, 44)
+            tight = CpuBudget(path, 11, clear_leases=True, n_alive=11)
+            held = []
+            for i in range(11):
+                got = tight.lease(f"f{i}", weight=1)
+                if got:
+                    held.append(got)
+            self.assertTrue(held)
+            self.assertTrue(all(v >= 2 for v in held))
+            self.assertLessEqual(len(held), 5)
 
     def test_execute_bond_scan_jobs_resplit_remaining(self):
         from ffpopt.workflows.TwistHelpers import _execute_bond_scan_jobs

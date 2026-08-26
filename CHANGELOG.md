@@ -50,9 +50,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Weighted CPU juggling** - correlated / AFFDO-style fragments lease
   cores proportional to bond count (capped at 8) instead of an equal
-  split with 1-D siblings. Sequential bond scans re-lease and re-split
-  remaining jobs when a sibling releases, so leftover cores are not idle
-  until the next phase. In-flight 2-D wavefront pools stay fixed.
+  split with 1-D siblings. A scan never starts on one core when the
+  budget can spare ``FFPOPT_MIN_WF_NPROC`` (at least 2): extra owners
+  wait. Unfinished fragments reserve a share so the last leftover job
+  can take the node instead of staying at ``nproc=1``. Sequential bond
+  scans re-lease remaining jobs; in-flight 2-D pools stay fixed.
 
 - **XTB core split** - ``prefer_depth`` nproc packing now uses leftover cores
   (44 cores / 8 bonds -> 4x11, not 8x5 with 4 idle; pipelined HL+orig 16

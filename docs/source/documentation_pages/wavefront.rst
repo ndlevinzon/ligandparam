@@ -211,10 +211,11 @@ Flattened vs nested ``nproc``
   ``FFPOPT_PREF_WF_BREADTH=1``.
 
 CPU leases are held only during wavefront scan phases. PrepareInput /
-GenDihedFit / compare release cores so siblings can grow. Correlated
-fragments take a larger share (weight = n_bonds, cap 8) than 1-D jobs.
-Sequential leftover bonds re-lease so free cores are picked up before
-the next phase.
+GenDihedFit / compare release cores so siblings can grow. A scan never
+starts on one core when the budget can spare ``FFPOPT_MIN_WF_NPROC``
+(at least 2); extra owners wait. Correlated fragments take a larger
+share (weight = n_bonds, cap 8) than 1-D jobs. Sequential leftover
+bonds re-lease so free cores are picked up before the next phase.
 
 ``--fast`` presets
 ~~~~~~~~~~~~~~~~~~

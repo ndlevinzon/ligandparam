@@ -1,15 +1,13 @@
 """Shared CPU lease table for parallel fragment (and similar) workers.
 
 Workers lease a weighted share of a total core budget from a JSON file
-protected by a mkdir lock. Correlated / AFFDO-style fragments (many rotors)
-take a larger share than 1-D fragment jobs. Finished workers release so
-remaining work can grow its ``nproc`` at the next lease boundary (scan phase
-or the next sequential bond).
-
-On each :meth:`CpuBudget.lease` call, leases for the active owner set are
-recomputed so cores are not left idle among currently active workers.
-In-flight wavefront pools do not resize; the new size applies at the next
-scan phase or remaining-bond split.
+protected by a mkdir lock. A scan never starts on a single core when the
+budget can spare ``FFPOPT_MIN_WF_NPROC`` (at least 2): extra owners wait
+instead of starving. ``n_alive`` reserves cores for fragments that have
+not leased yet, so the first scanner does not grab the whole node, and a
+leftover scanner can take what remains after siblings finish or enter
+fit. In-flight wavefront pools do not resize; the new size applies at
+the next scan phase or remaining-bond split.
 """
 
 from __future__ import annotations
@@ -43,6 +41,20 @@ class _DirLock:
         return self._lock.__exit__(*exc)
 
 
+def cpu_min_lease(total: int | None = None) -> int:
+    """Never start a scan on one core when the budget can spare more.
+
+    Floor is ``max(2, FFPOPT_MIN_WF_NPROC)``, capped at ``total`` so
+    ``-n 1`` still runs. A job that cannot get this many cores waits.
+    """
+    from ffpopt.runtime.EnvDefaults import env_int
+
+    floor = max(2, int(env_int("FFPOPT_MIN_WF_NPROC")))
+    if total is None:
+        return floor
+    return min(floor, max(1, int(total)))
+
+
 def cpu_lease_weight(n_bonds: int, *, correlated: bool) -> int:
     """Core-share weight for one fragment owner.
 
@@ -73,15 +85,21 @@ def fair_share_leases(
     *,
     weights: Mapping[str, Any] | None = None,
     prefer: Optional[str] = None,
+    min_each: int = 1,
+    virtual_units: int = 0,
 ) -> dict[str, int]:
-    """Distribute ``total`` cores across ``owners`` (floor 1 each when possible).
+    """Distribute ``total`` cores across ``owners``.
 
-    Equal weights match the old ``total // n`` plus leftover. Non-unit
-    ``weights`` use largest remainder so a correlated fragment (weight =
-    n_bonds) gets more cores than a 1-D sibling. ``prefer`` receives the
-    first leftover when remainders tie.
+    Equal weights match ``total // n`` plus leftover. Non-unit ``weights``
+    use largest remainder. ``min_each`` > 1 never assigns 1 core when the
+    budget can give two: extra owners get 0 instead of starving on a
+    single worker. ``virtual_units`` are reserved weight-1 slots for
+    fragments that have not leased yet, so the first scanner does not
+    grab the whole node.
     """
     total = max(1, int(total))
+    min_each = max(1, int(min_each))
+    virtual_units = max(0, int(virtual_units))
     ids = sorted({str(o) for o in owners if o is not None and str(o)})
     if not ids:
         return {}
@@ -93,12 +111,37 @@ def fair_share_leases(
             return [prefer] + [o for o in seq if o != prefer]
         return seq
 
-    if total < n:
+    if total < min_each:
         ordered = _prefer_first(sorted(ids, key=lambda o: (-wmap[o], o)))
-        out = {oid: 0 for oid in ids}
-        for oid in ordered[:total]:
-            out[oid] = 1
-        return {k: v for k, v in out.items() if v > 0}
+        return {ordered[0]: total}
+
+    if min_each > 1 or virtual_units > 0:
+        w_real = sum(wmap.values())
+        W = max(1, w_real + virtual_units)
+        reserved = int(total * virtual_units / W) if virtual_units else 0
+        available = max(0, total - reserved)
+        if available < min_each:
+            if total >= min_each:
+                ordered = _prefer_first(sorted(ids, key=lambda o: (-wmap[o], o)))
+                return {ordered[0]: min_each}
+            return {}
+        n_fit = min(n, available // min_each)
+        chosen = _prefer_first(sorted(ids, key=lambda o: (-wmap[o], o)))[:n_fit]
+        rem = available - min_each * len(chosen)
+        w_ch = sum(wmap[o] for o in chosen) or len(chosen)
+        quotas = {o: rem * wmap[o] / w_ch for o in chosen}
+        floors = {o: int(quotas[o]) for o in chosen}
+        leftover = rem - sum(floors.values())
+        ordered_frac = _prefer_first(
+            sorted(
+                chosen,
+                key=lambda o: (-(quotas[o] - floors[o]), -wmap[o], o),
+            )
+        )
+        out = {o: min_each + floors[o] for o in chosen}
+        for oid in ordered_frac[:leftover]:
+            out[oid] += 1
+        return {k: int(v) for k, v in out.items() if v > 0}
 
     wsum = sum(wmap.values())
     quotas = {oid: total * wmap[oid] / wsum for oid in ids}
@@ -128,7 +171,12 @@ class CpuBudget:
     """Process-shared CPU lease table backed by a JSON file."""
 
     def __init__(
-        self, path: PathLike, total: int, *, clear_leases: bool = False
+        self,
+        path: PathLike,
+        total: int,
+        *,
+        clear_leases: bool = False,
+        n_alive: Optional[int] = None,
     ) -> None:
         self.path = Path(path)
         self.total = max(1, int(total))
@@ -136,18 +184,37 @@ class CpuBudget:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with _DirLock(self.lock_dir):
             data = self._read_unlocked()
-            data["total"] = self.total
+            prev_total = int(data.get("total") or 0)
             if clear_leases:
+                data["total"] = self.total
                 data["leases"] = {}
                 data["weights"] = {}
+                data["n_alive"] = max(0, int(n_alive or 0))
+                data["started"] = []
             else:
+                # Never shrink the parent budget if a worker passes a hint of 1.
+                data["total"] = (
+                    max(self.total, prev_total) if prev_total else self.total
+                )
                 data.setdefault("leases", {})
                 data.setdefault("weights", {})
+                data.setdefault("started", [])
+                if n_alive is not None:
+                    data["n_alive"] = max(0, int(n_alive))
+                else:
+                    data.setdefault("n_alive", 0)
+            self.total = int(data["total"])
             data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
             _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
 
     def _read_unlocked(self) -> dict[str, Any]:
-        empty = {"total": self.total, "leases": {}, "weights": {}}
+        empty = {
+            "total": self.total,
+            "leases": {},
+            "weights": {},
+            "n_alive": 0,
+            "started": [],
+        }
         if not self.path.is_file():
             return empty
         try:
@@ -160,6 +227,13 @@ class CpuBudget:
             data["leases"] = {}
         if not isinstance(data.get("weights"), dict):
             data["weights"] = {}
+        try:
+            data["n_alive"] = max(0, int(data.get("n_alive") or 0))
+        except (TypeError, ValueError):
+            data["n_alive"] = 0
+        started = data.get("started")
+        if not isinstance(started, list):
+            data["started"] = []
         data["total"] = int(data.get("total") or self.total)
         return data
 
@@ -169,6 +243,8 @@ class CpuBudget:
             data = self._read_unlocked()
             data["leases"] = {}
             data["weights"] = {}
+            data["n_alive"] = 0
+            data["started"] = []
             data["total"] = self.total
             data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
             _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
@@ -194,6 +270,7 @@ class CpuBudget:
             "weights": weights,
             "used": used,
             "free": max(0, total - used),
+            "n_alive": int(data.get("n_alive") or 0),
         }
 
     def release(self, owner_id: str) -> None:
@@ -214,6 +291,16 @@ class CpuBudget:
                 data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
                 _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
 
+    def dec_alive(self) -> int:
+        """One unfinished fragment finished (success or fail). Returns n_alive."""
+        with _DirLock(self.lock_dir):
+            data = self._read_unlocked()
+            n_alive = max(0, int(data.get("n_alive") or 0) - 1)
+            data["n_alive"] = n_alive
+            data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
+            return n_alive
+
     def lease(
         self,
         owner_id: str,
@@ -221,17 +308,18 @@ class CpuBudget:
         weight: Optional[int] = None,
         active_owners: Optional[Iterable[str]] = None,
     ) -> int:
-        """Claim a weighted share for ``owner_id`` and return leased cores.
+        """Claim cores for ``owner_id`` without shrinking in-flight siblings.
 
-        Recomputes leases for the full active set so leftovers are not left
-        idle. ``weight`` is stored for this owner (default 1, or the last
-        stored weight). ``active_owners`` defaults to current lease holders
-        plus ``owner_id`` (finished workers should :meth:`release` first).
+        Returns 0 if fewer than ``cpu_min_lease`` cores are free (caller
+        should wait). Unfinished fragments that have not leased yet are
+        reserved via ``n_alive`` so the first scanner cannot take the
+        whole node, and a leftover scanner can take what remains.
         """
         owner_id = str(owner_id)
         with _DirLock(self.lock_dir):
             data = self._read_unlocked()
             total = int(data.get("total") or self.total)
+            min_each = cpu_min_lease(total)
             leases = {
                 str(k): int(v)
                 for k, v in (data.get("leases") or {}).items()
@@ -241,26 +329,64 @@ class CpuBudget:
                 str(k): _owner_weight(data.get("weights"), str(k))
                 for k in (data.get("weights") or {})
             }
-            if active_owners is None:
-                owners = set(leases.keys()) | {owner_id}
-            else:
-                owners = {str(o) for o in active_owners if o is not None and str(o)}
-                owners.add(owner_id)
+            others = {k: v for k, v in leases.items() if k != owner_id}
+            if active_owners is not None:
+                keep = {str(o) for o in active_owners if o is not None and str(o)}
+                keep.discard(owner_id)
+                others = {k: v for k, v in others.items() if k in keep}
             if weight is not None:
                 stored_w[owner_id] = max(1, int(weight))
             elif owner_id not in stored_w:
                 stored_w[owner_id] = 1
+            owners = set(others.keys()) | {owner_id}
             w_for_share = {oid: stored_w.get(oid, 1) for oid in owners}
+            n_alive = int(data.get("n_alive") or 0)
+            started = {str(x) for x in (data.get("started") or [])}
+            virtual = max(0, n_alive - len(started | {owner_id}))
+            free = max(0, total - sum(others.values()))
+            if free < min_each:
+                leases_out = dict(others)
+                data["leases"] = leases_out
+                data["weights"] = {
+                    k: int(w_for_share.get(k, stored_w.get(k, 1)))
+                    for k in leases_out
+                }
+                data["total"] = total
+                data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
+                return 0
             shares = fair_share_leases(
-                total, owners, weights=w_for_share, prefer=owner_id
+                total,
+                owners,
+                weights=w_for_share,
+                prefer=owner_id,
+                min_each=min_each,
+                virtual_units=virtual,
             )
-            data["leases"] = {
-                k: int(shares[k]) for k in owners if shares.get(k, 0) > 0
-            }
+            want = int(shares.get(owner_id, 0))
+            leased = min(free, want)
+            if leased < min_each:
+                leases_out = dict(others)
+                data["leases"] = leases_out
+                data["weights"] = {
+                    k: int(w_for_share.get(k, stored_w.get(k, 1)))
+                    for k in leases_out
+                }
+                data["total"] = total
+                data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
+                return 0
+            leases_out = dict(others)
+            leases_out[owner_id] = int(leased)
+            data["leases"] = leases_out
             data["weights"] = {
-                k: int(w_for_share[k]) for k in data["leases"]
+                k: int(w_for_share.get(k, stored_w.get(k, 1)))
+                for k in leases_out
             }
+            data["weights"][owner_id] = int(stored_w[owner_id])
+            started.add(owner_id)
+            data["started"] = sorted(started)
             data["total"] = total
             data["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
             _atomic_write_text(self.path, json.dumps(data, indent=2) + "\n")
-            return int(data["leases"].get(owner_id, 1))
+            return int(leased)
