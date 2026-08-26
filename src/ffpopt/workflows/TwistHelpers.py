@@ -577,6 +577,8 @@ def _run_bond_scan_job(job: dict) -> dict:
     from ffpopt.scan.WaveFront import close_reused_wavefront_pool
 
     workdir = job.get("workdir")
+    idxs = list(job["dihed_idxs"])
+    prefix = job["prefix"]
     try:
         r = _run_one_scan(
             inp=job["inp"],
@@ -589,9 +591,23 @@ def _run_bond_scan_job(job: dict) -> dict:
             **job["wf_kwargs"],
         )
         return {
-            "prefix": job["prefix"],
-            "dihed_idxs": list(job["dihed_idxs"]),
+            "prefix": prefix,
+            "dihed_idxs": idxs,
             "result": _slim_scan_result(r),
+        }
+    except Exception as exc:
+        msg = f"{type(exc).__name__}: {exc}"
+        _LOG.error(
+            "[twist] scan failed %s_%s: %s",
+            prefix,
+            "-".join(str(x) for x in idxs),
+            msg,
+        )
+        return {
+            "prefix": prefix,
+            "dihed_idxs": idxs,
+            "result": None,
+            "error": msg,
         }
     finally:
         # Nested bond workers must drop their wavefront spawn pool before IPC.
@@ -751,14 +767,27 @@ def _execute_bond_scan_jobs(
     )
 
     def _record(item: dict, done: int) -> None:
-        log.info(
-            "[twist] %s finished %s/%s: %s_%s",
-            label,
-            done,
-            len(jobs),
-            item["prefix"],
-            "-".join(str(x) for x in item["dihed_idxs"]),
-        )
+        idx = "-".join(str(x) for x in item["dihed_idxs"])
+        err = item.get("error")
+        if err:
+            log.error(
+                "[twist] %s failed %s/%s: %s_%s: %s",
+                label,
+                done,
+                len(jobs),
+                item["prefix"],
+                idx,
+                err.splitlines()[0] if isinstance(err, str) else err,
+            )
+        else:
+            log.info(
+                "[twist] %s finished %s/%s: %s_%s",
+                label,
+                done,
+                len(jobs),
+                item["prefix"],
+                idx,
+            )
         if on_scan_done is not None:
             on_scan_done(item)
 
@@ -861,7 +890,7 @@ def _promote_centroid_pick(
     workdir: Optional[Path],
     candidates: list,
     on_promoted: Optional[Callable[[str], None]] = None,
-) -> None:
+) -> bool:
     from ffpopt.affdo.AffdoLog import log_affdo
     from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, promote_profile_files
 
@@ -874,14 +903,16 @@ def _promote_centroid_pick(
             detail.append(f"  {p.name}: {err}")
         if not detail:
             detail = [f"  {Path(c).name}: missing" for c in candidates]
-        raise FileNotFoundError(
-            f"[affdo] {idx}: no usable centroid HL profiles to promote to "
-            f"{hl_prefix}_{idx}.dat. Compare needs that file. Candidates:\n"
-            + "\n".join(detail)
-            + "\nIf this is a restart, delete the matching "
-            f"{hl_prefix}.c*_{idx}.json files (and checkpoints) so the HL "
-            "scan is not skip_existing'd without a .dat."
+        log_affdo(
+            log,
+            "%s: no usable centroid HL profiles to promote to %s_%s.dat; "
+            "dropping this torsion from the fit. Candidates:\n%s",
+            idx,
+            hl_prefix,
+            idx,
+            "\n".join(detail),
         )
+        return False
     _log_centroid_profile_rows(log, idx, rows, best=best)
     src_stem = Path(best)
     dst_stem = _in_workdir(workdir, f"{hl_prefix}_{idx}")
@@ -897,6 +928,7 @@ def _promote_centroid_pick(
     )
     if on_promoted is not None:
         on_promoted(idx)
+    return True
 
 
 def _run_hl_and_orig_scans(
@@ -1337,7 +1369,9 @@ def _compare_per_bond(
     -------
     dict
         Map of ``scan.GetIdxStr()`` to
-        :class:`ffpopt.ScanAnalysis.ScanComparison`.
+        :class:`ffpopt.ScanAnalysis.ScanComparison`. Bonds whose HL or LL
+        profile is missing are omitted (logged, not raised) so a failed
+        wavefront does not abort the rest of the twist.
     """
     from ffpopt.scan.ScanAnalysis import compare_scan_files
 
@@ -1352,21 +1386,14 @@ def _compare_per_bond(
                 missing.append(str(_in_workdir(workdir, f"{hl_prefix}_{idx}.dat")))
             if ll_file is None:
                 missing.append(str(_in_workdir(workdir, f"{ll_prefix}_{idx}.dat")))
-            hints = []
-            parent = Path(_in_workdir(workdir, "."))
-            related = sorted(parent.glob(f"*{idx}.dat")) + sorted(
-                parent.glob(f"*{idx}.json")
+            log = _resolve_logger(logger)
+            log.warning(
+                "[twist] %s: missing HL/LL profile (%s) - skipping compare "
+                "and dropping this torsion from the fit",
+                idx,
+                ", ".join(missing),
             )
-            if related:
-                hints.append(
-                    "related files: " + ", ".join(r.name for r in related[:8])
-                )
-            extra = ("; " + "; ".join(hints)) if hints else ""
-            raise FileNotFoundError(
-                f"HL/LL compare for {idx}: missing {', '.join(missing)}.{extra} "
-                "If multi-centroid HL never promoted a profile, the scan likely "
-                "failed or skip_existing reused a JSON without a .dat."
-            )
+            continue
         if plot_dir is not None:
             plotted = _write_prefix_comparison_plot(
                 hl_prefix=hl_prefix,

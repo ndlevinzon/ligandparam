@@ -190,13 +190,29 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
 
         raise BrokenGeometryError(f"ASE pre-opt forces failed: {exc}") from exc
     explode = _explode_fmax_limit()
+    maxstep = 0.2
     if f0 > explode:
-        from ffpopt.geom.Constraints import BrokenGeometryError
+        from ffpopt.runtime.FastWavefront import is_cheap_mm_model
 
-        raise BrokenGeometryError(
-            f"ASE pre-opt fmax={f0:.3g} eV/Ang exceeds {explode:.3g} "
-            "(geometry will explode; skipping optimizer)"
-        )
+        model = getattr(getattr(los, "args", None), "model", None)
+        if is_cheap_mm_model(model):
+            from ffpopt.runtime.Console import ascii_for_stdio
+
+            sys.stderr.write(
+                ascii_for_stdio(
+                    f"[ffpopt] ASE pre-opt fmax={f0:.3g} eV/Ang exceeds "
+                    f"{explode:.3g}; continuing MM opt with small steps "
+                    f"(model={model})\n"
+                )
+            )
+            maxstep = 0.05
+        else:
+            from ffpopt.geom.Constraints import BrokenGeometryError
+
+            raise BrokenGeometryError(
+                f"ASE pre-opt fmax={f0:.3g} eV/Ang exceeds {explode:.3g} "
+                "(geometry will explode; skipping optimizer)"
+            )
 
     strict_tol = float(los.args.ase_opt_tol)
     loose_tol = _ase_loose_fmax(strict_tol)
@@ -213,7 +229,7 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
         except Exception:
             pass
         try:
-            optimizer = OptCls(myatoms, logfile=logfile, maxstep=0.2)
+            optimizer = OptCls(myatoms, logfile=logfile, maxstep=maxstep)
         except TypeError:
             optimizer = OptCls(myatoms, logfile=logfile)
         _attach_ase_geometry_guard(optimizer, myatoms, bonds, numbers)

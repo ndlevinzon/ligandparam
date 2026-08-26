@@ -415,21 +415,26 @@ def _los_model_name(los) -> str:
 
 
 def _copy_los_args_with_model(args, model: str):
-    """Shallow-copy CLI args with ``model`` and ASE-first MM preopt."""
+    """Shallow-copy CLI args with ``model`` for MM-then-HL preopt.
+
+    Cheap MM uses geomeTRIC (not ASE-first): bulky whole-ligand seeds often
+    start above the ASE explode-fmax guard, and TRIC can unclash them before
+    the HL refine.
+    """
     if args is None:
         from types import SimpleNamespace
 
-        return SimpleNamespace(model=model, geometric_opt=False, no_opt=False)
+        return SimpleNamespace(model=model, geometric_opt=True, no_opt=False)
     if isinstance(args, dict):
         out = dict(args)
         out["model"] = model
-        out["geometric_opt"] = False
+        out["geometric_opt"] = True
         return out
     import copy
 
     out = copy.copy(args)
     out.model = model
-    out.geometric_opt = False
+    out.geometric_opt = True
     return out
 
 

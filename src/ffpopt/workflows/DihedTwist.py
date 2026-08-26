@@ -692,7 +692,14 @@ def run_dihed_twist_workflow(
             kept_bonds = []
             for bond, scan in zip(bonds_parsed, scans):
                 idx = scan.GetIdxStr()
-                r = initial[idx]
+                r = initial.get(idx)
+                if r is None:
+                    log.warning(
+                        "[twist] %s: no HL/LL compare (scan failed) - "
+                        "dropping from iterative fit",
+                        idx,
+                    )
+                    continue
                 if r.is_close:
                     reason = "flat (HL barrier below threshold)" if r.is_flat \
                         else "agrees with HL within thresholds"
@@ -702,7 +709,10 @@ def run_dihed_twist_workflow(
                     reasons = "; ".join(r.reasons) if r.reasons else "extrema disagree"
                     log.info("[twist] %s: refit needed (%s)", idx, reasons)
             if not kept_bonds:
-                log.info("[twist] all dihedrals already agree - skipping Phase 3")
+                log.info(
+                    "[twist] no dihedrals left to fit "
+                    "(agreed, flat, or scan-failed) - skipping Phase 3"
+                )
                 return results
             if len(kept_bonds) < len(bonds_parsed):
                 scans, params, s_template = _resolve_scans_and_params(

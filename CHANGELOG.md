@@ -34,6 +34,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   returns keep only energies; ``.pkl`` writes are atomic; matplotlib
   uses Agg; reused spawn pools log close/join; the parent logs each
   finished bond as it completes.
+- **Whole-ligand empty-scan abort** - a bulky DDM seed can start at
+  ASE fmax 50-86 eV/Ang; the explode guard then stored 0 scan angles
+  and ``pool.imap_unordered`` killed the whole job. MM-then-HL preopt
+  now uses geomeTRIC (not ASE-first); sander/GFN-FF may continue past
+  the explode fmax with small steps. A failed bond is logged and
+  dropped from the fit so sibling torsions keep running.
 
 ### Added
 

@@ -1017,15 +1017,14 @@ class TestAffdoLogging(unittest.TestCase):
             self.assertTrue(scan_outputs_complete(p, 10))
             self.assertFalse(scan_outputs_complete(p, 15))
             log = logging.getLogger("test.centroid_promote")
-            with self.assertRaises(FileNotFoundError) as ctx:
-                _promote_centroid_pick(
-                    log,
-                    idx="0-1-2-3",
-                    hl_prefix="xtb",
-                    workdir=Path(td),
-                    candidates=[Path(td) / "xtb.c0_0-1-2-3.dat"],
-                )
-            self.assertIn("no usable centroid HL profiles", str(ctx.exception))
+            ok = _promote_centroid_pick(
+                log,
+                idx="0-1-2-3",
+                hl_prefix="xtb",
+                workdir=Path(td),
+                candidates=[Path(td) / "xtb.c0_0-1-2-3.dat"],
+            )
+            self.assertFalse(ok)
         opts = _lbfgsb_options(type("A", (), {"nltol": 0.02, "nlmaxiter": 10})())
         self.assertNotIn("disp", opts)
         self.assertEqual(opts["ftol"], 0.02)
@@ -1587,6 +1586,43 @@ class TestAffdoLogging(unittest.TestCase):
             run_whole_ligand_dihed_twist_workflow
         ).parameters["plot_comparisons"]
         self.assertIs(param.default, True)
+
+    def test_bond_scan_job_isolates_empty_wavefront(self):
+        from unittest.mock import patch
+
+        from ffpopt.workflows import TwistHelpers as th
+
+        job = {
+            "prefix": "xtb.c0",
+            "inp": "start.json",
+            "model": "xtb",
+            "dihed_idxs": [2, 3, 4, 5],
+            "out": "xtb.c0_2-3-4-5.json",
+            "skip_existing": False,
+            "workdir": None,
+            "wf_kwargs": {},
+        }
+        with patch.object(
+            th,
+            "_run_one_scan",
+            side_effect=RuntimeError("wavefront produced 0 accepted scan angles"),
+        ):
+            out = th._run_bond_scan_job(job)
+        self.assertIsNone(out["result"])
+        self.assertIn("0 accepted", out["error"])
+        self.assertEqual(out["prefix"], "xtb.c0")
+
+    def test_mm_preopt_los_uses_geometric(self):
+        from types import SimpleNamespace
+
+        from ffpopt.scan.WavefrontMixins import _copy_los_args_with_model
+
+        args = _copy_los_args_with_model(
+            SimpleNamespace(model="xtb", geometric_opt=False, no_opt=False),
+            "sander",
+        )
+        self.assertEqual(args.model, "sander")
+        self.assertTrue(args.geometric_opt)
 
     def test_boltzmann_average_summary_fields(self):
         from ffpopt.affdo.BoltzmannCharges import boltzmann_average_mol2_charges
