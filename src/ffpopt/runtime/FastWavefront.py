@@ -103,9 +103,9 @@ def prefer_fragment_pool_depth(
 ) -> bool:
     """Fragment-pool depth vs breadth for the parent fragmented workflow.
 
-    When many fragments share a modest core budget, prefer breadth so more
-    fragments run at once (each with a small wavefront) instead of parking
-    half the fragments behind a deep-but-narrow pool.
+    Independent fragments should run concurrently. Wavefront depth is chosen
+    from each fragment's CPU lease, not by parking siblings behind one fat
+    worker. ``FFPOPT_PREF_WF_DEPTH=1`` still serializes the fragment pool.
     """
     if env_bool("FFPOPT_PREF_WF_DEPTH"):
         return True
@@ -113,7 +113,7 @@ def prefer_fragment_pool_depth(
         return False
     nproc = max(1, int(nproc))
     n_fragments = max(1, int(n_fragments))
-    if n_fragments >= 4 and (nproc // n_fragments) <= 2:
+    if n_fragments >= 2:
         return False
     return prefer_wavefront_depth(model=model, fast=fast)
 

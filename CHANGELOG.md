@@ -17,11 +17,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ``lig-dihed-correct``. Completed-node pickle cleanup uses
   ``unlink(missing_ok=True)`` so a vanished ``*_node.pckl`` on VAST
   cannot kill the pool. Dihedral ``arccos`` clips collinear atoms.
+- **Fragment pool breadth** - ``--fast`` xTB no longer dumps ``-n`` onto
+  one fragment (``flatten_nested`` was collapsing 11 jobs on 60 cores
+  to ``1 x 60``). The parent pool runs ``min(nproc, n_fragments)``
+  workers; each leases a fair share. ``FFPOPT_PREF_WF_DEPTH=1`` still
+  serializes fragments.
 - **Fragment multi-centroid** - ConfSearch used the parent mol2 (e.g. 101
   atoms) and wrote those coords onto fragment ``start.json`` (e.g. 17
   atoms). Fragment twists now ConfSearch ``fragment.mol2``; mismatched
   atom counts fall back to the fragment geometry instead of crashing
   ASE.
+- **Whole-ligand freeze after orig scan** - after ``wavefront plot saved``,
+  the bond worker still held the 113-node ``wf_run`` plus all scan
+  frames and pickled them back to the parent; the parent ``pool.map``
+  stayed silent until every interleaved HL+orig job finished. Scan
+  returns keep only energies; ``.pkl`` writes are atomic; matplotlib
+  uses Agg; reused spawn pools log close/join; the parent logs each
+  finished bond as it completes.
 
 ### Added
 
@@ -38,6 +50,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   like ``xtb``. ``FFPOPT_AIMNET_DEVICE=cpu|cuda``. On GPU, wavefront spawn
   workers are capped to ``n_gpu * FFPOPT_AIMNET_PER_GPU`` (default 4) and
   round-robin pinned to ``CUDA_VISIBLE_DEVICES`` so ``-n 44`` does not OOM.
+- **Whole-ligand orig-vs-HL plots** - ``--whole-ligand`` now writes the
+  same ``compare_{xtb}_vs_orig_{idxs}.png`` overlays as fragments, as soon
+  as both profiles for a bond exist (and again vs ``itNN`` after each
+  fit). Logs ``[twist] wrote ... (close|disagree; barrier HL=... LL=...)``.
 
 ---
 

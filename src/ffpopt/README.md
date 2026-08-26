@@ -99,10 +99,12 @@ stays soft. Near-linear constrained torsions use a dedicated
 ladder). With small per-fragment CPU leases, bond pools prefer **breadth**
 (concurrent bonds) over a single narrow wavefront; override with
 ``FFPOPT_PREF_WF_DEPTH=1`` or ``FFPOPT_PREF_WF_BREADTH=1``. Fragmented runs
-lease cores only during scan phases (not PrepareInput / GenDihedFit /
-compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start ``itNN`` from
-the prior LL checkpoint when available. Spawn splits are flattened (never
-bondxwavefront nested); HL and ``orig`` scans pipeline in one queue. Under
+start ``min(nproc, n_fragments)`` concurrent workers (not one fragment
+with all cores) and lease cores only during scan phases (not PrepareInput /
+GenDihedFit / compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start
+``itNN`` from the prior LL checkpoint when available. Inside a fragment
+worker, spawn splits are flattened (never bondxwavefront nested); HL and
+``orig`` scans pipeline in one queue. Under
 ``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
 (``FFPOPT_QDPI2_OPT``), HL nodes MM-relax then one XTB / AIMNet2 / QDpi2
 (``FFPOPT_MM_THEN_HL``), and XTB / AIMNet2 / QDpi2 use ASE-first. ``--fast`` remains a

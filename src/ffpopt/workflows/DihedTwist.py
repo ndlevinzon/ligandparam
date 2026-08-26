@@ -647,6 +647,10 @@ def run_dihed_twist_workflow(
 
     try:
         # ---- 1+2. HL and reference sander scans (pipelined) -----------------
+        if plot_comparisons:
+            plot_dir = wd if wd is not None else Path(".")
+        else:
+            plot_dir = None
         phase_nproc = _lease_nproc("hl_orig_scan")
         wf_kwargs["nproc"] = phase_nproc
         _prog(
@@ -667,16 +671,14 @@ def run_dihed_twist_workflow(
                 prefer_wf_depth=prefer_depth,
                 multi_centroid=multi_centroid,
                 centroid_mol2=centroid_mol2,
+                plot_dir=plot_dir,
+                compare_config=compare_config,
+                structure_images=structure_images,
             )
         )
 
         # Serial compare/fit/apply: free cores so sibling fragments can grow.
         _release_lease("post_orig_scan")
-
-        if plot_comparisons:
-            plot_dir = wd if wd is not None else Path(".")
-        else:
-            plot_dir = None
 
         # ---- 2b. Drop dihedrals that already agree (initial convergence) -----
         if skip_converged_initial:
@@ -684,6 +686,7 @@ def run_dihed_twist_workflow(
             initial = _compare_per_bond(
                 scans, hlname, "orig", compare_config,
                 plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
+                logger=log,
             )
             results["initial_comparisons"] = initial
             kept_bonds = []
@@ -706,6 +709,13 @@ def run_dihed_twist_workflow(
                     mol, kept_bonds, nprim=nprim, bytype=bytype
                 )
                 log.info("[twist] fitting %s of %s dihedrals", len(scans), len(bonds_parsed))
+        elif plot_dir is not None:
+            _prog("compare", "initial HL vs LL (plots)")
+            results["initial_comparisons"] = _compare_per_bond(
+                scans, hlname, "orig", compare_config,
+                plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
+                logger=log,
+            )
 
         # ---- 3. Iterative refinement -----------------------------------------
         for it in range(args.maxiter):
@@ -783,6 +793,7 @@ def run_dihed_twist_workflow(
                 iter_cmp = _compare_per_bond(
                     scans, hlname, citname, compare_config,
                     plot_dir=plot_dir, structure_images=structure_images, workdir=wd,
+                    logger=log,
                 )
                 results["iteration_comparisons"].append(
                     {"citname": citname, "comparisons": iter_cmp}

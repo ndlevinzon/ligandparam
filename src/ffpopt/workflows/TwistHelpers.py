@@ -565,7 +565,7 @@ def _run_one_scan(
 
 
 def _slim_scan_result(scan_result: Optional[dict]) -> Optional[dict]:
-    """Drop heavy ``wf_run`` objects so bond-pool IPC stays picklable."""
+    """Drop heavy ``wf_run`` / ``structures`` so bond-pool IPC stays picklable."""
     from ffpopt.runtime.SlimIpc import slim_scan_result
 
     return slim_scan_result(scan_result)
@@ -573,22 +573,32 @@ def _slim_scan_result(scan_result: Optional[dict]) -> Optional[dict]:
 
 def _run_bond_scan_job(job: dict) -> dict:
     """Worker entry: one wavefront scan for one central bond (picklable)."""
+    from ffpopt.runtime.NondaemonPool import in_spawn_worker
+    from ffpopt.scan.WaveFront import close_reused_wavefront_pool
+
     workdir = job.get("workdir")
-    r = _run_one_scan(
-        inp=job["inp"],
-        model=job["model"],
-        dihed_idxs=job["dihed_idxs"],
-        out=job["out"],
-        skip_existing=job["skip_existing"],
-        logger=_LOG,
-        workdir=Path(workdir) if workdir else None,
-        **job["wf_kwargs"],
-    )
-    return {
-        "prefix": job["prefix"],
-        "dihed_idxs": list(job["dihed_idxs"]),
-        "result": _slim_scan_result(r),
-    }
+    try:
+        r = _run_one_scan(
+            inp=job["inp"],
+            model=job["model"],
+            dihed_idxs=job["dihed_idxs"],
+            out=job["out"],
+            skip_existing=job["skip_existing"],
+            logger=_LOG,
+            workdir=Path(workdir) if workdir else None,
+            **job["wf_kwargs"],
+        )
+        return {
+            "prefix": job["prefix"],
+            "dihed_idxs": list(job["dihed_idxs"]),
+            "result": _slim_scan_result(r),
+        }
+    finally:
+        # Nested bond workers must drop their wavefront spawn pool before IPC.
+        # Sequential scans in the parent keep the reused pool until the batch
+        # ``finally`` in ``_execute_bond_scan_jobs``.
+        if in_spawn_worker():
+            close_reused_wavefront_pool()
 
 
 def _build_bond_scan_jobs(
@@ -664,9 +674,10 @@ def _split_fragment_nproc(
         ``n_items > 1``). By default prefers as many outer workers as
         possible; with ``prefer_depth=True`` keeps a minimum inner width
         (see :func:`ffpopt.runtime.FastWavefront.split_nproc_for_items`).
-        Pass ``flatten_nested=False`` to keep a 2-D bondxwavefront split
-        (whole-ligand / top-level twist). Fragment spawn workers keep the
-        default flatten so they do not open a third pool.
+        Pass ``flatten_nested=False`` to keep a 2-D split (parent fragment
+        pool, or whole-ligand bond x wavefront). Inside an already-spawned
+        fragment worker, leave the default flatten so a third pool is not
+        opened.
     """
     from ffpopt.runtime.FastWavefront import split_nproc_for_items
 
@@ -682,6 +693,7 @@ def _execute_bond_scan_jobs(
     prefer_wf_depth: bool | None,
     logger: logging.Logger | None,
     label: str = "scans",
+    on_scan_done: Optional[Callable[[dict], None]] = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Run bond-scan jobs; nest bondxwavefront only at the top-level twist."""
     log = _resolve_logger(logger)
@@ -738,13 +750,32 @@ def _execute_bond_scan_jobs(
         " (ASE-first)" if ase_first else "",
     )
 
+    def _record(item: dict, done: int) -> None:
+        log.info(
+            "[twist] %s finished %s/%s: %s_%s",
+            label,
+            done,
+            len(jobs),
+            item["prefix"],
+            "-".join(str(x) for x in item["dihed_idxs"]),
+        )
+        if on_scan_done is not None:
+            on_scan_done(item)
+
     try:
         if n_bond_workers == 1:
-            raw = [_run_bond_scan_job(job) for job in jobs]
+            raw = []
+            for i, job in enumerate(jobs, start=1):
+                item = _run_bond_scan_job(job)
+                raw.append(item)
+                _record(item, i)
         else:
             pool = make_nondaemon_spawn_pool(n_bond_workers)
             try:
-                raw = pool.map(_run_bond_scan_job, jobs)
+                raw = []
+                for item in pool.imap_unordered(_run_bond_scan_job, jobs):
+                    raw.append(item)
+                    _record(item, len(raw))
             finally:
                 pool.close()
                 pool.join()
@@ -829,6 +860,7 @@ def _promote_centroid_pick(
     hl_prefix: str,
     workdir: Optional[Path],
     candidates: list,
+    on_promoted: Optional[Callable[[str], None]] = None,
 ) -> None:
     from ffpopt.affdo.AffdoLog import log_affdo
     from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, promote_profile_files
@@ -863,6 +895,8 @@ def _promote_centroid_pick(
         score,
         len(rows),
     )
+    if on_promoted is not None:
+        on_promoted(idx)
 
 
 def _run_hl_and_orig_scans(
@@ -879,6 +913,9 @@ def _run_hl_and_orig_scans(
     prefer_wf_depth: bool | None = None,
     multi_centroid: int = 0,
     centroid_mol2: Optional[PathLike] = None,
+    plot_dir=None,
+    compare_config=None,
+    structure_images=None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Pipeline HL (optionally multi-centroid) and reference-sander scans.
 
@@ -900,10 +937,33 @@ def _run_hl_and_orig_scans(
         workdir=workdir,
         wf_kwargs=wf_kwargs,
     )
+
+    def _try_plot_hl_orig(idx: str) -> None:
+        if plot_dir is None or not idx:
+            return
+        _write_prefix_comparison_plot(
+            hl_prefix=hl_prefix,
+            ll_prefix="orig",
+            idx=idx,
+            workdir=workdir,
+            plot_dir=plot_dir,
+            config=compare_config,
+            structure_images=structure_images,
+            logger=log,
+        )
+
+    def _on_scan_done(item: dict) -> None:
+        prefix = str(item.get("prefix") or "")
+        idx = "-".join(str(x) for x in item.get("dihed_idxs") or [])
+        # Canonical HL file is ``{hl_prefix}_{idx}`` (not ``{hl}.c0_...``).
+        if prefix in {hl_prefix, "orig"}:
+            _try_plot_hl_orig(idx)
+
     exec_kw = dict(
         nproc=nproc,
         prefer_wf_depth=prefer_wf_depth,
         logger=logger,
+        on_scan_done=_on_scan_done if plot_dir is not None else None,
     )
 
     if n_cent >= 2:
@@ -963,6 +1023,7 @@ def _run_hl_and_orig_scans(
                     hl_prefix=hl_prefix,
                     workdir=workdir,
                     candidates=[c0_dat],
+                    on_promoted=_try_plot_hl_orig,
                 )
             elif n_starts > 1:
                 extra_scans.append(scan)
@@ -975,6 +1036,7 @@ def _run_hl_and_orig_scans(
                     hl_prefix=hl_prefix,
                     workdir=workdir,
                     candidates=[c0_dat],
+                    on_promoted=_try_plot_hl_orig,
                 )
         if extra_scans and n_starts > 1:
             extra_groups = [
@@ -1008,6 +1070,7 @@ def _run_hl_and_orig_scans(
                     hl_prefix=hl_prefix,
                     workdir=workdir,
                     candidates=cands,
+                    on_promoted=_try_plot_hl_orig,
                 )
     else:
         hl_jobs = _build_bond_scan_jobs(
@@ -1165,6 +1228,73 @@ def _run_gendihedfit(
     log.info("[twist] wrote %s and %s", py_out, frcmod_out)
 
 
+def _scan_profile_file(workdir: Optional[Path], prefix: str, idx: str) -> Path | None:
+    """Return ``{prefix}_{idx}.dat`` or ``.json`` if present."""
+    dat = Path(_in_workdir(workdir, f"{prefix}_{idx}.dat"))
+    if dat.is_file():
+        return dat
+    js = Path(_in_workdir(workdir, f"{prefix}_{idx}.json"))
+    if js.is_file():
+        return js
+    return None
+
+
+def _write_prefix_comparison_plot(
+    *,
+    hl_prefix: str,
+    ll_prefix: str,
+    idx: str,
+    workdir: Optional[Path],
+    plot_dir,
+    config=None,
+    structure_images=None,
+    logger: logging.Logger | None = None,
+):
+    """Write ``compare_{hl}_vs_{ll}_{idx}.png`` when both profiles exist.
+
+    Returns the :class:`~ffpopt.scan.ScanAnalysis.ScanComparison` or ``None``
+    if either profile is still missing.
+    """
+    if plot_dir is None:
+        return None
+    hl_file = _scan_profile_file(workdir, hl_prefix, idx)
+    ll_file = _scan_profile_file(workdir, ll_prefix, idx)
+    if hl_file is None or ll_file is None:
+        return None
+    from ffpopt.scan.ScanAnalysis import compare_scan_files
+
+    plot_path = Path(plot_dir) / f"compare_{hl_prefix}_vs_{ll_prefix}_{idx}.png"
+    structure_image_path = None
+    if structure_images is not None:
+        parts = idx.split("-")
+        if len(parts) >= 4:
+            structure_image_path = structure_images.get(
+                frozenset((int(parts[1]), int(parts[2])))
+            )
+    result = compare_scan_files(
+        str(hl_file),
+        str(ll_file),
+        config,
+        plot_path=plot_path,
+        structure_image_path=structure_image_path,
+    )
+    log = _resolve_logger(logger)
+    if result.is_flat:
+        verdict = "flat"
+    elif result.is_close:
+        verdict = "close"
+    else:
+        verdict = "disagree"
+    log.info(
+        "[twist] wrote %s (%s; barrier HL=%.2f LL=%.2f kcal/mol)",
+        plot_path,
+        verdict,
+        result.barrier_hl,
+        result.barrier_ll,
+    )
+    return result
+
+
 def _compare_per_bond(
     scans,
     hl_prefix: str,
@@ -1173,6 +1303,7 @@ def _compare_per_bond(
     plot_dir=None,
     structure_images=None,
     workdir: Optional[Path] = None,
+    logger: logging.Logger | None = None,
 ):
     """ Run :func:`ffpopt.ScanAnalysis.compare_scan_files` for each scan.
 
@@ -1213,17 +1344,8 @@ def _compare_per_bond(
     out = {}
     for scan in scans:
         idx = scan.GetIdxStr()
-        def _profile(prefix: str) -> Path | None:
-            dat = Path(_in_workdir(workdir, f"{prefix}_{idx}.dat"))
-            if dat.is_file():
-                return dat
-            js = Path(_in_workdir(workdir, f"{prefix}_{idx}.json"))
-            if js.is_file():
-                return js
-            return None
-
-        hl_file = _profile(hl_prefix)
-        ll_file = _profile(ll_prefix)
+        hl_file = _scan_profile_file(workdir, hl_prefix, idx)
+        ll_file = _scan_profile_file(workdir, ll_prefix, idx)
         if hl_file is None or ll_file is None:
             missing = []
             if hl_file is None:
@@ -1245,21 +1367,21 @@ def _compare_per_bond(
                 "If multi-centroid HL never promoted a profile, the scan likely "
                 "failed or skip_existing reused a JSON without a .dat."
             )
-        hl_path = str(hl_file)
-        ll_path = str(ll_file)
-        plot_path = None
         if plot_dir is not None:
-            plot_path = Path(plot_dir) / f"compare_{hl_prefix}_vs_{ll_prefix}_{idx}.png"
-        structure_image_path = None
-        if structure_images is not None:
-            structure_image_path = structure_images.get(
-                frozenset((scan.idxs[1], scan.idxs[2]))
+            plotted = _write_prefix_comparison_plot(
+                hl_prefix=hl_prefix,
+                ll_prefix=ll_prefix,
+                idx=idx,
+                workdir=workdir,
+                plot_dir=plot_dir,
+                config=config,
+                structure_images=structure_images,
+                logger=logger,
             )
-        out[idx] = compare_scan_files(
-            hl_path, ll_path, config,
-            plot_path=plot_path,
-            structure_image_path=structure_image_path,
-        )
+            if plotted is not None:
+                out[idx] = plotted
+                continue
+        out[idx] = compare_scan_files(str(hl_file), str(ll_file), config)
     return out
 
 

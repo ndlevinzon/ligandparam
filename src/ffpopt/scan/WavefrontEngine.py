@@ -4,7 +4,6 @@ from __future__ import annotations
 import copy
 import os
 import sys
-import pickle
 import numpy as np
 
 from typing import Generator, Optional
@@ -18,6 +17,7 @@ from ffpopt.Struct import ListOfStruct, Struct
 from .WavefrontMixins import (
     apply_slim_node_result,
     apply_wavefront_minimum_to_node,
+    atomic_pickle_dump,
     clear_los_calc,
     clone_struct_geometry,
     dihed_seed_targets,
@@ -56,14 +56,19 @@ _REUSED_POOL: dict = {"pool": None, "key": None}
 def close_reused_wavefront_pool() -> None:
     """Terminate a process-local reused wavefront pool, if any."""
     pool = _REUSED_POOL.get("pool")
-    if pool is not None:
-        try:
-            pool.terminate()
-            pool.join()
-        except Exception:
-            pass
+    if pool is None:
+        _REUSED_POOL["pool"] = None
+        _REUSED_POOL["key"] = None
+        return
+    print_wavefront("closing reused spawn pool")
+    try:
+        pool.terminate()
+        pool.join()
+    except Exception:
+        pass
     _REUSED_POOL["pool"] = None
     _REUSED_POOL["key"] = None
+    print_wavefront("reused spawn pool closed")
 
 
 def _pool_reuse_key(los: ListOfStruct, struct: Struct, nproc: int):
@@ -1855,6 +1860,9 @@ class Wavefront:
                     counts[i, idx] += 1
 
             # Color map: 0=white, 1=orange, 2=red, 3=blue
+            import matplotlib
+            if not os.environ.get("MPLBACKEND"):
+                matplotlib.use("Agg")
             from matplotlib import pyplot as plt
             from matplotlib.colors import ListedColormap
 
@@ -2269,6 +2277,9 @@ def plot_wavefront(levels: list[WavefrontLevel], delta: int = 10, filename: str 
             counts[i, idx] += 1
 
     # Color map: 0=white, 1=orange, 2=red, 3=blue
+    import matplotlib
+    if not os.environ.get("MPLBACKEND"):
+        matplotlib.use("Agg")
     from matplotlib import pyplot as plt
     from matplotlib.colors import ListedColormap
 
@@ -2385,9 +2396,11 @@ def run_dihed_wavefront(
     Returns
     -------
     dict
-        ``{'wf_run', 'angles', 'energies', 'energies_noshift', 'structures'}``.
+        ``{'angles', 'energies', 'energies_noshift'}``.
         ``energies`` is min-shifted (kcal/mol); ``energies_noshift`` is the raw
-        kcal/mol energies before shifting.
+        kcal/mol energies before shifting. The wavefront object and
+        ``ListOfStruct`` frames stay on disk (``.pkl`` / ``.json``) so bond-pool
+        IPC does not pickle them.
     """
     from types import SimpleNamespace
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
@@ -2517,19 +2530,18 @@ def run_dihed_wavefront(
     print_wavefront(f"data written to {dat}")
 
     pkl_path = out_path.with_suffix(".pkl")
-    pickle.dump(wf_run, open(pkl_path, "wb"))
+    atomic_pickle_dump(wf_run, pkl_path)
     print_wavefront(f"wavefront run saved to {pkl_path}")
     wf_fname = str(out_path.parent / f"wf_workflow_{out_path.with_suffix('.png').name}")
     plot_wavefront(wf_run.levels, delta=args.delta, filename=wf_fname)
     wf_run.print_summary()
     print_wavefront(f"wavefront plot saved as {wf_fname}")
+    del wf_run, structures
 
     return {
-        "wf_run": wf_run,
         "angles": angles,
         "energies": energies,
         "energies_noshift": energies_noshift,
-        "structures": structures,
     }
 
 
@@ -2715,7 +2727,7 @@ def run_ndim_dihed_wavefront(
     print_wavefront(f"data written to {dat}")
 
     pkl_path = out_path.with_suffix(".pkl")
-    pickle.dump(wf_run, open(pkl_path, "wb"))
+    atomic_pickle_dump(wf_run, pkl_path)
     print_wavefront(f"wavefront run saved to {pkl_path}")
     wf_pngfile = str(out_path.parent / f"wf_workflow_{out_path.with_suffix('.png').name}")
     wf_xmlfile = str(Path(wf_pngfile).with_suffix(".xml"))
@@ -2723,13 +2735,12 @@ def run_ndim_dihed_wavefront(
     wf_run.print_summary()
     print_wavefront(f"wavefront plot saved as {wf_pngfile}")
     print_wavefront(f"energies saved as {wf_xmlfile}")
+    del wf_run, structures
 
     return {
-        "wf_run": wf_run,
         "rcs": rcs,
         "energies": energies,
         "energies_noshift": energies_noshift,
-        "structures": structures,
     }
 
 

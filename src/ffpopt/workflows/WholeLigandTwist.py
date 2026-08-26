@@ -33,6 +33,7 @@ def run_whole_ligand_dihed_twist_workflow(
     skip_existing: bool = True,
     logger: logging.Logger | None = None,
     fast_wavefront: bool | None = None,
+    plot_comparisons: bool = True,
     **standard_kwargs,
 ) -> dict:
     """Whole-ligand (non-fragmented) dihedral twist with optional AFFDO extras.
@@ -42,6 +43,11 @@ def run_whole_ligand_dihed_twist_workflow(
     runs :func:`run_dihed_twist_workflow` with ``bytype=True``. Does not
     remove the fragmented path - call this explicitly (e.g. CLI
     ``--whole-ligand``).
+
+    After each HL+orig pair finishes (and again after each fit iteration),
+    writes the same ``compare_{hl}_vs_orig_{idxs}.png`` overlay as the
+    fragment path, plus a ``[twist] wrote ...`` log line with the barrier
+    heights.
     """
     import shutil
 
@@ -229,6 +235,7 @@ def run_whole_ligand_dihed_twist_workflow(
         centroid_mol2=mol2_p,
         fit_cli_args=fit_cli_args,
         job_kind="whole",
+        plot_comparisons=plot_comparisons,
         **standard_kwargs,
     )
 

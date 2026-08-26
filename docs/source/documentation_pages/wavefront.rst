@@ -196,14 +196,16 @@ Flattened vs nested ``nproc``
 ``split_nproc_for_items`` (in ``ffpopt.runtime.FastWavefront``) splits
 ``nproc`` into ``(n_outer, n_inner)``.
 
-* **Fragment workers** flatten: never both axes ``> 1`` (nested spawn
-  inside an already-spawned worker is dominated by bootstrap).
+* **Parent fragment pool** is breadth-first: as many fragments as
+  ``min(nproc, n_fragments)`` (e.g. 11 x 5 on 60 cores). Flattening
+  ``1 x nproc`` here parked every sibling behind one fat worker.
+* **Inside a fragment worker**, bond scans flatten (never both axes
+  ``> 1``) so a third spawn pool is not opened.
 * **Whole-ligand** (not nested under a fragment pool) may keep a 2-D
   bond x wavefront split (e.g. 4 x 11 on 44 cores for 8 bonds) when
   ``prefer_wf_depth`` is on.
-* Small fair-share leases prefer **breadth** (many concurrent bonds /
-  fragments, ``wf_nproc=1``) so independent scans fill the allocation.
-  Override with ``FFPOPT_PREF_WF_DEPTH=1`` or ``FFPOPT_PREF_WF_BREADTH=1``.
+* Override with ``FFPOPT_PREF_WF_DEPTH=1`` (one fragment at a time) or
+  ``FFPOPT_PREF_WF_BREADTH=1``.
 
 CPU leases are held only during wavefront scan phases. PrepareInput /
 GenDihedFit / compare release cores so siblings can grow.

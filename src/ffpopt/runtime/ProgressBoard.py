@@ -48,8 +48,8 @@ class DirLock:
                         os.rmdir(self.lock_dir)
                     except OSError:
                         pass
+                    time.sleep(0.05)
                     continue
-                time.sleep(0.05)
 
     def __exit__(self, *exc: object) -> None:
         try:

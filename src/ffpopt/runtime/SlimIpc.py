@@ -9,11 +9,12 @@ def slim_scan_result(scan_result: Optional[dict]) -> Optional[dict]:
     """Drop heavy objects from one bond-scan result dict."""
     if not isinstance(scan_result, dict):
         return scan_result
-    return {k: v for k, v in scan_result.items() if k != "wf_run"}
+    drop = {"wf_run", "structures"}
+    return {k: v for k, v in scan_result.items() if k not in drop}
 
 
 def slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
-    """Drop heavy ``wf_run`` objects so fragment-pool IPC stays picklable."""
+    """Drop heavy ``wf_run`` / ``structures`` so fragment-pool IPC stays picklable."""
     if twist_result is None:
         return None
     slim = {k: v for k, v in twist_result.items() if k != "scans"}
@@ -22,7 +23,9 @@ def slim_twist_result(twist_result: Optional[dict]) -> Optional[dict]:
         if isinstance(item, tuple) and len(item) == 3:
             prefix, idxs, payload = item
             if isinstance(payload, dict):
-                payload = {k: v for k, v in payload.items() if k != "wf_run"}
+                payload = {
+                    k: v for k, v in payload.items() if k not in ("wf_run", "structures")
+                }
             scans_out.append((prefix, idxs, payload))
         else:
             scans_out.append(item)

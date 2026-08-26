@@ -1532,6 +1532,62 @@ class TestAffdoLogging(unittest.TestCase):
         self.assertEqual(ids, ["a0", "b0", "a1", "b1", "b2"])
         self.assertEqual(_interleave_job_groups([], a), a)
 
+    def test_write_prefix_comparison_plot_waits_for_both_profiles(self):
+        from unittest.mock import patch
+
+        from ffpopt.workflows import TwistHelpers as th
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "orig_0-1-2-3.dat").write_text("0 0 0\n10 1 1\n", encoding="utf-8")
+            self.assertIsNone(
+                th._write_prefix_comparison_plot(
+                    hl_prefix="xtb",
+                    ll_prefix="orig",
+                    idx="0-1-2-3",
+                    workdir=root,
+                    plot_dir=root,
+                )
+            )
+            (root / "xtb_0-1-2-3.dat").write_text("0 0 0\n10 1 1\n", encoding="utf-8")
+            fake = type(
+                "R",
+                (),
+                {
+                    "is_flat": False,
+                    "is_close": False,
+                    "barrier_hl": 2.0,
+                    "barrier_ll": 1.0,
+                },
+            )()
+            with patch(
+                "ffpopt.scan.ScanAnalysis.compare_scan_files", return_value=fake
+            ) as mocked:
+                out = th._write_prefix_comparison_plot(
+                    hl_prefix="xtb",
+                    ll_prefix="orig",
+                    idx="0-1-2-3",
+                    workdir=root,
+                    plot_dir=root,
+                )
+            self.assertIs(out, fake)
+            self.assertEqual(
+                Path(mocked.call_args.kwargs["plot_path"]).name,
+                "compare_xtb_vs_orig_0-1-2-3.png",
+            )
+
+    def test_whole_ligand_defaults_plot_comparisons(self):
+        import inspect
+
+        from ffpopt.workflows.WholeLigandTwist import (
+            run_whole_ligand_dihed_twist_workflow,
+        )
+
+        param = inspect.signature(
+            run_whole_ligand_dihed_twist_workflow
+        ).parameters["plot_comparisons"]
+        self.assertIs(param.default, True)
+
     def test_boltzmann_average_summary_fields(self):
         from ffpopt.affdo.BoltzmannCharges import boltzmann_average_mol2_charges
 
@@ -2567,10 +2623,26 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIs(shape_match_delta, dihed_math.shape_match_delta)
         self.assertIsNone(slim_scan_result(None))
         self.assertEqual(slim_scan_result({"a": 1, "wf_run": object()})["a"], 1)
+        slim_one = slim_scan_result(
+            {"a": 1, "wf_run": object(), "structures": object()}
+        )
+        self.assertEqual(slim_one["a"], 1)
+        self.assertNotIn("wf_run", slim_one)
+        self.assertNotIn("structures", slim_one)
         slim = slim_twist_result(
-            {"ok": True, "scans": [("p", (0, 1, 2, 3), {"e": 1.0, "wf_run": object()})]}
+            {
+                "ok": True,
+                "scans": [
+                    (
+                        "p",
+                        (0, 1, 2, 3),
+                        {"e": 1.0, "wf_run": object(), "structures": object()},
+                    )
+                ],
+            }
         )
         self.assertNotIn("wf_run", slim["scans"][0][2])
+        self.assertNotIn("structures", slim["scans"][0][2])
 
     def test_shape_match_and_joint_ls_symbols(self):
         import numpy as np
@@ -2702,11 +2774,33 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 model="sander", nproc=12, n_bonds=3, prefer=True
             )
         )
-        # Many fragments on a modest node -> fragment breadth.
+        # Many fragments -> always breadth (xtb --fast used to serialize).
         self.assertFalse(
             prefer_fragment_pool_depth(
                 model="xtb", nproc=8, n_fragments=6, fast=True
             )
+        )
+        self.assertFalse(
+            prefer_fragment_pool_depth(
+                model="xtb", nproc=60, n_fragments=11, fast=True
+            )
+        )
+        self.assertEqual(
+            split_nproc_for_items(
+                60, 11, prefer_depth=False, flatten_nested=False
+            ),
+            (11, 5),
+        )
+        # Depth + flatten is 1 x nproc (wrong for the parent fragment pool).
+        self.assertEqual(
+            split_nproc_for_items(60, 11, prefer_depth=True, flatten_nested=True),
+            (1, 60),
+        )
+        self.assertGreater(
+            split_nproc_for_items(
+                60, 11, prefer_depth=True, flatten_nested=False
+            )[0],
+            1,
         )
         # Flatten nested spawn: never both outer and inner > 1.
         n_outer, n_inner = split_nproc_for_items(8, 4, prefer_depth=False)

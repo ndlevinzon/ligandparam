@@ -488,7 +488,7 @@ def run_fragmented_dihed_twist_workflow(
         If True, save a PNG plot per bond per comparison alongside the
         ``.dat`` files. Defaults to True here (vs. False for the
         single-molecule workflow) since fragments produce many
-        comparisons. Default is True.
+        comparisons; whole-ligand uses the same default. Default is True.
     **standard_kwargs
         Forwarded to the wavefront. Accepts anything declared by
         :func:`ffpopt.Options.AddStandardOptions`.
@@ -780,8 +780,13 @@ def run_fragmented_dihed_twist_workflow(
             n_fragments=len(runnable),
             fast=fast_on,
         )
+        # Do not flatten this split: flatten_nested+prefer_depth is 1 x nproc
+        # (one fragment owns the node). That is for *inside* a fragment worker.
         n_frag_workers, _n_wf_hint = _split_fragment_nproc(
-            nproc, len(runnable), prefer_depth=prefer_depth
+            nproc,
+            len(runnable),
+            prefer_depth=prefer_depth,
+            flatten_nested=False,
         )
         for job in runnable:
             job["budget_path"] = str(budget_path)
