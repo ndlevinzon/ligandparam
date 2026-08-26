@@ -198,9 +198,13 @@ Flattened vs nested ``nproc``
 ``split_nproc_for_items`` (in ``ffpopt.runtime.FastWavefront``) splits
 ``nproc`` into ``(n_outer, n_inner)``.
 
-* **Parent fragment pool** is breadth-first: as many fragments as
-  ``min(nproc, n_fragments)`` (e.g. 11 x 5 on 60 cores). Flattening
-  ``1 x nproc`` here parked every sibling behind one fat worker.
+* **Parent fragment pool** is two-phase. Cheap 1-D fragments (1-2 fit
+  bonds) share the node first: as many workers as
+  ``min(nproc, n_cheap)`` (e.g. 11 x 5 on 60 cores). Correlated
+  fragments (3+ bonds) stay queued during that pool, then each runs
+  alone with all ``-n`` cores so nested packing can be ``4 x 11`` instead
+  of stalling at ``nproc=4``. Flattening ``1 x nproc`` on the cheap
+  pool parked every sibling behind one fat worker.
 * **Inside a 1–2-bond fragment worker**, bond scans flatten (never both
   axes ``> 1``) so a third spawn pool is not opened.
 * **Whole-ligand**, and fragments with more than two fit bonds, keep a
@@ -208,14 +212,14 @@ Flattened vs nested ``nproc``
   44 cores). A tiny lease (8 bonds at ``nproc=4``) stays sequential
   ``1 x nproc`` so leftover cores can widen remaining jobs instead of
   locking ``4 x wf=1`` for the whole HL+orig phase.
-* Override with ``FFPOPT_PREF_WF_DEPTH=1`` (one fragment at a time) or
+* Override with ``FFPOPT_PREF_WF_DEPTH=1`` (one cheap fragment at a time) or
   ``FFPOPT_PREF_WF_BREADTH=1``.
 
 CPU leases are held only during wavefront scan phases. PrepareInput /
 GenDihedFit / compare release cores so siblings can grow. A scan never
 starts on one core when the budget can spare ``FFPOPT_MIN_WF_NPROC``
-(at least 2); extra owners wait. Correlated fragments take a larger
-share (weight = n_bonds, cap 8) than 1-D jobs. Sequential leftover
+(at least 2); extra owners wait. Cheap 1-D fragments share the budget;
+correlated fragments do not join that pool. Sequential leftover
 bonds re-lease so free cores are picked up before the next phase.
 
 ``--fast`` presets

@@ -48,6 +48,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Two-phase fragment CPU schedule** - cheap 1-D fragments (1-2 fit
+  bonds) share ``-n`` in parallel first. Correlated / AFFDO-style
+  fragments (3+ bonds) stay queued and do not reserve cores. After the
+  1-D pool finishes, each correlated fragment runs alone with all cores
+  so an 8-bond pack is not stuck at ``nproc=4`` beside cheap siblings.
+
 - **Weighted CPU juggling** - correlated / AFFDO-style fragments lease
   cores proportional to bond count (capped at 8) instead of an equal
   split with 1-D siblings. A scan never starts on one core when the

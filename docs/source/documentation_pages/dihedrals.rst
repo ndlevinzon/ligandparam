@@ -22,7 +22,9 @@ twists each cap in its own directory, then DIHE terms are merged by atom
 type into ``{label}.dihed.frcmod``. Cheaper per-opt; good for typical
 drug-like ligands. Fragments with one or two fit bonds keep independent
 1-D wavefronts; a fragment with more rotors switches to whole-ligand
-joint packing so those dihedrals are one correlated system.
+joint packing so those dihedrals are one correlated system. Cheap 1-D
+fragments share ``-n`` first; each correlated fragment then runs alone
+with all cores.
 
 .. code-block:: bash
 

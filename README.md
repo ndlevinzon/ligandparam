@@ -46,7 +46,7 @@ Both modes start from the same Amber triplet and the same `lig-dihed-correct` CL
 |--|------------------------|-------------------------------------|
 | **What is scanned** | Scission caps; each rotatable bond in a small fragment | The intact parent ligand |
 | **Why use it** | Cheaper HL opts; local environment around each torsion | Coupled rotors / bulky detergents that fragments distort |
-| **CPU** | Fragment workers fair-share `-n`; 1–2-bond fragments flatten bond x wavefront; larger fragments nest like whole-ligand | One parent job; nested bond x wavefront (e.g. 4 x 11 on 44 cores for 8 bonds) |
+| **CPU** | Cheap 1-D fragments share `-n` first; then each 3+ bond fragment takes the whole node. 1-2-bond fragments flatten bond x wavefront; larger fragments nest like whole-ligand | One parent job; nested bond x wavefront (e.g. 4 x 11 on 44 cores for 8 bonds) |
 | **Bond batches** | 1–2 bonds: independent 1-D wavefronts. 3+ bonds: whole-ligand packing (`FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`, default 8) | `FFPOPT_WHOLE_MAX_BONDS_PER_TWIST` (default 8) |
 | **Output** | Merged parent `{label}.dihed.frcmod` | Parent `{label}.dihed.frcmod` (no fragment merge) |
 | **Lib** | Unchanged | Unchanged |

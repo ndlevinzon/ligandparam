@@ -99,8 +99,9 @@ stays soft. Near-linear constrained torsions use a dedicated
 ladder). With small per-fragment CPU leases, bond pools prefer **breadth**
 (concurrent bonds) over a single narrow wavefront; override with
 ``FFPOPT_PREF_WF_DEPTH=1`` or ``FFPOPT_PREF_WF_BREADTH=1``. Fragmented runs
-start ``min(nproc, n_fragments)`` concurrent workers (not one fragment
-with all cores) and lease cores only during scan phases (not PrepareInput /
+spread ``-n`` across cheap 1-D fragments first (correlated / AFFDO-style
+packs stay queued), then give each 3+ bond fragment the whole node.
+Lease cores only during scan phases (not PrepareInput /
 GenDihedFit / compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start
 ``itNN`` from the prior LL checkpoint when available. Inside a 1–2-bond
 fragment worker, spawn splits are flattened (never bondxwavefront nested).

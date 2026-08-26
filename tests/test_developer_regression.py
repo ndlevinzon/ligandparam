@@ -3393,6 +3393,25 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(len(batches), 1)
         self.assertEqual(len(batches[0]), 5)
 
+    def test_partition_fragment_twist_jobs(self):
+        from ffpopt.workflows.FragmentedTwist import (
+            partition_fragment_twist_jobs,
+        )
+
+        cheap, correlated = partition_fragment_twist_jobs(
+            [
+                {"fragment_id": "f1", "bonds": [(0, 1)]},
+                {"fragment_id": "f2", "bonds": [(0, 1), (1, 2), (2, 3)]},
+                {"fragment_id": "f3", "bonds": [(0, 1), (2, 3)]},
+                {"fragment_id": "f4", "bonds": []},
+            ]
+        )
+        self.assertEqual([j["fragment_id"] for j in cheap], ["f1", "f3", "f4"])
+        self.assertEqual([j["fragment_id"] for j in correlated], ["f2"])
+        empty_cheap, empty_corr = partition_fragment_twist_jobs([])
+        self.assertEqual(empty_cheap, [])
+        self.assertEqual(empty_corr, [])
+
     def test_whole_ligand_max_bonds_per_twist_batch(self):
         from ffpopt.runtime.EnvDefaults import clear_defaults_cache
         from ffpopt.workflows.BondBatches import max_bonds_per_twist_batch

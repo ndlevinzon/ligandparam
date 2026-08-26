@@ -220,6 +220,27 @@ def clear_fragment_twist_done(frag_dir: PathLike) -> None:
         pass
 
 
+def partition_fragment_twist_jobs(
+    jobs: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Split twist jobs into cheap 1-D fragments vs correlated packs.
+
+    Cheap fragments (at most two fit bonds) share the CPU pool in
+    parallel. Correlated fragments (3+ fit bonds, whole-ligand packing)
+    stay pending until every cheap job finishes, then each runs alone
+    with all cores.
+    """
+    cheap: list[dict] = []
+    correlated: list[dict] = []
+    for job in jobs:
+        n_bonds = len(job.get("bonds") or [])
+        if fragment_uses_correlated_twist(n_bonds):
+            correlated.append(job)
+        else:
+            cheap.append(job)
+    return cheap, correlated
+
+
 def _run_fragment_twist_job(job: dict) -> dict:
     """Worker entry: prepare + twist one fragment (picklable job dict)."""
     from types import SimpleNamespace
@@ -297,16 +318,27 @@ def _run_fragment_twist_job(job: dict) -> dict:
         bonds=len(bonds),
         log_path=str(frag_log_path),
     )
-    frag_log.info(
-        "[frag-twist] %s: %s bond(s) %s -> prepare then twist in %s "
-        "(CPU leases during scans only; hint %s/%s)",
-        fragment_id,
-        len(bonds),
-        bonds,
-        frag_dir,
-        leased_hint,
-        budget_total,
-    )
+    if budget_path:
+        frag_log.info(
+            "[frag-twist] %s: %s bond(s) %s -> prepare then twist in %s "
+            "(CPU leases during scans only; hint %s/%s)",
+            fragment_id,
+            len(bonds),
+            bonds,
+            frag_dir,
+            leased_hint,
+            budget_total,
+        )
+    else:
+        frag_log.info(
+            "[frag-twist] %s: %s bond(s) %s -> prepare then twist in %s "
+            "(full node nproc=%s, no shared lease)",
+            fragment_id,
+            len(bonds),
+            bonds,
+            frag_dir,
+            leased_hint,
+        )
     if fragment_uses_correlated_twist(len(bonds)):
         frag_log.info(
             "[frag-twist] %s: %s dihedrals > 2; correlated joint twist "
@@ -381,6 +413,60 @@ def _run_fragment_twist_job(job: dict) -> dict:
                 )
 
 
+def _run_fragment_job_list(
+    jobs: list[dict],
+    *,
+    n_workers: int,
+    log,
+    results_out: list,
+    phase_label: str = "",
+) -> None:
+    """Run fragment twist jobs serially or in a spawn pool."""
+    if not jobs:
+        return
+    n_workers = max(1, min(int(n_workers), len(jobs)))
+    total = len(jobs)
+    suffix = f" ({phase_label})" if phase_label else ""
+    if n_workers == 1:
+        for i, job in enumerate(jobs, start=1):
+            result = _run_fragment_twist_job(job)
+            results_out.append(result)
+            log.info(
+                "[frag-twist] fragment job finished (%s/%s)%s: %s",
+                i,
+                total,
+                suffix,
+                result["fragment_id"],
+            )
+        return
+    pool = make_nondaemon_spawn_pool(n_workers)
+    try:
+        by_id: dict[str, dict] = {}
+        finished = 0
+        for result in pool.imap_unordered(_run_fragment_twist_job, jobs):
+            finished += 1
+            by_id[result["fragment_id"]] = result
+            log.info(
+                "[frag-twist] fragment job finished (%s/%s)%s: %s",
+                finished,
+                total,
+                suffix,
+                result["fragment_id"],
+            )
+        missing = [
+            j["fragment_id"] for j in jobs if j["fragment_id"] not in by_id
+        ]
+        if missing:
+            raise RuntimeError(
+                "fragment pool returned incomplete results; missing: "
+                + ", ".join(missing)
+            )
+        results_out.extend(by_id[j["fragment_id"]] for j in jobs)
+    finally:
+        pool.close()
+        pool.join()
+
+
 def run_fragmented_dihed_twist_workflow(
     *,
     mol2: PathLike | None = None,
@@ -420,8 +506,10 @@ def run_fragmented_dihed_twist_workflow(
     process-wide ``os.chdir``), then merges the per-fragment fitted
     DIHE terms back into a unified parent ``frcmod`` via
     ``scission.Merge.merge_fragment_frcmods``. Fragments with at most two
-    fit bonds keep independent 1-D wavefronts; larger fragments switch to
-    whole-ligand joint packing so those rotors are one correlated system.
+    fit bonds keep independent 1-D wavefronts and share ``nproc`` in
+    parallel; larger fragments stay queued, then each runs alone with all
+    cores under whole-ligand joint packing so those rotors are one
+    correlated system.
     Like :func:`run_dihed_twist_workflow`, this must be called from inside
     an ``if __name__ == "__main__":`` guard - the wavefront uses
     ``spawn``-mode multiprocessing. See the ``Workflows`` RST page for the
@@ -744,8 +832,9 @@ def run_fragmented_dihed_twist_workflow(
     from ffpopt.runtime.CpuBudget import CpuBudget
 
     # Drop stale leases from a prior killed / timed-out parent so finished
-    # owners cannot starve unfinished fragments on restart.
-    CpuBudget(budget_path, nproc, clear_leases=True, n_alive=len(runnable))
+    # owners cannot starve unfinished fragments on restart. n_alive is
+    # reset per phase: cheap jobs only, then correlated jobs one at a time.
+    CpuBudget(budget_path, nproc, clear_leases=True, n_alive=0)
 
     from ffpopt.runtime.ProgressBoard import FragmentBoardWatcher, FragmentProgressStore
 
@@ -784,31 +873,10 @@ def run_fragmented_dihed_twist_workflow(
         )
     else:
         from ffpopt.runtime.FastWavefront import prefer_fragment_pool_depth
-
-        prefer_depth = prefer_fragment_pool_depth(
-            model=str(model),
-            nproc=nproc,
-            n_fragments=len(runnable),
-            fast=fast_on,
-        )
-        # Do not flatten this split: flatten_nested+prefer_depth is 1 x nproc
-        # (one fragment owns the node). That is for *inside* a fragment worker.
-        n_frag_workers, _n_wf_hint = _split_fragment_nproc(
-            nproc,
-            len(runnable),
-            prefer_depth=prefer_depth,
-            flatten_nested=False,
-        )
         from ffpopt.runtime.CpuBudget import cpu_min_lease
 
-        min_lease = cpu_min_lease(nproc)
+        cheap, correlated = partition_fragment_twist_jobs(runnable)
         for job in runnable:
-            job["budget_path"] = str(budget_path)
-            job["budget_total"] = int(nproc)
-            # Hint only; workers lease dynamically from the shared budget.
-            job["wf_nproc"] = max(
-                min_lease, int(nproc // max(1, n_frag_workers))
-            )
             job["status_path"] = str(status_path)
             store.register(
                 job["fragment_id"],
@@ -816,16 +884,24 @@ def run_fragmented_dihed_twist_workflow(
                 frag_dir=job["frag_dir"],
                 log_path=str(Path(job["frag_dir"]) / "frag-twist.log"),
             )
+        for job in correlated:
+            store.update(
+                job["fragment_id"],
+                status="queued",
+                stage="queued",
+                detail=(
+                    f"{len(job['bonds'])} bond(s) | {job['frag_dir']} | "
+                    "pending whole-ligand pack"
+                ),
+            )
 
         log.info(
-            "[frag-twist] parallel plan: %s unfinished fragment(s)%s, nproc=%s -> "
-            "%s concurrent fragment worker(s)%s; dynamic CPU leases via %s",
-            len(runnable),
-            f" (+{len(already_done)} complete)" if already_done else "",
+            "[frag-twist] schedule: %s cheap 1-D fragment(s) in parallel, "
+            "then %s correlated fragment(s) one-at-a-time with all %s cores%s",
+            len(cheap),
+            len(correlated),
             nproc,
-            n_frag_workers,
-            " (prefer wf depth)" if prefer_depth else "",
-            budget_path,
+            f" (+{len(already_done)} complete)" if already_done else "",
         )
         log.info(
             "[frag-twist] live status board: %s "
@@ -840,51 +916,92 @@ def run_fragmented_dihed_twist_workflow(
             log_root_hint="<out_dir>/<fragment>/frag-twist.log",
         )
         watcher.start()
+        phase_by_id: dict[str, dict] = {}
         try:
-            if n_frag_workers == 1:
-                for i, job in enumerate(runnable, start=1):
-                    result = _run_fragment_twist_job(job)
-                    per_fragment_results.append(result)
-                    log.info(
-                        "[frag-twist] fragment job finished (%s/%s): %s",
-                        i,
-                        len(runnable),
-                        result["fragment_id"],
+            if cheap:
+                prefer_depth = prefer_fragment_pool_depth(
+                    model=str(model),
+                    nproc=nproc,
+                    n_fragments=len(cheap),
+                    fast=fast_on,
+                )
+                # Do not flatten this split: flatten_nested+prefer_depth is
+                # 1 x nproc (one fragment owns the node). That is for
+                # *inside* a fragment worker.
+                n_frag_workers, _n_wf_hint = _split_fragment_nproc(
+                    nproc,
+                    len(cheap),
+                    prefer_depth=prefer_depth,
+                    flatten_nested=False,
+                )
+                CpuBudget(
+                    budget_path, nproc, clear_leases=True, n_alive=len(cheap)
+                )
+                min_lease = cpu_min_lease(nproc)
+                for job in cheap:
+                    job["budget_path"] = str(budget_path)
+                    job["budget_total"] = int(nproc)
+                    # Hint only; workers lease dynamically from the budget.
+                    job["wf_nproc"] = max(
+                        min_lease, int(nproc // max(1, n_frag_workers))
                     )
-            else:
-                pool = make_nondaemon_spawn_pool(n_frag_workers)
-                try:
-                    by_id: dict[str, dict] = {}
-                    finished = 0
-                    for result in pool.imap_unordered(
-                        _run_fragment_twist_job, runnable
-                    ):
-                        finished += 1
-                        by_id[result["fragment_id"]] = result
-                        log.info(
-                            "[frag-twist] fragment job finished (%s/%s): %s",
-                            finished,
-                            len(runnable),
-                            result["fragment_id"],
-                        )
-                    missing = [
-                        j["fragment_id"]
-                        for j in runnable
-                        if j["fragment_id"] not in by_id
-                    ]
-                    if missing:
-                        raise RuntimeError(
-                            "fragment pool returned incomplete results; missing: "
-                            + ", ".join(missing)
-                        )
-                    per_fragment_results.extend(
-                        by_id[j["fragment_id"]] for j in runnable
-                    )
-                finally:
-                    pool.close()
-                    pool.join()
+                log.info(
+                    "[frag-twist] phase 1: %s cheap 1-D fragment(s), nproc=%s -> "
+                    "%s concurrent worker(s)%s; dynamic CPU leases via %s",
+                    len(cheap),
+                    nproc,
+                    n_frag_workers,
+                    " (prefer wf depth)" if prefer_depth else "",
+                    budget_path,
+                )
+                cheap_results: list[dict] = []
+                _run_fragment_job_list(
+                    cheap,
+                    n_workers=n_frag_workers,
+                    log=log,
+                    results_out=cheap_results,
+                    phase_label="phase 1",
+                )
+                phase_by_id.update(
+                    (r["fragment_id"], r) for r in cheap_results
+                )
+                CpuBudget(budget_path, nproc, clear_leases=True, n_alive=0)
+
+            if correlated:
+                log.info(
+                    "[frag-twist] phase 2: %s correlated fragment(s), "
+                    "one at a time, nproc=%s (no shared lease)",
+                    len(correlated),
+                    nproc,
+                )
+                for job in correlated:
+                    job.pop("budget_path", None)
+                    job["budget_total"] = int(nproc)
+                    job["wf_nproc"] = int(nproc)
+                corr_results: list[dict] = []
+                _run_fragment_job_list(
+                    correlated,
+                    n_workers=1,
+                    log=log,
+                    results_out=corr_results,
+                    phase_label="phase 2",
+                )
+                phase_by_id.update(
+                    (r["fragment_id"], r) for r in corr_results
+                )
         finally:
             watcher.stop()
+        missing = [
+            j["fragment_id"] for j in runnable if j["fragment_id"] not in phase_by_id
+        ]
+        if missing:
+            raise RuntimeError(
+                "fragment schedule returned incomplete results; missing: "
+                + ", ".join(missing)
+            )
+        per_fragment_results.extend(
+            phase_by_id[j["fragment_id"]] for j in runnable
+        )
 
     log.info(
         "[frag-twist] all %s fragment twist job(s) finished",

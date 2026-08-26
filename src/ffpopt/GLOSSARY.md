@@ -221,9 +221,11 @@ completed fragments are not re-queued (and do not take a CPU lease) on parent
 restart. Parent start clears stale entries in ``.cpu_budget.json``. Leases
 are held only during wavefront scan phases; prepare / fit / compare release
 cores so siblings can grow. A scan never starts on one core when the
-budget can spare ``FFPOPT_MIN_WF_NPROC`` (at least 2). Correlated
-fragments (weight = n_bonds, cap 8)
-get a larger share than 1-D jobs. Correlated / AFFDO batches stay on
+budget can spare ``FFPOPT_MIN_WF_NPROC`` (at least 2). Cheap 1-D
+fragments share the node first; correlated / AFFDO-style fragments stay
+queued and then each take the full ``-n`` pool one at a time (no shared
+lease). Concurrent 1-D jobs fair-share the budget
+(weight = n_bonds, cap 8). Correlated / AFFDO batches stay on
 sequential fat wavefronts until the lease can nest without ``wf=1``.
 Sequential leftover bonds re-lease to pick up free cores. With many
 fragments and a modest ``nproc``,
