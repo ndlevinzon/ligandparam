@@ -724,6 +724,7 @@ def _execute_bond_scan_jobs(
     if not jobs:
         return []
 
+    from ffpopt.runtime.EnvDefaults import env_bool, env_int
     from ffpopt.runtime.FastWavefront import prefer_bond_pool_depth
     from ffpopt.runtime.NondaemonPool import in_spawn_worker
     from ffpopt.scan.WaveFront import close_reused_wavefront_pool
@@ -738,17 +739,24 @@ def _execute_bond_scan_jobs(
     model_hint = next(iter(models)) if len(models) else None
     already_nested = in_spawn_worker()
     nproc = max(1, int(nproc))
+    fat_wf = max(4, int(env_int("FFPOPT_MIN_WF_NPROC")))
 
     def _plan_split(nproc_now: int, n_items: int) -> tuple[bool, int, int]:
-        prefer = prefer_bond_pool_depth(
-            model=model_hint,
-            nproc=nproc_now,
-            n_bonds=n_items,
-            prefer=prefer_wf_depth,
-        )
         if nest_bond_pool:
+            # Correlated / AFFDO: never 1-wide wavefronts (tiny-lease breadth
+            # is 4 x wf=1 and cannot steal leftover cores). Prefer depth.
+            if env_bool("FFPOPT_PREF_WF_BREADTH"):
+                prefer = False
+            else:
+                prefer = True
             flatten = False
         else:
+            prefer = prefer_bond_pool_depth(
+                model=model_hint,
+                nproc=nproc_now,
+                n_bonds=n_items,
+                prefer=prefer_wf_depth,
+            )
             local_prefer = prefer
             if already_nested and local_prefer is not True:
                 local_prefer = True
@@ -757,6 +765,16 @@ def _execute_bond_scan_jobs(
         n_bond_workers, n_wf = _split_fragment_nproc(
             nproc_now, n_items, prefer_depth=prefer, flatten_nested=flatten
         )
+        # Shared-budget correlated scans: do not lock a shallow pool. Sequential
+        # 1 x nproc re-leases after each job so leftover cores widen remaining
+        # wavefronts (4 x 1 stuck for 8 HL+orig bonds is the lag).
+        if (
+            nest_bond_pool
+            and refresh_nproc is not None
+            and n_bond_workers > 1
+            and n_wf < fat_wf
+        ):
+            return True, 1, int(nproc_now)
         return bool(prefer), int(n_bond_workers), int(n_wf)
 
     def _log_plan(

@@ -203,10 +203,11 @@ Flattened vs nested ``nproc``
   ``1 x nproc`` here parked every sibling behind one fat worker.
 * **Inside a 1–2-bond fragment worker**, bond scans flatten (never both
   axes ``> 1``) so a third spawn pool is not opened.
-* **Whole-ligand**, and fragments with more than two fit bonds, may keep
-  a 2-D bond x wavefront split (e.g. 4 x 11 on 44 cores for 8 bonds) when
-  ``prefer_wf_depth`` is on. Those larger fragments treat every rotor as
-  one correlated joint fit (whole-ligand packing).
+* **Whole-ligand**, and fragments with more than two fit bonds, keep a
+  2-D bond x wavefront split when each wavefront is fat (e.g. 4 x 11 on
+  44 cores). A tiny lease (8 bonds at ``nproc=4``) stays sequential
+  ``1 x nproc`` so leftover cores can widen remaining jobs instead of
+  locking ``4 x wf=1`` for the whole HL+orig phase.
 * Override with ``FFPOPT_PREF_WF_DEPTH=1`` (one fragment at a time) or
   ``FFPOPT_PREF_WF_BREADTH=1``.
 

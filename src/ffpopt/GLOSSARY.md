@@ -223,8 +223,10 @@ are held only during wavefront scan phases; prepare / fit / compare release
 cores so siblings can grow. A scan never starts on one core when the
 budget can spare ``FFPOPT_MIN_WF_NPROC`` (at least 2). Correlated
 fragments (weight = n_bonds, cap 8)
-get a larger share than 1-D jobs; sequential leftover bonds re-lease to
-pick up free cores. With many fragments and a modest ``nproc``,
+get a larger share than 1-D jobs. Correlated / AFFDO batches stay on
+sequential fat wavefronts until the lease can nest without ``wf=1``.
+Sequential leftover bonds re-lease to pick up free cores. With many
+fragments and a modest ``nproc``,
 pools prefer fragment/bond breadth over depth (see
 ``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
 ``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override). Fragments

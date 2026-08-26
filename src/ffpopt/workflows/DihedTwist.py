@@ -540,6 +540,8 @@ def run_dihed_twist_workflow(
             except Exception:
                 pass
 
+    last_stage = ["hl_orig_scan"]
+
     def _lease_nproc(phase: str) -> int:
         """Return cores for this scan phase (wait rather than starve on 1)."""
         if budget_path is None or not budget_owner:
@@ -550,6 +552,9 @@ def run_dihed_twist_workflow(
         weight = cpu_lease_weight(n_bonds, correlated=correlated_bonds)
         min_lease = cpu_min_lease(budget_tot)
         waited = False
+        display = last_stage[0] if "/remain" in str(phase) else phase
+        if "/remain" not in str(phase):
+            last_stage[0] = phase
         while True:
             budget = CpuBudget(budget_path, budget_tot)
             leased = int(budget.lease(str(budget_owner), weight=weight))
@@ -562,6 +567,13 @@ def run_dihed_twist_workflow(
                     budget_owner,
                     weight,
                     ", after wait" if waited else "",
+                )
+                _prog(
+                    display,
+                    f"HL={model} || orig=sander | {n_bonds} bond(s) | "
+                    f"nproc={leased}"
+                    if "hl_orig" in str(display)
+                    else f"{n_bonds} bond(s) | nproc={leased}",
                 )
                 return leased
             waited = True

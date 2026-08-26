@@ -3181,6 +3181,118 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(pool_sizes, [3])
         self.assertEqual(seen_nproc[1:], [4, 4, 4])
 
+    def test_correlated_small_lease_stays_sequential_then_grows(self):
+        from ffpopt.workflows.TwistHelpers import _execute_bond_scan_jobs
+
+        seen_nproc = []
+        pool_sizes = []
+
+        def fake_run(job):
+            seen_nproc.append(int(job["wf_kwargs"]["nproc"]))
+            return {
+                "prefix": job["prefix"],
+                "dihed_idxs": job["dihed_idxs"],
+                "result": None,
+            }
+
+        class FakePool:
+            def __init__(self, n):
+                pool_sizes.append(n)
+
+            def imap_unordered(self, fn, jobs):
+                for job in jobs:
+                    yield fn(job)
+
+            def close(self):
+                return None
+
+            def join(self):
+                return None
+
+        jobs = [
+            {
+                "prefix": "hl",
+                "dihed_idxs": (i, i + 1, i + 2, i + 3),
+                "model": "xtb",
+                "wf_kwargs": {"nproc": 1},
+            }
+            for i in range(8)
+        ]
+        with patch(
+            "ffpopt.workflows.TwistHelpers._run_bond_scan_job",
+            side_effect=fake_run,
+        ), patch(
+            "ffpopt.workflows.TwistHelpers.make_nondaemon_spawn_pool",
+            side_effect=FakePool,
+        ), patch(
+            "ffpopt.scan.WaveFront.close_reused_wavefront_pool",
+        ), patch.dict(
+            os.environ,
+            {
+                "FFPOPT_MIN_WF_NPROC": "2",
+                "FFPOPT_PREF_WF_DEPTH": "0",
+                "FFPOPT_PREF_WF_BREADTH": "0",
+            },
+            clear=False,
+        ):
+            stuck = _execute_bond_scan_jobs(
+                jobs,
+                nproc=4,
+                prefer_wf_depth=True,
+                logger=None,
+                nest_bond_pool=True,
+                refresh_nproc=lambda _p: 4,
+            )
+        self.assertEqual(len(stuck), 8)
+        self.assertEqual(seen_nproc, [4] * 8)
+        self.assertEqual(pool_sizes, [])
+
+        seen_nproc.clear()
+        pool_sizes.clear()
+        nproc_seq = [4, 44]
+
+        def refresh(_phase):
+            return nproc_seq.pop(0) if nproc_seq else 44
+
+        jobs2 = [
+            {
+                "prefix": "hl",
+                "dihed_idxs": (i, i + 1, i + 2, i + 3),
+                "model": "xtb",
+                "wf_kwargs": {"nproc": 1},
+            }
+            for i in range(8)
+        ]
+        with patch(
+            "ffpopt.workflows.TwistHelpers._run_bond_scan_job",
+            side_effect=fake_run,
+        ), patch(
+            "ffpopt.workflows.TwistHelpers.make_nondaemon_spawn_pool",
+            side_effect=FakePool,
+        ), patch(
+            "ffpopt.scan.WaveFront.close_reused_wavefront_pool",
+        ), patch.dict(
+            os.environ,
+            {
+                "FFPOPT_MIN_WF_NPROC": "2",
+                "FFPOPT_PREF_WF_DEPTH": "0",
+                "FFPOPT_PREF_WF_BREADTH": "0",
+            },
+            clear=False,
+        ):
+            grew = _execute_bond_scan_jobs(
+                jobs2,
+                nproc=4,
+                prefer_wf_depth=True,
+                logger=None,
+                nest_bond_pool=True,
+                refresh_nproc=refresh,
+            )
+        self.assertEqual(len(grew), 8)
+        self.assertEqual(seen_nproc[0], 4)
+        self.assertEqual(pool_sizes, [4])
+        self.assertTrue(all(n >= 4 for n in seen_nproc[1:]))
+
     def test_fragment_twist_done_sentinel(self):
         from ffpopt.workflows import (
             clear_fragment_twist_done,
