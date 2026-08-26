@@ -220,7 +220,9 @@ calculation. Fragmented twist also writes ``frag-twist.done`` per fragment so
 completed fragments are not re-queued (and do not take a CPU lease) on parent
 restart. Parent start clears stale entries in ``.cpu_budget.json``. Leases
 are held only during wavefront scan phases; prepare / fit / compare release
-cores so siblings can grow. With many fragments and a modest ``nproc``,
+cores so siblings can grow. Correlated fragments (weight = n_bonds, cap 8)
+get a larger share than 1-D jobs; sequential leftover bonds re-lease to
+pick up free cores. With many fragments and a modest ``nproc``,
 pools prefer fragment/bond breadth over depth (see
 ``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
 ``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override). Fragments

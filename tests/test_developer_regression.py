@@ -2928,11 +2928,25 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertFalse(fast_wavefront_enabled())
 
     def test_cpu_budget_fair_share(self):
-        from ffpopt.runtime.CpuBudget import fair_share_leases
+        from ffpopt.runtime.CpuBudget import cpu_lease_weight, fair_share_leases
 
         leases = fair_share_leases(8, ["a", "b", "c"])
         self.assertEqual(sum(leases.values()), 8)
         self.assertEqual(len(leases), 3)
+
+        self.assertEqual(cpu_lease_weight(2, correlated=False), 1)
+        self.assertEqual(cpu_lease_weight(8, correlated=True), 8)
+        with patch.dict(os.environ, {"FFPOPT_WHOLE_MAX_BONDS_PER_TWIST": "8"}):
+            self.assertEqual(cpu_lease_weight(12, correlated=True), 8)
+
+        owners = ["tail", "a", "b", "c", "d", "e"]
+        weights = {oid: (8 if oid == "tail" else 1) for oid in owners}
+        weighted = fair_share_leases(44, owners, weights=weights)
+        self.assertEqual(sum(weighted.values()), 44)
+        self.assertEqual(weighted["tail"], 27)
+        for oid in "abcde":
+            self.assertGreaterEqual(weighted[oid], 3)
+            self.assertLessEqual(weighted[oid], 4)
 
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
         from ffpopt.workflows.TwistHelpers import _is_sander_ll_model, _wf_kwargs_for_scan_model
@@ -3031,6 +3045,94 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertGreater(len(b.snapshot()["leases"]), 0)
             CpuBudget(path, 8, clear_leases=True)
             self.assertEqual(CpuBudget(path, 8).snapshot()["leases"], {})
+
+    def test_cpu_budget_lease_persists_weights(self):
+        from ffpopt.runtime.CpuBudget import CpuBudget
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / ".cpu_budget.json"
+            b = CpuBudget(path, 44)
+            b.lease("tail", weight=8)
+            b.lease("a", weight=1)
+            snap = b.snapshot()
+            self.assertEqual(snap["weights"]["tail"], 8)
+            self.assertGreater(snap["leases"]["tail"], snap["leases"]["a"])
+            b.release("a")
+            grown = CpuBudget(path, 44).lease("tail", weight=8)
+            self.assertEqual(grown, 44)
+            self.assertNotIn("a", CpuBudget(path, 44).snapshot()["leases"])
+
+    def test_execute_bond_scan_jobs_resplit_remaining(self):
+        from ffpopt.workflows.TwistHelpers import _execute_bond_scan_jobs
+
+        seen_nproc = []
+        pool_sizes = []
+
+        def fake_run(job):
+            seen_nproc.append(int(job["wf_kwargs"]["nproc"]))
+            return {
+                "prefix": job["prefix"],
+                "dihed_idxs": job["dihed_idxs"],
+                "result": None,
+            }
+
+        class FakePool:
+            def __init__(self, n):
+                pool_sizes.append(n)
+
+            def imap_unordered(self, fn, jobs):
+                for job in jobs:
+                    yield fn(job)
+
+            def close(self):
+                return None
+
+            def join(self):
+                return None
+
+        nproc_seq = [1, 12]
+
+        def refresh(_phase):
+            return nproc_seq.pop(0) if nproc_seq else 12
+
+        jobs = [
+            {
+                "prefix": "hl",
+                "dihed_idxs": (i, i + 1, i + 2, i + 3),
+                "model": "xtb",
+                "wf_kwargs": {"nproc": 1},
+            }
+            for i in range(4)
+        ]
+        with patch(
+            "ffpopt.workflows.TwistHelpers._run_bond_scan_job",
+            side_effect=fake_run,
+        ), patch(
+            "ffpopt.workflows.TwistHelpers.make_nondaemon_spawn_pool",
+            side_effect=FakePool,
+        ), patch(
+            "ffpopt.scan.WaveFront.close_reused_wavefront_pool",
+        ), patch.dict(
+            os.environ,
+            {
+                "FFPOPT_MIN_WF_NPROC": "2",
+                "FFPOPT_PREF_WF_DEPTH": "0",
+                "FFPOPT_PREF_WF_BREADTH": "0",
+            },
+            clear=False,
+        ):
+            out = _execute_bond_scan_jobs(
+                jobs,
+                nproc=1,
+                prefer_wf_depth=True,
+                logger=None,
+                nest_bond_pool=True,
+                refresh_nproc=refresh,
+            )
+        self.assertEqual(len(out), 4)
+        self.assertEqual(seen_nproc[0], 1)
+        self.assertEqual(pool_sizes, [3])
+        self.assertEqual(seen_nproc[1:], [4, 4, 4])
 
     def test_fragment_twist_done_sentinel(self):
         from ffpopt.workflows import (

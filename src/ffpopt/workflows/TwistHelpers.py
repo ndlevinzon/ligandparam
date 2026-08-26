@@ -711,8 +711,15 @@ def _execute_bond_scan_jobs(
     label: str = "scans",
     on_scan_done: Optional[Callable[[dict], None]] = None,
     nest_bond_pool: bool = False,
+    refresh_nproc: Optional[Callable[[str], int]] = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
-    """Run bond-scan jobs; nest bondxwavefront for whole-ligand / correlated fragments."""
+    """Run bond-scan jobs; nest bondxwavefront for whole-ligand / correlated fragments.
+
+    When ``refresh_nproc`` is set, sequential (``n_bond_workers==1``) work
+    re-leases and re-splits remaining jobs after each bond so leftover cores
+    from sibling fit/release can be used immediately. An already-started 2-D
+    spawn pool is not resized.
+    """
     log = _resolve_logger(logger)
     if not jobs:
         return []
@@ -721,55 +728,73 @@ def _execute_bond_scan_jobs(
     from ffpopt.runtime.NondaemonPool import in_spawn_worker
     from ffpopt.scan.WaveFront import close_reused_wavefront_pool
 
-    models = {str(j.get("model") or "") for j in jobs}
-    model_hint = next(iter(models)) if len(models) else None
-    prefer = prefer_bond_pool_depth(
-        model=model_hint,
-        nproc=nproc,
-        n_bonds=len(jobs),
-        prefer=prefer_wf_depth,
-    )
-    already_nested = in_spawn_worker()
-    if nest_bond_pool:
-        # Whole-ligand and large fragments: keep a 2-D bond x wavefront split
-        # even inside a fragment spawn worker.
-        flatten = False
-    else:
-        # Small fragments: one axis only (wavefront depth) inside a spawn worker.
-        if already_nested and prefer is not True:
-            prefer = True
-        flatten = already_nested or not prefer
-    n_bond_workers, n_wf = _split_fragment_nproc(
-        nproc, len(jobs), prefer_depth=prefer, flatten_nested=flatten
-    )
+    remaining = []
     for job in jobs:
-        job["wf_kwargs"] = dict(job["wf_kwargs"])
-        job["wf_kwargs"]["nproc"] = int(n_wf)
+        item = dict(job)
+        item["wf_kwargs"] = dict(job.get("wf_kwargs") or {})
+        remaining.append(item)
+    n_total = len(remaining)
+    models = {str(j.get("model") or "") for j in remaining}
+    model_hint = next(iter(models)) if len(models) else None
+    already_nested = in_spawn_worker()
+    nproc = max(1, int(nproc))
 
-    ase_first = any(j["wf_kwargs"].get("geometric_opt") is False for j in jobs)
-    if prefer and n_bond_workers > 1 and n_wf > 1:
-        split_note = " (prefer wf depth; nested spawn)"
-    elif prefer:
-        split_note = " (prefer wf depth)"
-    else:
-        split_note = " (flat; no nested spawn)"
-    used = int(n_bond_workers) * int(n_wf)
-    leftover = max(0, int(nproc) - used)
-    leftover_note = f", {used}/{nproc} cores" + (
-        f" ({leftover} leftover)" if leftover else ""
-    )
-    log.info(
-        "[twist] parallel bond scans: %s, %s job(s), nproc=%s -> "
-        "%s bond worker(s) x wf_nproc=%s%s%s%s",
-        label,
-        len(jobs),
-        nproc,
-        n_bond_workers,
-        n_wf,
-        split_note,
-        leftover_note,
-        " (ASE-first)" if ase_first else "",
-    )
+    def _plan_split(nproc_now: int, n_items: int) -> tuple[bool, int, int]:
+        prefer = prefer_bond_pool_depth(
+            model=model_hint,
+            nproc=nproc_now,
+            n_bonds=n_items,
+            prefer=prefer_wf_depth,
+        )
+        if nest_bond_pool:
+            flatten = False
+        else:
+            local_prefer = prefer
+            if already_nested and local_prefer is not True:
+                local_prefer = True
+            flatten = already_nested or not local_prefer
+            prefer = local_prefer
+        n_bond_workers, n_wf = _split_fragment_nproc(
+            nproc_now, n_items, prefer_depth=prefer, flatten_nested=flatten
+        )
+        return bool(prefer), int(n_bond_workers), int(n_wf)
+
+    def _log_plan(
+        nproc_now: int,
+        n_items: int,
+        n_bond_workers: int,
+        n_wf: int,
+        prefer: bool,
+        *,
+        remaining_note: str = "",
+    ) -> None:
+        ase_first = any(
+            j["wf_kwargs"].get("geometric_opt") is False for j in remaining[:n_items]
+        )
+        if prefer and n_bond_workers > 1 and n_wf > 1:
+            split_note = " (prefer wf depth; nested spawn)"
+        elif prefer:
+            split_note = " (prefer wf depth)"
+        else:
+            split_note = " (flat; no nested spawn)"
+        used = int(n_bond_workers) * int(n_wf)
+        leftover = max(0, int(nproc_now) - used)
+        leftover_note = f", {used}/{nproc_now} cores" + (
+            f" ({leftover} leftover)" if leftover else ""
+        )
+        log.info(
+            "[twist] parallel bond scans: %s, %s job(s), nproc=%s -> "
+            "%s bond worker(s) x wf_nproc=%s%s%s%s%s",
+            label,
+            n_items,
+            nproc_now,
+            n_bond_workers,
+            n_wf,
+            split_note,
+            leftover_note,
+            remaining_note,
+            " (ASE-first)" if ase_first else "",
+        )
 
     def _record(item: dict, done: int) -> None:
         idx = "-".join(str(x) for x in item["dihed_idxs"])
@@ -779,7 +804,7 @@ def _execute_bond_scan_jobs(
                 "[twist] %s failed %s/%s: %s_%s: %s",
                 label,
                 done,
-                len(jobs),
+                n_total,
                 item["prefix"],
                 idx,
                 err.splitlines()[0] if isinstance(err, str) else err,
@@ -789,30 +814,84 @@ def _execute_bond_scan_jobs(
                 "[twist] %s finished %s/%s: %s_%s",
                 label,
                 done,
-                len(jobs),
+                n_total,
                 item["prefix"],
                 idx,
             )
         if on_scan_done is not None:
             on_scan_done(item)
 
+    raw: list[dict] = []
+    done = 0
     try:
-        if n_bond_workers == 1:
-            raw = []
-            for i, job in enumerate(jobs, start=1):
-                item = _run_bond_scan_job(job)
-                raw.append(item)
-                _record(item, i)
-        else:
+        def _apply_nproc(batch: list[dict], n_wf: int) -> None:
+            for job in batch:
+                job["wf_kwargs"]["nproc"] = int(n_wf)
+
+        def _run_pool(batch: list[dict], n_bond_workers: int) -> None:
+            nonlocal done
             pool = make_nondaemon_spawn_pool(n_bond_workers)
             try:
-                raw = []
-                for item in pool.imap_unordered(_run_bond_scan_job, jobs):
+                for item in pool.imap_unordered(_run_bond_scan_job, batch):
                     raw.append(item)
-                    _record(item, len(raw))
+                    done += 1
+                    _record(item, done)
             finally:
                 pool.close()
                 pool.join()
+
+        if refresh_nproc is None:
+            prefer, n_bond_workers, n_wf = _plan_split(nproc, len(remaining))
+            _apply_nproc(remaining, n_wf)
+            _log_plan(nproc, len(remaining), n_bond_workers, n_wf, prefer)
+            if n_bond_workers == 1:
+                for job in remaining:
+                    item = _run_bond_scan_job(job)
+                    raw.append(item)
+                    done += 1
+                    _record(item, done)
+            else:
+                _run_pool(remaining, n_bond_workers)
+            remaining = []
+        else:
+            while remaining:
+                nproc_now = nproc
+                try:
+                    nproc_now = max(
+                        1,
+                        int(refresh_nproc(f"{label}/remain{len(remaining)}")),
+                    )
+                except Exception:
+                    log.exception(
+                        "[twist] %s: refresh_nproc failed; keeping nproc=%s",
+                        label,
+                        nproc,
+                    )
+                    nproc_now = max(1, int(nproc))
+                nproc = nproc_now
+                prefer, n_bond_workers, n_wf = _plan_split(
+                    nproc_now, len(remaining)
+                )
+                _apply_nproc(remaining, n_wf)
+                remain_note = f" ({len(remaining)} remaining)" if done else ""
+                _log_plan(
+                    nproc_now,
+                    len(remaining),
+                    n_bond_workers,
+                    n_wf,
+                    prefer,
+                    remaining_note=remain_note,
+                )
+                if n_bond_workers == 1:
+                    job = remaining.pop(0)
+                    item = _run_bond_scan_job(job)
+                    raw.append(item)
+                    done += 1
+                    _record(item, done)
+                else:
+                    batch = remaining
+                    remaining = []
+                    _run_pool(batch, n_bond_workers)
     finally:
         close_reused_wavefront_pool()
 
@@ -836,6 +915,7 @@ def _run_scans_for_bonds(
     prefer_wf_depth: bool | None = None,
     nest_bond_pool: bool = False,
     seed_prefix: str | None = None,
+    refresh_nproc: Optional[Callable[[str], int]] = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Run one wavefront scan per bond, pooling when the core budget allows.
 
@@ -861,6 +941,7 @@ def _run_scans_for_bonds(
         logger=logger,
         label=f"prefix={prefix}",
         nest_bond_pool=nest_bond_pool,
+        refresh_nproc=refresh_nproc,
     )
 
 
@@ -956,6 +1037,7 @@ def _run_hl_and_orig_scans(
     plot_dir=None,
     compare_config=None,
     structure_images=None,
+    refresh_nproc: Optional[Callable[[str], int]] = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Pipeline HL (optionally multi-centroid) and reference-sander scans.
 
@@ -1005,6 +1087,7 @@ def _run_hl_and_orig_scans(
         logger=logger,
         on_scan_done=_on_scan_done if plot_dir is not None else None,
         nest_bond_pool=nest_bond_pool,
+        refresh_nproc=refresh_nproc,
     )
 
     if n_cent >= 2:

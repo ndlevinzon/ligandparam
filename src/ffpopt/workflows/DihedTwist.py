@@ -543,16 +543,19 @@ def run_dihed_twist_workflow(
         """Return cores for this scan phase (re-lease when a shared budget exists)."""
         if budget_path is None or not budget_owner:
             return nproc
-        from ffpopt.runtime.CpuBudget import CpuBudget
+        from ffpopt.runtime.CpuBudget import CpuBudget, cpu_lease_weight
 
+        n_bonds = len(scans)
+        weight = cpu_lease_weight(n_bonds, correlated=correlated_bonds)
         budget = CpuBudget(budget_path, budget_tot)
-        leased = max(1, int(budget.lease(str(budget_owner))))
+        leased = max(1, int(budget.lease(str(budget_owner), weight=weight)))
         log.info(
-            "[twist] %s leased %s/%s cores (owner=%s)",
+            "[twist] %s leased %s/%s cores (owner=%s weight=%s)",
             phase,
             leased,
             budget_tot,
             budget_owner,
+            weight,
         )
         return leased
 
@@ -720,6 +723,7 @@ def run_dihed_twist_workflow(
                 plot_dir=plot_dir,
                 compare_config=compare_config,
                 structure_images=structure_images,
+                refresh_nproc=_lease_nproc if budget_path is not None else None,
             )
         )
 
@@ -842,6 +846,7 @@ def run_dihed_twist_workflow(
                     prefer_wf_depth=prefer_depth,
                     nest_bond_pool=correlated_bonds,
                     seed_prefix=ll_prefix,
+                    refresh_nproc=_lease_nproc if budget_path is not None else None,
                 )
             )
             _release_lease(f"post_rescan/{citname}")

@@ -48,6 +48,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Weighted CPU juggling** - correlated / AFFDO-style fragments lease
+  cores proportional to bond count (capped at 8) instead of an equal
+  split with 1-D siblings. Sequential bond scans re-lease and re-split
+  remaining jobs when a sibling releases, so leftover cores are not idle
+  until the next phase. In-flight 2-D wavefront pools stay fixed.
+
 - **XTB core split** - ``prefer_depth`` nproc packing now uses leftover cores
   (44 cores / 8 bonds -> 4x11, not 8x5 with 4 idle; pipelined HL+orig 16
   jobs -> 11x4, not 16x2 with 12 idle). BLAS/OpenMP stay 1 thread per
