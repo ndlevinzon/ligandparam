@@ -455,19 +455,36 @@ class WavefrontNode:
         write_node_pickle(self)
 
     def cleanup(self) -> None:
-        """Remove the node pickle and geomeTRIC scratch for this node."""
+        """Remove the node pickle and geomeTRIC scratch for this node.
+
+        Missing files are ignored (NFS/VAST: ``is_file()`` then ``remove``
+        is a race; pickle write may also have been skipped).
+        """
         filename = Path(f"{self.node_pkl}")
-        if Path.is_file(filename):
-            print_wavefront(f"Cleaning up node pickle file: {self.node_pkl}")
-            os.remove(filename)
+        try:
+            existed = filename.is_file()
+            filename.unlink(missing_ok=True)
+            if existed:
+                print_wavefront(f"Cleaning up node pickle file: {self.node_pkl}")
+        except OSError as exc:
+            print_wavefront(
+                f"could not remove node pickle {self.node_pkl}: "
+                f"{type(exc).__name__}: {exc}"
+            )
         from ffpopt.geom.Geometric import (
             cleanup_geometric_scratch,
             geometric_prefix_from_node_pkl,
         )
 
-        cleanup_geometric_scratch(
-            geometric_prefix_from_node_pkl(self.node_pkl), keep_optim=False
-        )
+        try:
+            cleanup_geometric_scratch(
+                geometric_prefix_from_node_pkl(self.node_pkl), keep_optim=False
+            )
+        except OSError as exc:
+            print_wavefront(
+                f"could not remove geomeTRIC scratch for {self.node_pkl}: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
     def _mark_failed(self, reason: str, error: Optional[Exception] = None) -> None:
         mark_node_failed(
@@ -1178,7 +1195,13 @@ class Wavefront:
         for level in self.levels:
             for node in level.nodes:
                 if node.complete:
-                    node.cleanup()
+                    try:
+                        node.cleanup()
+                    except OSError as exc:
+                        print_wavefront(
+                            f"Node {getattr(node, 'node_id', '?')} cleanup: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
 
     def _get_or_create_level(self, level_id: int) -> WavefrontLevel:
         """ Return the level with ``level_id``, creating and appending it if new.

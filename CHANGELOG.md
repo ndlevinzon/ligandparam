@@ -14,7 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   no longer abort with ``FileExistsError``; node pickle writes use unique
   tmp names, fsync, and retries so NFS ``os.replace`` cannot kill the pool.
   A broken-geometry node is marked failed instead of crashing
-  ``lig-dihed-correct``. Dihedral ``arccos`` clips collinear atoms.
+  ``lig-dihed-correct``. Completed-node pickle cleanup uses
+  ``unlink(missing_ok=True)`` so a vanished ``*_node.pckl`` on VAST
+  cannot kill the pool. Dihedral ``arccos`` clips collinear atoms.
 
 ### Added
 

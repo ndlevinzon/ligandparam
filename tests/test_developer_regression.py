@@ -835,6 +835,16 @@ class TestLoggingContracts(unittest.TestCase):
             self.assertTrue(path.is_file())
             self.assertEqual(pickle_load_compat(path)["n"], 3)
 
+    def test_wavefront_node_cleanup_missing_pickle_is_noop(self):
+        import tempfile
+        from ffpopt.scan.WavefrontEngine import WavefrontNode
+
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "level_1_angle_110_id_2_node.pckl"
+            node = SimpleNamespace(node_pkl=str(missing), node_id=2)
+            WavefrontNode.cleanup(node)
+            self.assertFalse(missing.exists())
+
     def test_attach_console_handlers_idempotent(self):
         from ffpopt.runtime.Console import attach_console_handlers
 
