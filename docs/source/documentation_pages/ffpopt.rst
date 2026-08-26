@@ -109,7 +109,9 @@ GenDihedFit uses a **shape match**: mean-centered HL-LL residual
 (``d = (hl - ll) - mean(hl - ll)``). Under fixed geometry, force constants
 enter linearly. The solver is truncated SVD + Tikhonov ridge with an
 energy-domain :math:`V(\phi)` barrier; ``|PK|<=25`` is an Amber-safety
-valve. Nested ``nprim`` AIC keeps the fewest harmonics that fit
+valve. Nested ``nprim`` AIC keeps the fewest harmonics that fit; a
+chemical-group table then zeros or caps remaining Vptp on alkane,
+sulfate/phosphate, polar sp3, and generic sp3 rotors
 (:doc:`fourier_fit`).
 Status lines in logs use ASCII (``cond~=``, ``chi^2``) for Slurm / Windows
 compatibility.

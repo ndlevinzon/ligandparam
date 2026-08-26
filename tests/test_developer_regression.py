@@ -2695,6 +2695,93 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertLessEqual(float(np.max(np.abs(x))), 25.0)
         self.assertIsNotNone(info.get("dense_ptp"))
 
+    def test_sp3_rotor_policy_zero_and_alkane_cap(self):
+        from ffpopt.dihed.DihedFitRegularize import (
+            apply_chemical_rotor_policy,
+            apply_sp3_rotor_policy,
+            classify_dihed_rotor,
+            dense_torsion_ptp,
+            parse_dihed_type_key,
+        )
+        from ffpopt.dihed.DihedFourier import GetDihedClasses
+
+        self.assertIs(apply_chemical_rotor_policy, apply_sp3_rotor_policy)
+        self.assertEqual(
+            parse_dihed_type_key("c -ns-c3-c3"), ("c", "ns", "c3", "c3")
+        )
+        self.assertEqual(classify_dihed_rotor("c3-c3-c3-c3"), "alkane")
+        self.assertEqual(classify_dihed_rotor("hc-c3-c3-hc"), "alkane")
+        self.assertEqual(classify_dihed_rotor("c3-c3-s6-o"), "sulfate_phosphate")
+        self.assertEqual(classify_dihed_rotor("h1-c3-s6-o"), "sulfate_phosphate")
+        self.assertEqual(classify_dihed_rotor("c3-c3-n4-c3"), "amine_ammonium")
+        self.assertEqual(classify_dihed_rotor("h1-c3-oh-ho"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("c3-c3-ss-c3"), "polar_sp3")
+        self.assertEqual(classify_dihed_rotor("c3-c3-c3-oh"), "sp3_sp3")
+        self.assertEqual(classify_dihed_rotor("o -c -ns-c3"), "unsaturated")
+
+        policy_env = {
+            "FFPOPT_DIHED_SP3_BARRIER_MAX": "20",
+            "FFPOPT_DIHED_ALKANE_BARRIER_MAX": "5",
+            "FFPOPT_DIHED_POLAR_SP3_BARRIER_MAX": "8",
+            "FFPOPT_DIHED_SULFATE_BARRIER_MAX": "10",
+            "FFPOPT_DIHED_SULFATE_BARRIER_CAP": "4",
+        }
+
+        stiff = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        stiff.SetFCs([15.4])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, ptp = apply_sp3_rotor_policy(
+                stiff, "c3-c3-s6-o", where="test"
+            )
+        self.assertEqual(action, "zero_sulfate_phosphate")
+        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
+        self.assertGreater(ptp, 10.0)
+
+        alk = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        alk.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                alk, "c3-c3-c3-c3", where="test"
+            )
+        self.assertEqual(action, "cap_alkane")
+        self.assertLessEqual(dense_torsion_ptp(out), 5.0 * 1.05)
+
+        amine = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        amine.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                amine, "c3-c3-n4-c3", where="test"
+            )
+        self.assertEqual(action, "cap_amine_ammonium")
+        self.assertLessEqual(dense_torsion_ptp(out), 8.0 * 1.05)
+
+        sul_cap = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sul_cap.SetFCs([3.5])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                sul_cap, "c3-c3-s6-o", where="test"
+            )
+        self.assertEqual(action, "cap_sulfate_phosphate")
+        self.assertLessEqual(dense_torsion_ptp(out), 4.0 * 1.05)
+
+        generic = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        generic.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                generic, "c3-c3-c3-oh", where="test"
+            )
+        self.assertEqual(action, "keep")
+        self.assertAlmostEqual(float(out.prims[0].fc), 6.0)
+
+        amide = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        amide.SetFCs([15.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                amide, "o-c-ns-c3", where="test"
+            )
+        self.assertEqual(action, "keep")
+        self.assertAlmostEqual(float(out.prims[0].fc), 15.0)
+
     def test_geomopt_facade_exports(self):
         from ffpopt.geom import GeomOptAse, GeomOptParallel
         from ffpopt.geom.GeomOpt import CalcNode, GeomOpt, GeomOpt_ASE

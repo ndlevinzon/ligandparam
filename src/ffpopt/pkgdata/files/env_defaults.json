@@ -123,6 +123,21 @@
   // Nested n=1..nprim AIC; keep the smallest k within the AIC window.
   "FFPOPT_DIHED_NPRIM_SELECT": true,
   "FFPOPT_DIHED_AIC_WINDOW": 2.0,
+  // Generic sp3-sp3 reject: if fitted Vptp still exceeds this (kcal), K=0
+  // (residual is not a torsion; keep GAFF). 0 disables. Also the reject
+  // rung for alkane / polar sp3. Does not change FFPOPT_DIHED_FC_MAX.
+  "FFPOPT_DIHED_SP3_BARRIER_MAX": 20.0,
+  // Alkane-like (c3/hc/h1/h2/h3/hx only): scale Vptp down to this (kcal)
+  // when below the sp3 reject threshold. 0 disables.
+  "FFPOPT_DIHED_ALKANE_BARRIER_MAX": 5.0,
+  // C-OH / C-OS / C-N3 / C-N4 / thioether: scale Vptp to this (kcal)
+  // when below the sp3 reject. 0 disables.
+  "FFPOPT_DIHED_POLAR_SP3_BARRIER_MAX": 8.0,
+  // Sulfate / phosphate (s4, s6, p4, p5 on the central bond): reject
+  // (K=0) above this Vptp (kcal). Tighter than generic sp3 (1-4 heavy).
+  "FFPOPT_DIHED_SULFATE_BARRIER_MAX": 10.0,
+  // Sulfate / phosphate cap (kcal) when below the reject threshold.
+  "FFPOPT_DIHED_SULFATE_BARRIER_CAP": 4.0,
   // lsq | lbfgsb | jax. CLI --fit-backend still wins.
   "FFPOPT_FIT_BACKEND": "lsq",
   // Amber 1-4 electrostatic / VDW scale (used when the CLI omits them).

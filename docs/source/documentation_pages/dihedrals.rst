@@ -121,6 +121,10 @@ GenDihedFit matches **profile shape**, not absolute energy zero:
 * Fixed-geometry path: ridge / truncated SVD + energy-domain :math:`V(\phi)`
   barrier; ``|PK|<=25`` is an Amber-safety valve only
 * Nested ``nprim`` AIC (fewest harmonics in the AIC window)
+* Chemical-group table after AIC: alkane cap 5 / reject 20; sulfate or
+  phosphate cap 4 / reject 10; alcohol / ether / amine / thioether cap 8
+  / reject 20; other sp3-sp3 reject 20; unsaturated keep 30 kcal.
+  ``|PK|<=25`` unchanged.
 * HL/LL scan JSONs are always angle-aligned before fitting
 
 See :doc:`fourier_fit` for why unbounded least squares explodes, and

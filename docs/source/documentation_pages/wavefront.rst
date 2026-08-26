@@ -152,9 +152,11 @@ Shape-match fit (after the scan)
 GenDihedFit is not the wavefront, but it is why the grid must stay
 uniform. Objective: ``d = (hl - ll) - mean(hl - ll)`` (free vertical
 offset). Under fixed geometry, force constants enter linearly
-(``lsq_linear``, phase 0). Isolated linear guesses and joint LS share
-the same residual. ``--fit-full`` optionally frees phase / period /
-scee/scnb (SciPy L-BFGS-B or JAX).
+(ridge / truncated SVD, phase 0). Isolated linear guesses and joint LS share
+the same residual. After AIC, a chemical-group table zeros or caps
+remaining Vptp on alkane, sulfate/phosphate, polar sp3, and generic sp3
+rotors. ``--fit-full`` optionally frees phase /
+period / scee/scnb (SciPy L-BFGS-B or JAX). See :doc:`fourier_fit`.
 
 Algorithms that keep wall-time down
 -----------------------------------

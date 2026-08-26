@@ -4,8 +4,11 @@ Unbounded least squares on ``K_n (1 + cos(n phi))`` is ill-posed when the
 scan is gappy or the residual is not a low-order torsion: huge cancelling
 harmonics fit the samples. This module picks the unique small-K series
 (Tikhonov / truncated SVD), constrains the reconstructed V(phi) barrier,
-and optionally drops unused periodicities by AIC. ``FFPOPT_DIHED_FC_MAX``
-is applied last as an Amber-safety valve, not as the model.
+and optionally drops unused periodicities by AIC. After AIC, a chemical
+group table zeros or caps remaining V(phi) on sensitive rotors (alkane,
+sulfate/phosphate, alcohol/ether, amine, generic sp3). Unsaturated
+(amide) types keep the 30 kcal ceiling. ``FFPOPT_DIHED_FC_MAX`` is
+applied last as an Amber-safety valve, not as the model.
 """
 
 from __future__ import annotations
@@ -49,6 +52,174 @@ def aic_window() -> float:
     from ffpopt.runtime.EnvDefaults import env_float
 
     return max(0.0, float(env_float("FFPOPT_DIHED_AIC_WINDOW", 2.0)))
+
+
+def sp3_barrier_max() -> float:
+    """sp3-sp3 V(phi) ptp above this (kcal) is rejected (K=0). 0 disables."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return max(0.0, float(env_float("FFPOPT_DIHED_SP3_BARRIER_MAX", 20.0)))
+
+
+def alkane_barrier_max() -> float:
+    """Alkane-like V(phi) ptp cap (kcal). 0 disables. Used only below reject."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return max(0.0, float(env_float("FFPOPT_DIHED_ALKANE_BARRIER_MAX", 5.0)))
+
+
+def polar_sp3_barrier_max() -> float:
+    """Cap (kcal) for C-OH / C-OS / C-N3 / C-N4 / thioether rotors. 0 disables."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return max(0.0, float(env_float("FFPOPT_DIHED_POLAR_SP3_BARRIER_MAX", 8.0)))
+
+
+def sulfate_barrier_max() -> float:
+    """Reject (K=0) sulfate/phosphate Vptp above this (kcal). 0 disables."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return max(0.0, float(env_float("FFPOPT_DIHED_SULFATE_BARRIER_MAX", 10.0)))
+
+
+def sulfate_barrier_cap() -> float:
+    """Cap (kcal) for sulfate/phosphate below the reject threshold. 0 disables."""
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    return max(0.0, float(env_float("FFPOPT_DIHED_SULFATE_BARRIER_CAP", 4.0)))
+
+
+# GAFF / GAFF2 tetrahedral heavy atoms (central-bond test).
+_SP3_HEAVY = frozenset(
+    {
+        "c3",
+        "cx",
+        "cy",
+        "n3",
+        "n4",
+        "oh",
+        "os",
+        "s",
+        "sh",
+        "ss",
+        "s4",
+        "s6",
+        "p3",
+        "p4",
+        "p5",
+    }
+)
+_ALKANE_ATOM = frozenset({"c3", "cx", "cy", "hc", "h1", "h2", "h3", "hx"})
+_SULFATE_P = frozenset({"s4", "s6", "p4", "p5"})
+_ALCOHOL_ETHER = frozenset({"oh", "os"})
+_AMINE_AMMONIUM = frozenset({"n3", "n4"})
+_THIO_SP3 = frozenset({"s", "sh", "ss"})
+
+
+def parse_dihed_type_key(name: str) -> tuple[str, str, str, str] | None:
+    """Four Amber types from a DIHE key such as ``c3-c3-s6-o`` or ``c -ns-c3-c3``."""
+    import re
+
+    parts = re.findall(r"[A-Za-z][A-Za-z0-9]?", str(name or "").strip())
+    if len(parts) != 4:
+        return None
+    return tuple(p.lower() for p in parts)
+
+
+def classify_dihed_rotor(name: str) -> str:
+    """Chemical class from the four Amber types (central bond is types 2-3).
+
+    ``alkane``, ``sulfate_phosphate``, ``alcohol_ether``, ``amine_ammonium``,
+    ``polar_sp3`` (thioether), ``sp3_sp3``, or ``unsaturated``.
+    """
+    types = parse_dihed_type_key(name)
+    if types is None:
+        return "unsaturated"
+    _a, b, c, _d = types
+    if not (b in _SP3_HEAVY and c in _SP3_HEAVY):
+        return "unsaturated"
+    if set(types) <= _ALKANE_ATOM:
+        return "alkane"
+    if b in _SULFATE_P or c in _SULFATE_P:
+        return "sulfate_phosphate"
+    if b in _ALCOHOL_ETHER or c in _ALCOHOL_ETHER:
+        return "alcohol_ether"
+    if b in _AMINE_AMMONIUM or c in _AMINE_AMMONIUM:
+        return "amine_ammonium"
+    if b in _THIO_SP3 or c in _THIO_SP3:
+        return "polar_sp3"
+    return "sp3_sp3"
+
+
+def chemical_barrier_limits(kind: str) -> tuple[float, float]:
+    """Return ``(cap_kcal, reject_kcal)``; 0 means that rung is off."""
+    sp3_rej = sp3_barrier_max()
+    if kind == "unsaturated":
+        return 0.0, 0.0
+    if kind == "alkane":
+        return alkane_barrier_max(), sp3_rej
+    if kind == "sulfate_phosphate":
+        return sulfate_barrier_cap(), sulfate_barrier_max()
+    if kind in {"alcohol_ether", "amine_ammonium", "polar_sp3"}:
+        return polar_sp3_barrier_max(), sp3_rej
+    return 0.0, sp3_rej
+
+
+def _zero_dfcn(dfcn):
+    import copy
+    from ffpopt.dihed.DihedFourier import GetDihedClasses
+
+    idxs = list(getattr(dfcn, "idxs", None) or [0, 1, 2, 3])
+    out = copy.deepcopy(GetDihedClasses(idxs=idxs)[1][0])
+    out.SetFCs([0.0])
+    return out
+
+
+def apply_sp3_rotor_policy(dfcn, pname: str, *, where: str = "sp3"):
+    """Zero or cap a fitted series using the chemical-group table.
+
+    After AIC, a residual that still needs a large V(phi) on a sensitive
+    rotor is not a torsion: set K=0 (keep GAFF) or scale down to a
+    group-specific cap. Amide / sulfonamide (unsaturated) keep the global
+    30 kcal ceiling. ``FFPOPT_DIHED_FC_MAX`` is unchanged.
+
+    Returns ``(dfcn, action, ptp)`` with action ``keep``, ``zero_<kind>``,
+    or ``cap_<kind>``.
+    """
+    import numpy as np
+
+    if dfcn is None or not getattr(dfcn, "prims", None):
+        return dfcn, "keep", 0.0
+    ptp = dense_torsion_ptp(dfcn)
+    kind = classify_dihed_rotor(pname)
+    cap, reject = chemical_barrier_limits(kind)
+    label = pname or "dihed"
+
+    if kind == "unsaturated":
+        return dfcn, "keep", ptp
+
+    if reject > 0.0 and ptp > reject * 1.001:
+        dfcn = _zero_dfcn(dfcn)
+        print(
+            f"[ffpopt] {kind} rotor {label}: Vptp={ptp:.3g} kcal > {reject:g}; "
+            f"K=0 (keep GAFF) at {where}"
+        )
+        return dfcn, f"zero_{kind}", ptp
+
+    if cap > 0.0 and ptp > cap * 1.001:
+        fcs = np.array([float(p.fc) for p in dfcn.prims], dtype=float)
+        fcs = _scale_to_ptp_limit(fcs, ptp, cap)
+        dfcn.SetFCs(fcs)
+        print(
+            f"[ffpopt] {kind} rotor {label}: Vptp={ptp:.3g} -> {cap:g} kcal "
+            f"at {where}"
+        )
+        return dfcn, f"cap_{kind}", cap
+
+    return dfcn, "keep", ptp
+
+
+apply_chemical_rotor_policy = apply_sp3_rotor_policy
 
 
 def peak_to_peak(v) -> float:
@@ -277,6 +448,7 @@ def fit_fourier_nprim(angs, y, max_nprim: int, idxs, *, pname: str = ""):
         in_window = [c for c in candidates if c[0] <= min_aic + window]
         aic, k, dfcn, x, rss, info = min(in_window, key=lambda c: (c[1], c[0]))
     else:
+        window = aic_window()
         fitted = [c for c in candidates if c[1] > 0]
         aic, k, dfcn, x, rss, info = fitted[-1] if fitted else candidates[0]
     if k == 0 or dfcn is None:
@@ -293,6 +465,15 @@ def fit_fourier_nprim(angs, y, max_nprim: int, idxs, *, pname: str = ""):
             f"[ffpopt] nprim select {label}: max={max_nprim} -> {k} "
             f"(AIC={aic:.3g}, rss={rss:.3g}, window={window:g})"
         )
+        dfcn, action, ptp = apply_sp3_rotor_policy(
+            dfcn, label, where=f"nprim {label}"
+        )
+        x = np.array([float(p.fc) for p in dfcn.prims], dtype=float)
+        k = len(dfcn.prims)
+        if action != "keep":
+            info = dict(info or {})
+            info["sp3_action"] = action
+            info["sp3_ptp"] = ptp
     out_info = dict(info or {})
     out_info["nprim"] = k
     out_info["aic"] = aic
@@ -300,30 +481,39 @@ def fit_fourier_nprim(angs, y, max_nprim: int, idxs, *, pname: str = ""):
     return dfcn, x, out_info
 
 
+def _assign_ptype_dfcns(finp, pname: str, dfcn) -> None:
+    ptype = finp.ptypedict[pname]
+    ptype.dfcns = dfcn
+    ptype.nprim = len(dfcn.prims)
+    for s in finp.systems:
+        for pinst in s.pinstances:
+            if pinst.ptype.name == pname:
+                pinst.ptype.dfcns = dfcn
+                pinst.ptype.nprim = ptype.nprim
+
+
 def enforce_per_type_dense_barriers(finp, *, where: str = "joint dense"):
-    """Scale each ParamType's K so dense-grid V(phi) ptp respects the ceiling."""
+    """Scale each ParamType to the global V(phi) ceiling, then chemical policy."""
     import numpy as np
     from ffpopt.dihed.DihedFitSolve import clip_dihed_fcs
 
     abs_cap = barrier_abs_kcal()
-    if abs_cap <= 0.0:
-        x = clip_dihed_fcs(finp.get_params(), where=where)
-        finp.set_params(x)
-        return x
     for pname, ptype in finp.ptypedict.items():
         dfcn = ptype.dfcns
         if dfcn is None or not getattr(dfcn, "prims", None):
             continue
         ptp = dense_torsion_ptp(dfcn)
-        if ptp <= abs_cap * 1.001:
-            continue
-        scale = abs_cap / ptp
-        fcs = np.array([float(p.fc) for p in dfcn.prims], dtype=float) * scale
-        dfcn.SetFCs(fcs)
-        print(
-            f"[ffpopt] energy-domain barrier {where}: {pname} Vptp {ptp:.3g} -> "
-            f"{abs_cap:g} kcal (scale={scale:.3g})"
-        )
+        if abs_cap > 0.0 and ptp > abs_cap * 1.001:
+            scale = abs_cap / ptp
+            fcs = np.array([float(p.fc) for p in dfcn.prims], dtype=float) * scale
+            dfcn.SetFCs(fcs)
+            print(
+                f"[ffpopt] energy-domain barrier {where}: {pname} Vptp {ptp:.3g} -> "
+                f"{abs_cap:g} kcal (scale={scale:.3g})"
+            )
+        dfcn2, action, _ptp = apply_sp3_rotor_policy(dfcn, pname, where=where)
+        if action != "keep":
+            _assign_ptype_dfcns(finp, pname, dfcn2)
     x = clip_dihed_fcs(finp.get_params(), where=where)
     finp.set_params(x)
     return x

@@ -133,7 +133,9 @@ not used in chi^2 (plot files may still min-shift for display). Under fixed
 geometry, force constants enter linearly and are solved with ridge /
 truncated SVD plus an energy-domain ``V(phi)`` barrier. ``|PK|<=25`` is
 an Amber-safety valve. Nested ``nprim`` AIC keeps the fewest harmonics
-that fit (see Sphinx ``fourier_fit``).
+that fit (see Sphinx ``fourier_fit``). After AIC, a chemical-group table
+zeros or caps remaining Vptp (alkane 5/20, sulfate 4/10, polar sp3 8/20,
+generic sp3 reject 20; amide keeps 30 kcal).
 
 ## AFFDO-style extras (opt-in)
 

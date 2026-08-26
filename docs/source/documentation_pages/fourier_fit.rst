@@ -67,7 +67,32 @@ What ffpopt does instead
    (leave the parent GAFF term). Disable with
    ``FFPOPT_DIHED_NPRIM_SELECT=0``.
 
-4. **Amber-safety valve.**
+4. **Chemical-group reject / cap.**
+   A 30 kcal global ceiling still lets a non-torsional residual park a
+   single huge cosine on a sensitive rotor. After AIC, the four Amber
+   types (central bond = types 2-3) pick a class:
+
+   * **alkane** (only ``c3`` / ``cx`` / ``cy`` / ``hc`` / ``h1`` / ``h2``
+     / ``h3`` / ``hx``): cap
+     ``FFPOPT_DIHED_ALKANE_BARRIER_MAX`` (5 kcal); reject at 20.
+   * **sulfate_phosphate** (``s4`` / ``s6`` / ``p4`` / ``p5`` on the
+     central bond): cap 4 kcal, reject 10
+     (``FFPOPT_DIHED_SULFATE_BARRIER_CAP`` /
+     ``FFPOPT_DIHED_SULFATE_BARRIER_MAX``). 1-4 electrostatics dominate
+     here; a 30 kcal cosine is not a torsion.
+   * **alcohol_ether** / **amine_ammonium** / **polar_sp3** (``oh`` /
+     ``os`` / ``n3`` / ``n4`` / ``s`` / ``sh`` / ``ss`` on the central
+     bond): cap ``FFPOPT_DIHED_POLAR_SP3_BARRIER_MAX`` (8 kcal);
+     reject at 20.
+   * **sp3_sp3** (other tetrahedral central bonds): reject at
+     ``FFPOPT_DIHED_SP3_BARRIER_MAX`` (20 kcal); no extra cap.
+   * **unsaturated** (amide ``c``-``ns``, carbonyl, ...): keep the 30 kcal
+     global ceiling.
+
+   Reject means :math:`K=0` (keep GAFF). ``FFPOPT_DIHED_FC_MAX`` is
+   unchanged.
+
+5. **Amber-safety valve.**
    After the steps above, :math:`K` is clipped to
    ``+/- FFPOPT_DIHED_FC_MAX`` (default 25 kcal/mol). Logs
    ``Amber FC valve clipped ...`` only if this last clip actually hits.
@@ -84,6 +109,9 @@ Logs (ASCII)
 ::
 
    [ffpopt] nprim select c3-c3-s6-o: max=3 -> 1 (AIC=..., rss=..., window=2)
+   [ffpopt] sulfate_phosphate rotor c3-c3-s6-o: Vptp=31 kcal > 10; K=0 (keep GAFF)
+   [ffpopt] alkane rotor c3-c3-c3-c3: Vptp=12 -> 5 kcal
+   [ffpopt] amine_ammonium rotor c3-c3-n4-c3: Vptp=12 -> 8 kcal
    [ffpopt] Fourier ridge at joint LS: kept 2/3 SVD modes, lambda=0, ...
    [ffpopt] energy-domain barrier joint LS dense: ... Vptp 48 -> 30 kcal
    [ffpopt] Amber FC valve clipped 1 dihedral FC(s) to +/-25 ...

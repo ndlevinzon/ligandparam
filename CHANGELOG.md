@@ -64,8 +64,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Fourier FC regularization** - unbounded ``lstsq`` + post-hoc PK clip is
   replaced by truncated SVD / Tikhonov ridge, an energy-domain cap on
   reconstructed ``V(phi)`` (default 2x data barrier, abs 30 kcal/mol on a
-  dense grid), and nested ``nprim`` AIC. ``FFPOPT_DIHED_FC_MAX`` (25) remains
-  an Amber-safety valve only. See Sphinx ``fourier_fit``.
+  dense grid), and nested ``nprim`` AIC. After AIC, a chemical-group table
+  zeros or caps remaining ``V(phi)``: alkane cap 5 / reject 20; sulfate
+  or phosphate cap 4 / reject 10; alcohol, ether, amine, thioether cap 8
+  / reject 20; other sp3-sp3 reject 20; unsaturated (amide) keep the 30
+  kcal ceiling. ``FFPOPT_DIHED_FC_MAX`` (25) remains an Amber-safety valve
+  only. See Sphinx ``fourier_fit``.
 
 - **AIMNet2 HL model** - ``--model aimnet2`` (PyPI ``aimnet``, wB97M-D3).
   Family aliases: ``aimnet2-2025``, ``aimnet2-b973c``, ``aimnet2-nse``,
