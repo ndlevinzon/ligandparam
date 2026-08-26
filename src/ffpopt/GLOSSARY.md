@@ -189,7 +189,8 @@ caps) and write a parent ``.frcmod``.
 (``--soft-dihed-restraint``, ``--multi-centroid``, ``--fit-full``,
 ``--boltzmann-charges``) default off. Bond batches use
 ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8). Top-level twist may nest
-bond x wavefront workers; fragment spawn workers still flatten to one axis.
+bond x wavefront workers. Fragments with at most two fit bonds flatten to
+one axis; larger fragments use the same nested joint packing.
 
 **Authoritative source.** `src/ffpopt/workflows/WholeLigandTwist.py:run_whole_ligand_dihed_twist_workflow`
 
@@ -207,9 +208,10 @@ cores so siblings can grow. With many fragments and a modest ``nproc``,
 pools prefer fragment/bond breadth over depth (see
 ``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
 ``FFPOPT_PREF_WF_DEPTH`` / ``FFPOPT_PREF_WF_BREADTH`` override). Fragments
-with more than two fit bonds are split into sequential proximity batches
-(``ffpopt.workflows.BondBatches``; ``FFPOPT_MAX_BONDS_PER_TWIST``,
-``FFPOPT_BOND_COUPLE_RADIUS``) with MM updates between batches.
+with more than two fit bonds use whole-ligand joint packing
+(``ffpopt.workflows.BondBatches``; ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``,
+``FFPOPT_BOND_COUPLE_RADIUS``) so those rotors are one correlated system.
+1–2-bond fragments keep independent 1-D wavefronts.
 
 **Authoritative source.** `src/ffpopt/workflows/`
 

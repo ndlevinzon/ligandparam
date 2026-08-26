@@ -68,6 +68,7 @@ Two ffpopt modes:
 
 * **Fragment (default)** - scission caps, per-fragment wavefront, merge DIHE
   by atom type. Cheaper HL opts; good for typical drug-like ligands.
+  Fragments with 3+ fit bonds use whole-ligand joint packing.
 * **Whole-ligand** (``--whole-ligand``) - twist rotatable bonds on the intact
   parent. Use when fragments would distort coupled rotors. Optional extras:
   ``--soft-dihed-restraint``, ``--multi-centroid``, ``--fit-full``.

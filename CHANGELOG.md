@@ -52,6 +52,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   jobs -> 11x4, not 16x2 with 12 idle). BLAS/OpenMP stay 1 thread per
   worker unless already exported.
 
+- **Correlated fragment twist** - fragmentation stays the default path.
+  Fragments with at most two fit bonds keep independent 1-D wavefronts.
+  A fragment with more rotors switches to whole-ligand packing
+  (``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8) and nested
+  bond x wavefront so those dihedrals are one correlated joint system.
+  9+ rotors on one fragment still chunk at 8 with MM updates between
+  batches, matching ``--whole-ligand``.
+
 - **AIMNet2 HL model** - ``--model aimnet2`` (PyPI ``aimnet``, wB97M-D3).
   Family aliases: ``aimnet2-2025``, ``aimnet2-b973c``, ``aimnet2-nse``,
   ``aimnet2-pd``, ``aimnet2-rxn`` (older ``aimnet2_wb97m`` / ``aimnet2_qr``

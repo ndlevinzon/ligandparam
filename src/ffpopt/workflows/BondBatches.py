@@ -10,9 +10,10 @@ Physical policy (rigor-preserving):
   with the MM updated between batches (standard iterative 1-D fitting).
 * Distant coupling components are separate batches (also sequential).
 
-Defaults favor small batches (``max_batch=2``) once a fragment has more than
-two fit bonds. Whole-ligand jobs default to 8 concurrent rotors
-(``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``). Override with
+Defaults favor small batches (``max_batch=2``) for fragments with at most
+two fit bonds. Fragments with more rotors use whole-ligand packing
+(``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8) so those dihedrals are
+one correlated joint twist. Override with
 ``FFPOPT_MAX_BONDS_PER_TWIST`` / ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` /
 ``FFPOPT_BOND_COUPLE_RADIUS`` / ``FFPOPT_BOND_BATCH=0``.
 """
@@ -36,9 +37,10 @@ def bond_batching_enabled() -> bool:
 def max_bonds_per_twist_batch(*, whole: bool = False) -> int:
     """Max bonds per joint twist job (default from env JSON).
 
-    Whole-ligand jobs use ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8) so
-    a 44-core node can scan several rotors at once. Fragment jobs keep the
-    smaller ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2).
+    Whole-ligand jobs, and fragments with more than
+    ``FFPOPT_MAX_BONDS_PER_TWIST`` rotors (default 2), use
+    ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST`` (default 8). Smaller fragments keep
+    independent 1-D wavefronts.
     """
     if whole:
         return max(1, env_int("FFPOPT_WHOLE_MAX_BONDS_PER_TWIST"))
@@ -221,6 +223,16 @@ def pack_rotatable_bond_batches(
             chunk = ordered[start : start + max_batch]
             batches.append([uniq[i] for i in chunk])
     return batches
+
+
+def fragment_uses_correlated_twist(n_bonds: int) -> bool:
+    """True when a fragment should use whole-ligand joint packing.
+
+    Fragments with at most ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2) keep
+    independent 1-D wavefronts. Larger fragments treat every rotor as one
+    correlated system (whole-ligand batch size, nested bond x wavefront).
+    """
+    return int(n_bonds) > max_bonds_per_twist_batch(whole=False)
 
 
 def should_batch_bonds(n_bonds: int, *, max_batch: Optional[int] = None) -> bool:

@@ -2953,6 +2953,40 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         )
         self.assertEqual(sum(len(b) for b in far), 2)
 
+    def test_fragment_uses_correlated_twist(self):
+        from ffpopt.runtime.EnvDefaults import clear_defaults_cache
+        from ffpopt.workflows.BondBatches import (
+            adjacency_from_topology_bonds,
+            fragment_uses_correlated_twist,
+            max_bonds_per_twist_batch,
+            pack_rotatable_bond_batches,
+        )
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FFPOPT_MAX_BONDS_PER_TWIST", None)
+            os.environ.pop("FFPOPT_WHOLE_MAX_BONDS_PER_TWIST", None)
+            os.environ.pop("FFPOPT_DEFAULTS", None)
+            clear_defaults_cache()
+            try:
+                self.assertFalse(fragment_uses_correlated_twist(1))
+                self.assertFalse(fragment_uses_correlated_twist(2))
+                self.assertTrue(fragment_uses_correlated_twist(3))
+                self.assertTrue(fragment_uses_correlated_twist(5))
+                self.assertEqual(max_bonds_per_twist_batch(whole=False), 2)
+                self.assertEqual(max_bonds_per_twist_batch(whole=True), 8)
+            finally:
+                clear_defaults_cache()
+
+        # A 5-bond fragment packs as one joint batch under the whole-ligand cap.
+        topo = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9)]
+        adj = adjacency_from_topology_bonds(topo)
+        bonds = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9)]
+        batches = pack_rotatable_bond_batches(
+            bonds, adj, max_batch=8, couple_radius=2
+        )
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(len(batches[0]), 5)
+
     def test_whole_ligand_max_bonds_per_twist_batch(self):
         from ffpopt.runtime.EnvDefaults import clear_defaults_cache
         from ffpopt.workflows.BondBatches import max_bonds_per_twist_batch

@@ -61,11 +61,12 @@
   // --- Bond batching (fragment twist) -------------------------------------
   // Pack many rotatable bonds into sequential joint-twist batches.
   "FFPOPT_BOND_BATCH": true,
-  // Max bonds per joint twist job once a fragment exceeds this count.
+  // Fragments with at most this many fit bonds keep independent 1-D
+  // wavefronts. Larger fragments switch to whole-ligand joint packing.
   "FFPOPT_MAX_BONDS_PER_TWIST": 2,
-  // Whole-ligand (--whole-ligand) pack size. Larger than the fragment default
-  // so a 44-core node scans several rotors concurrently (MM still updates
-  // between sequential batches).
+  // Whole-ligand (--whole-ligand) pack size, also used by fragments with
+  // more than FFPOPT_MAX_BONDS_PER_TWIST rotors. MM still updates between
+  // sequential batches when a cluster exceeds this cap.
   "FFPOPT_WHOLE_MAX_BONDS_PER_TWIST": 8,
   // Graph distance (bonds) at which two rotatable bonds are treated as coupled.
   "FFPOPT_BOND_COUPLE_RADIUS": 2,

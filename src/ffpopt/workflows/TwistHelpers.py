@@ -710,8 +710,9 @@ def _execute_bond_scan_jobs(
     logger: logging.Logger | None,
     label: str = "scans",
     on_scan_done: Optional[Callable[[dict], None]] = None,
+    nest_bond_pool: bool = False,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
-    """Run bond-scan jobs; nest bondxwavefront only at the top-level twist."""
+    """Run bond-scan jobs; nest bondxwavefront for whole-ligand / correlated fragments."""
     log = _resolve_logger(logger)
     if not jobs:
         return []
@@ -728,12 +729,16 @@ def _execute_bond_scan_jobs(
         n_bonds=len(jobs),
         prefer=prefer_wf_depth,
     )
-    # Already inside a fragment spawn worker: one axis only (wavefront depth).
     already_nested = in_spawn_worker()
-    if already_nested and prefer is not True:
-        prefer = True
-
-    flatten = already_nested or not prefer
+    if nest_bond_pool:
+        # Whole-ligand and large fragments: keep a 2-D bond x wavefront split
+        # even inside a fragment spawn worker.
+        flatten = False
+    else:
+        # Small fragments: one axis only (wavefront depth) inside a spawn worker.
+        if already_nested and prefer is not True:
+            prefer = True
+        flatten = already_nested or not prefer
     n_bond_workers, n_wf = _split_fragment_nproc(
         nproc, len(jobs), prefer_depth=prefer, flatten_nested=flatten
     )
@@ -829,14 +834,15 @@ def _run_scans_for_bonds(
     logger: logging.Logger | None,
     wf_kwargs: dict,
     prefer_wf_depth: bool | None = None,
+    nest_bond_pool: bool = False,
     seed_prefix: str | None = None,
 ) -> list[tuple[str, tuple, Optional[dict]]]:
     """Run one wavefront scan per bond, pooling when the core budget allows.
 
-    Splits ``nproc`` as ``n_bond_workers x wf_nproc`` (flattened so both are
-    never >1 - nested spawn pools are too expensive). When ``seed_prefix`` is
-    set (e.g. ``\"orig\"`` before ``it01``), each bond warm-starts from that
-    prefix's wavefront checkpoint if present.
+    Splits ``nproc`` as ``n_bond_workers x wf_nproc``. Small fragments
+    flatten to one axis; correlated / whole-ligand jobs may nest both.
+    When ``seed_prefix`` is set (e.g. ``\"orig\"`` before ``it01``), each
+    bond warm-starts from that prefix's wavefront checkpoint if present.
     """
     jobs = _build_bond_scan_jobs(
         scans,
@@ -854,6 +860,7 @@ def _run_scans_for_bonds(
         prefer_wf_depth=prefer_wf_depth,
         logger=logger,
         label=f"prefix={prefix}",
+        nest_bond_pool=nest_bond_pool,
     )
 
 
@@ -943,6 +950,7 @@ def _run_hl_and_orig_scans(
     logger: logging.Logger | None,
     wf_kwargs: dict,
     prefer_wf_depth: bool | None = None,
+    nest_bond_pool: bool = False,
     multi_centroid: int = 0,
     centroid_mol2: Optional[PathLike] = None,
     plot_dir=None,
@@ -996,6 +1004,7 @@ def _run_hl_and_orig_scans(
         prefer_wf_depth=prefer_wf_depth,
         logger=logger,
         on_scan_done=_on_scan_done if plot_dir is not None else None,
+        nest_bond_pool=nest_bond_pool,
     )
 
     if n_cent >= 2:

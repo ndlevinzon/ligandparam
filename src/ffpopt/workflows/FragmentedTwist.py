@@ -19,6 +19,7 @@ from ffpopt.workflows.TwistHelpers import (
     _split_fragment_nproc,
     bonds0_from_scission_fit_torsions,
 )
+from ffpopt.workflows.BondBatches import fragment_uses_correlated_twist
 from ffpopt.workflows.DihedTwist import run_dihed_twist_workflow
 
 def _load_existing_fragments(out_dir: Path):
@@ -306,6 +307,13 @@ def _run_fragment_twist_job(job: dict) -> dict:
         leased_hint,
         budget_total,
     )
+    if fragment_uses_correlated_twist(len(bonds)):
+        frag_log.info(
+            "[frag-twist] %s: %s dihedrals > 2; correlated joint twist "
+            "(whole-ligand packing, nested bond x wavefront)",
+            fragment_id,
+            len(bonds),
+        )
 
     try:
         with fragment_stdio_to_file(frag_log_path, fragment_id=fragment_id):
@@ -410,11 +418,13 @@ def run_fragmented_dihed_twist_workflow(
     with ``workdir=frag_dir`` (absolute paths + subprocess ``cwd``; no
     process-wide ``os.chdir``), then merges the per-fragment fitted
     DIHE terms back into a unified parent ``frcmod`` via
-    ``scission.Merge.merge_fragment_frcmods``. Like
-    :func:`run_dihed_twist_workflow`, this must be called from inside an
-    ``if __name__ == "__main__":`` guard - the wavefront uses ``spawn``-mode
-    multiprocessing. See the ``Workflows`` RST page for the full on-disk
-    layout and the re-running semantics.
+    ``scission.Merge.merge_fragment_frcmods``. Fragments with at most two
+    fit bonds keep independent 1-D wavefronts; larger fragments switch to
+    whole-ligand joint packing so those rotors are one correlated system.
+    Like :func:`run_dihed_twist_workflow`, this must be called from inside
+    an ``if __name__ == "__main__":`` guard - the wavefront uses
+    ``spawn``-mode multiprocessing. See the ``Workflows`` RST page for the
+    full on-disk layout and the re-running semantics.
 
     Parameters
     ----------

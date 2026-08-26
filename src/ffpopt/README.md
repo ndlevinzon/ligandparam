@@ -102,8 +102,9 @@ ladder). With small per-fragment CPU leases, bond pools prefer **breadth**
 start ``min(nproc, n_fragments)`` concurrent workers (not one fragment
 with all cores) and lease cores only during scan phases (not PrepareInput /
 GenDihedFit / compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start
-``itNN`` from the prior LL checkpoint when available. Inside a fragment
-worker, spawn splits are flattened (never bondxwavefront nested); HL and
+``itNN`` from the prior LL checkpoint when available. Inside a 1–2-bond
+fragment worker, spawn splits are flattened (never bondxwavefront nested).
+Fragments with more rotors nest like whole-ligand. HL and
 ``orig`` scans pipeline in one queue. Under
 ``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
 (``FFPOPT_QDPI2_OPT``), HL nodes MM-relax then one XTB / AIMNet2 / QDpi2

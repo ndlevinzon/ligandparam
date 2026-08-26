@@ -28,7 +28,7 @@ from ffpopt.workflows.TwistHelpers import (
 def _is_whole_job(job_kind) -> bool:
     """True when this twist should log like a whole-ligand (AFFDO) run."""
     kind = str(job_kind or "").strip().lower()
-    return kind in {"whole", "whole-ligand", "affdo"}
+    return kind in {"whole", "whole-ligand", "affdo", "correlated"}
 
 
 def _whole_identity(batch_id: str) -> str:
@@ -61,10 +61,11 @@ def run_batched_dihed_twist_workflow(
     """Run twist in sequential bond batches (coupled together, then apply).
 
     Conservative packing (:mod:`ffpopt.workflows.BondBatches`): keep covalently nearby
-    rotors in the same joint fit when possible; split oversized clusters into
-    contiguous chunks of ``FFPOPT_MAX_BONDS_PER_TWIST`` (default 2; whole-ligand
-    uses ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8) and update the MM
-    between chunks so later batches see prior fits.
+    rotors in the same joint fit when possible. Fragments with at most two
+    fit bonds stay on independent 1-D wavefronts. Larger fragments and
+    whole-ligand jobs pack with ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``
+    (default 8) and update the MM between chunks so later batches see prior
+    fits.
     """
     import shutil
 
@@ -81,6 +82,10 @@ def run_batched_dihed_twist_workflow(
     else:
         twist_kwargs.pop("job_kind", None)
     is_whole = _is_whole_job(job_kind)
+    correlated_bonds = bool(twist_kwargs.get("correlated_bonds", False))
+    pack_whole = is_whole or correlated_bonds
+    if pack_whole:
+        twist_kwargs.setdefault("correlated_bonds", True)
     bonds0 = normalize_bond_pairs0(bond)
     wd = _as_path(workdir).resolve() if workdir is not None else Path(".").resolve()
     wd.mkdir(parents=True, exist_ok=True)
@@ -92,8 +97,15 @@ def run_batched_dihed_twist_workflow(
     batches = pack_rotatable_bond_batches(
         bonds0,
         adj,
-        max_batch=max_bonds_per_twist_batch(whole=is_whole),
+        max_batch=max_bonds_per_twist_batch(whole=pack_whole),
     )
+    if correlated_bonds and not is_whole:
+        log.info(
+            "[twist] %s rotatable bond(s): correlated joint twist "
+            "(whole-ligand packing, max_batch=%s)",
+            len(bonds0),
+            max_bonds_per_twist_batch(whole=True),
+        )
 
     def _run_one_batch(
         *,
@@ -401,6 +413,7 @@ def run_dihed_twist_workflow(
     centroid_mol2: PathLike | None = None,
     fit_cli_args: list | None = None,
     job_kind: str | None = None,
+    correlated_bonds: bool = False,
     **standard_kwargs,
 ) -> dict:
     """ Wavefront-only twist workflow, run in-process.
@@ -415,18 +428,44 @@ def run_dihed_twist_workflow(
     per-iteration convergence check. See the ``Workflows`` RST page for the
     full phase narrative.
 
-    When more than ``FFPOPT_MAX_BONDS_PER_TWIST`` bonds are requested (default
-    2; whole-ligand ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8), covalently
-    nearby rotors are packed into sequential batches via
-    :func:`run_batched_dihed_twist_workflow` unless ``bond_batching=False``.
+    Fragments with at most ``FFPOPT_MAX_BONDS_PER_TWIST`` bonds (default 2)
+    keep independent 1-D wavefronts. More rotors on one fragment (or a
+    whole-ligand job) use whole-ligand packing
+    (``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``, default 8) so those dihedrals are
+    one correlated joint fit, unless ``bond_batching=False``.
     """
-    from ffpopt.workflows.BondBatches import should_batch_bonds
+    from ffpopt.workflows.BondBatches import (
+        fragment_uses_correlated_twist,
+        max_bonds_per_twist_batch,
+        should_batch_bonds,
+    )
 
     bonds_early = normalize_bond_pairs0(bond)
+    correlated_bonds = bool(
+        correlated_bonds or standard_kwargs.pop("correlated_bonds", False)
+    )
+    # Fragments / multi-bond twists with more than FFPOPT_MAX_BONDS_PER_TWIST
+    # rotors use whole-ligand packing (one correlated joint system). Do not
+    # set job_kind=whole: that would attach the whole-ligand progress board
+    # inside a fragment directory.
+    if (
+        job_kind is None
+        and bond_batching is not False
+        and fragment_uses_correlated_twist(len(bonds_early))
+    ):
+        correlated_bonds = True
+    if _is_whole_job(job_kind):
+        correlated_bonds = True
+    pack_whole = _is_whole_job(job_kind) or correlated_bonds
     do_batch = bond_batching
+    pack_cap = max_bonds_per_twist_batch(whole=pack_whole)
     if do_batch is None:
-        do_batch = should_batch_bonds(len(bonds_early))
-    if _is_whole_job(job_kind) or (do_batch and should_batch_bonds(len(bonds_early))):
+        do_batch = should_batch_bonds(len(bonds_early), max_batch=pack_cap)
+    # Inner batch calls pass bond_batching=False; do not re-enter packing.
+    if bond_batching is not False and (
+        pack_whole
+        or (do_batch and should_batch_bonds(len(bonds_early), max_batch=pack_cap))
+    ):
         return run_batched_dihed_twist_workflow(
             inp=inp,
             bond=bonds_early,
@@ -457,6 +496,7 @@ def run_dihed_twist_workflow(
             centroid_mol2=centroid_mol2,
             fit_cli_args=fit_cli_args,
             job_kind=job_kind,
+            correlated_bonds=correlated_bonds,
             **standard_kwargs,
         )
 
@@ -468,6 +508,11 @@ def run_dihed_twist_workflow(
             f"got {convergence_mode!r}"
         )
     log = _resolve_logger(logger)
+    if correlated_bonds:
+        log.info(
+            "[twist] correlated joint twist: %s bond(s) scanned as one system",
+            len(bonds_early),
+        )
     wd = _as_path(workdir).resolve() if workdir is not None else None
     nproc = max(1, int(nproc))
     budget_path = (
@@ -669,6 +714,7 @@ def run_dihed_twist_workflow(
                 logger=log,
                 wf_kwargs=wf_kwargs,
                 prefer_wf_depth=prefer_depth,
+                nest_bond_pool=correlated_bonds,
                 multi_centroid=multi_centroid,
                 centroid_mol2=centroid_mol2,
                 plot_dir=plot_dir,
@@ -793,6 +839,8 @@ def run_dihed_twist_workflow(
                     workdir=wd,
                     logger=log,
                     wf_kwargs=wf_kwargs,
+                    prefer_wf_depth=prefer_depth,
+                    nest_bond_pool=correlated_bonds,
                     seed_prefix=ll_prefix,
                 )
             )
