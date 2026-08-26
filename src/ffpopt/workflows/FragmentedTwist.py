@@ -64,6 +64,7 @@ def _load_existing_fragments(out_dir: Path):
                 manifest_path=directory / "manifest.json",
                 parm7_path=directory / "fragment.parm7",
                 rst7_path=directory / "fragment.rst7",
+                mol2_path=directory / "fragment.mol2",
                 fit_torsions=fit_torsions,
             )
         )
@@ -321,6 +322,11 @@ def _run_fragment_twist_job(job: dict) -> dict:
             twist_kwargs.pop("cpu_budget_path", None)
             twist_kwargs.pop("budget_owner", None)
             twist_kwargs.pop("budget_total", None)
+            frag_mol2 = getattr(fragment, "mol2_path", None)
+            if frag_mol2 and Path(frag_mol2).is_file():
+                twist_kwargs["centroid_mol2"] = str(Path(frag_mol2).resolve())
+            else:
+                twist_kwargs["centroid_mol2"] = None
             if budget_path:
                 twist_kwargs["cpu_budget_path"] = str(budget_path)
                 twist_kwargs["budget_owner"] = fragment_id

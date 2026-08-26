@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ``lig-dihed-correct``. Completed-node pickle cleanup uses
   ``unlink(missing_ok=True)`` so a vanished ``*_node.pckl`` on VAST
   cannot kill the pool. Dihedral ``arccos`` clips collinear atoms.
+- **Fragment multi-centroid** - ConfSearch used the parent mol2 (e.g. 101
+  atoms) and wrote those coords onto fragment ``start.json`` (e.g. 17
+  atoms). Fragment twists now ConfSearch ``fragment.mol2``; mismatched
+  atom counts fall back to the fragment geometry instead of crashing
+  ASE.
 
 ### Added
 

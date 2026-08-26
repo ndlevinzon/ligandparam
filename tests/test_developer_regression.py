@@ -1319,6 +1319,71 @@ class TestAffdoLogging(unittest.TestCase):
             print_affdo("soft restraint on")
         self.assertEqual(buf.getvalue(), "[affdo] soft restraint on\n")
 
+    def test_struct_update_rejects_atom_count_mismatch(self):
+        from ffpopt.Struct import Struct
+
+        s = Struct(
+            {
+                "name": "frag",
+                "positions": [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]],
+                "elements": ["C", "C"],
+                "charges": [0.0, 0.0],
+                "names": ["C1", "C2"],
+                "types": ["c", "c"],
+                "bonds": [[0, 1]],
+                "spin": 1,
+                "energy": None,
+                "forces": None,
+            }
+        )
+        with self.assertRaises(ValueError) as ctx:
+            s.Update(None, [[0.0, 0.0, 0.0]] * 3, None)
+        self.assertIn("3 coordinates onto 2 atoms", str(ctx.exception))
+
+    def test_centroid_parent_mol2_does_not_overwrite_fragment(self):
+        from ffpopt.Struct import ListOfStruct, Struct
+        from ffpopt.affdo.CentroidProfiles import generate_centroid_start_jsons
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            data = {
+                "name": "frag",
+                "positions": [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]],
+                "elements": ["C", "C"],
+                "charges": [0.0, 0.0],
+                "names": ["C1", "C2"],
+                "types": ["c", "c"],
+                "bonds": [[0, 1]],
+                "spin": 1,
+                "energy": None,
+                "forces": None,
+                "constraints": [],
+                "restraints": [],
+            }
+            start = td / "start.json"
+            ListOfStruct([Struct(data)]).save(str(start))
+            (td / "start.cent0.json").write_text(
+                json.dumps([{**data, "positions": [[0.0, 0.0, 0.0]] * 3}]),
+                encoding="utf-8",
+            )
+            mol2 = td / "parent.mol2"
+            mol2.write_text(
+                "@<TRIPOS>MOLECULE\nparent\n3 0 0 0 0\nSMALL\nUSER_CHARGES\n\n"
+                "@<TRIPOS>ATOM\n"
+                "1 C1 0.0 0.0 0.0 C 1 MOL 0.0\n"
+                "2 C2 1.5 0.0 0.0 C 1 MOL 0.0\n"
+                "3 C3 3.0 0.0 0.0 C 1 MOL 0.0\n"
+                "@<TRIPOS>BOND\n",
+                encoding="utf-8",
+            )
+            paths = generate_centroid_start_jsons(
+                start, mol2_path=mol2, nkeep=2, workdir=td
+            )
+            self.assertEqual(len(paths), 1)
+            los = ListOfStruct.from_file(str(paths[0]))
+            self.assertEqual(len(los.structs[0].data["elements"]), 2)
+            self.assertEqual(len(los.structs[0].data["positions"]), 2)
+
     def test_pick_smoothest_profile_logs_details(self):
         from ffpopt.affdo.CentroidProfiles import pick_smoothest_profile, score_profile_details
 

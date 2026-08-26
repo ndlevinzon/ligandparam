@@ -14,6 +14,41 @@ import numpy as np
 _FOURIER_MAX_UNSET = object()
 
 
+def _positions_len(positions) -> int:
+    arr = np.asarray(positions, dtype=float)
+    if arr.size == 0:
+        return 0
+    if arr.ndim == 1:
+        return int(arr.size // 3)
+    return int(arr.shape[0])
+
+
+def _start_atom_count(los) -> int:
+    st = los.structs[0]
+    return len(st.data.get("elements") or [])
+
+
+def _mol2_atom_count(path) -> Optional[int]:
+    """Count ``@<TRIPOS>ATOM`` records; ``None`` if the file cannot be read."""
+    try:
+        n = 0
+        in_atom = False
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith("@<TRIPOS>ATOM"):
+                in_atom = True
+                continue
+            if s.startswith("@<TRIPOS>"):
+                in_atom = False
+                continue
+            if in_atom and s:
+                n += 1
+        return n if n else None
+    except OSError:
+        return None
+
+
 def generate_centroid_start_jsons(
     start_json,
     *,
@@ -53,17 +88,43 @@ def generate_centroid_start_jsons(
     wd.mkdir(parents=True, exist_ok=True)
 
     los0 = ListOfStruct.from_file(str(start_json))
+    n0 = _start_atom_count(los0)
     paths = []
 
-    if mol2_path is not None and Path(mol2_path).is_file():
+    def _write_cent0_from_start(*, force: bool = False):
+        out = wd / "start.cent0.json"
+        if out.is_file() and not force:
+            try:
+                n_exist = _positions_len(
+                    ListOfStruct.from_file(str(out)).structs[0].data.get("positions")
+                )
+                if n_exist == n0:
+                    return out
+            except Exception:
+                pass
+        out.write_bytes(start_json.read_bytes())
+        return out
+
+    mol2 = Path(mol2_path) if mol2_path is not None else None
+    use_mol2 = mol2 is not None and mol2.is_file()
+    if use_mol2:
+        n_mol2 = _mol2_atom_count(mol2)
+        if n_mol2 is not None and n_mol2 != n0:
+            _say(
+                f"ConfSearch mol2 has {n_mol2} atoms, start.json has {n0}; "
+                "using the primary geometry only. For fragments, pass the "
+                "fragment mol2, not the parent."
+            )
+            use_mol2 = False
+    if use_mol2:
         nconf_eff = max(int(nconf), int(nkeep))
         out_base = str(wd / "centroids.json")
         _say(
-            f"ConfSearch {mol2_path} -> {out_base} "
+            f"ConfSearch {mol2} -> {out_base} "
             f"(nconf={nconf_eff} nkeep={int(nkeep)} rmstol={float(rmstol):g} mmff94)"
         )
         ConformerSearch(
-            str(mol2_path),
+            str(mol2),
             out_base,
             nconf=nconf_eff,
             nkeep=int(nkeep),
@@ -75,32 +136,45 @@ def generate_centroid_start_jsons(
         # ConformerSearch writes a multi-struct JSON at out_base
         clus = ListOfStruct.from_file(out_base)
         n_found = len(clus.structs)
-        _say(f"ConfSearch retained {n_found} clustered centroid(s)")
-        for i, st in enumerate(clus.structs[: int(nkeep)]):
-            clone = deepcopy(los0)
-            clone.structs = [clone.structs[0]]
-            clone.structs[0].Update(
-                None, st.data["positions"], st.data.get("forces")
+        matched = [
+            st
+            for st in clus.structs[: int(nkeep)]
+            if _positions_len(st.data.get("positions")) == n0
+        ]
+        _say(
+            f"ConfSearch retained {n_found} clustered centroid(s); "
+            f"{len(matched)} match start.json ({n0} atoms)"
+        )
+        if not matched:
+            _say(
+                f"ConfSearch mol2 atom count does not match start.json "
+                f"({n0} atoms); using the primary geometry only. "
+                "For fragments, ConfSearch must use the fragment mol2, not the parent."
             )
-            clone.structs[0].data["name"] = f"centroid_{i}"
-            out = wd / f"start.cent{i}.json"
-            clone.save(str(out))
-            paths.append(out)
+            use_mol2 = False
+        else:
+            for i, st in enumerate(matched):
+                clone = deepcopy(los0)
+                clone.structs = [clone.structs[0]]
+                clone.structs[0].Update(
+                    None, st.data["positions"], st.data.get("forces")
+                )
+                clone.structs[0].data["name"] = f"centroid_{i}"
+                out = wd / f"start.cent{i}.json"
+                clone.save(str(out))
+                paths.append(out)
+            _say(
+                "wrote "
+                + ", ".join(p.name for p in paths)
+                + " (JSON starts; no per-centroid mol2 charge files)"
+            )
+
+    if not paths:
         _say(
-            "wrote "
-            + ", ".join(p.name for p in paths)
-            + " (JSON starts; no per-centroid mol2 charge files)"
+            "no matching mol2 for ConfSearch; using the primary start geometry "
+            "as the only centroid"
         )
-    else:
-        # Fallback: single starting geometry only.
-        _say(
-            "no mol2 for ConfSearch; using the primary start geometry as the "
-            "only centroid"
-        )
-        out = wd / "start.cent0.json"
-        if not out.is_file():
-            out.write_bytes(start_json.read_bytes())
-        paths.append(out)
+        paths = [_write_cent0_from_start(force=not use_mol2)]
 
     if not paths:
         raise RuntimeError("failed to generate centroid start JSONs")

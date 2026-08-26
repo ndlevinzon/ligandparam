@@ -328,6 +328,14 @@ class Struct(object):
         m    = self.data["spin"]
         qs   = self.data["charges"]
         atlist = "".join( ["%s1"%(ele) for ele in eles ] )
+        n_ele = len(eles)
+        n_pos = int(np.asarray(crds).reshape(-1, 3).shape[0]) if np.size(crds) else 0
+        if n_pos != n_ele:
+            name = self.data.get("name", "?")
+            raise ValueError(
+                f"Struct {name!r}: {n_pos} positions but {n_ele} elements "
+                "(parent coords on a fragment start?)"
+            )
 
         atoms = ase.Atoms(atlist,positions=crds,charges=qs)
         atoms.info["charge"] = q
@@ -468,6 +476,17 @@ class Struct(object):
         -------
         None
         """
+        import numpy as np
+
+        n_ele = len(self.data.get("elements") or [])
+        crds_arr = np.asarray(crds)
+        n_pos = 0 if crds_arr.size == 0 else int(crds_arr.reshape(-1, 3).shape[0])
+        if n_ele and n_pos != n_ele:
+            name = self.data.get("name", "?")
+            raise ValueError(
+                f"Struct {name!r}: cannot Update {n_pos} coordinates onto "
+                f"{n_ele} atoms"
+            )
         self.data["energy"] = ene
         if hasattr(crds, "tolist"):
             self.data["positions"] = crds.tolist()
@@ -858,8 +877,8 @@ class ListOfStruct(object):
         ss = None
         try:
             import json
-            fh = open(filename,'r')
-            data = json.load(fh)
+            with open(filename, "r") as fh:
+                data = json.load(fh)
             ss = [Struct(x) for x in data]
         except Exception as JsonError:
             try:
