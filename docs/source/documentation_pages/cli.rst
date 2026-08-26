@@ -73,7 +73,8 @@ Notes
   writes scan intermediates under a fragments directory; ``--whole-ligand``
   writes per-batch ``whole-twist.log`` / ``WHOLE_STATUS.txt``.
 * ``--fast`` loosens geomeTRIC / ASE converge and maxiter (``delta`` stays
-  10 deg). Explicit non-default knobs still win.
+  10 deg). Explicit non-default knobs still win. Light HL models: ``xtb``,
+  ``aimnet2`` (see :doc:`dihedrals` / :doc:`installation`).
   All ``export FFPOPT_*`` defaults ship in
   ``ffpopt/pkgdata/files/env_defaults.json`` (the values the code reads).
   Copy/edit that file and set ``FFPOPT_DEFAULTS`` to overlay it; per-key

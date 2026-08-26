@@ -104,8 +104,8 @@ compare), set ``OMP_NUM_THREADS=1`` when unset, and warm-start ``itNN`` from
 the prior LL checkpoint when available. Spawn splits are flattened (never
 bondxwavefront nested); HL and ``orig`` scans pipeline in one queue. Under
 ``--fast``, QDpi2 opts with XTB then full QDpi2 single-point
-(``FFPOPT_QDPI2_OPT``), HL nodes MM-relax then one XTB/QDpi2
-(``FFPOPT_MM_THEN_HL``), and XTB/QDpi2 use ASE-first. ``--fast`` remains a
+(``FFPOPT_QDPI2_OPT``), HL nodes MM-relax then one XTB / AIMNet2 / QDpi2
+(``FFPOPT_MM_THEN_HL``), and XTB / AIMNet2 / QDpi2 use ASE-first. ``--fast`` remains a
 wall-time trade (looser converge, shorter maxiter). Scan ``delta`` stays 10
 deg.
 

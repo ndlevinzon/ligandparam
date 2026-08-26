@@ -125,7 +125,8 @@ profiles match a chosen high-level model along rotatable bonds.
 
 **Definition.** High-level (HL) is the target chemistry (`--model`, e.g.
 `qdpi2`); low-level (LL) is the current Amber force field evaluated with
-`sander`.
+`sander`. Light HL options without DeepMD: `xtb` (tblite) and `aimnet2`
+(neural net, extra `[aimnet]`).
 
 **Detail.** Fit residuals are mean-centered HL-LL energy profiles along the
 scanned dihedral (shape match). Convergence heuristics can drop bonds that

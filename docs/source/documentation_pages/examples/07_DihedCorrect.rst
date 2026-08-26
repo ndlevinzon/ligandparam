@@ -17,7 +17,7 @@ Learning outcomes
 Prerequisites
 -------------
 
-* Editable install: ``pip install -e ".[dihed]"`` (and ``tblite`` for ``xtb``)
+* Editable install: ``pip install -e ".[dihed]"`` (and ``tblite`` for ``xtb``, or ``aimnet`` for ``aimnet2``)
 * AmberTools on ``PATH`` (including ``tleap``)
 * A completed FreeLigand (or LazyLigand) run for your ligand
 

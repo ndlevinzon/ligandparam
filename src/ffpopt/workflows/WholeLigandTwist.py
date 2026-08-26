@@ -47,7 +47,9 @@ def run_whole_ligand_dihed_twist_workflow(
 
     from scission.LigandIo import load_ligand_from_mol2
     from scission.Torsions import find_rotatable_bonds
+    from ffpopt.runtime.CpuThreads import pin_math_threads
 
+    pin_math_threads(1)
     log = _resolve_logger(logger)
     out_dir_path = _as_path(out_dir).resolve()
     out_dir_path.mkdir(parents=True, exist_ok=True)

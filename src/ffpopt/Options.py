@@ -112,7 +112,7 @@ def AddModelOptions(parser):
    
    parser.add_argument \
        ("-m","--model",
-        help="Energy calculator: sander, xtb, qdpi2, dpmlp, mace, aimnet2, aimnet2_wb97m(aimnet2 is an alias for aimnet2_wb97m), aimnet2_b973c, aimnet2_qr, ani1x, ani2x, ani1ccx, pyscfneo, theory/basis (psi4). dpmlp looks for dp_test.pt in the current directory. Default: sander",
+        help="Energy calculator: sander, xtb, qdpi2, aimnet2 (also aimnet2-2025 / aimnet2-b973c / aimnet2-nse / aimnet2-pd / aimnet2-rxn; older aimnet2_wb97m still resolves), dpmlp, mace, ani1x, ani2x, ani1ccx, pyscfneo, theory/basis (psi4). dpmlp looks for dp_test.pt in the current directory. Default: sander",
         default="sander",
         type=str)
 

@@ -90,8 +90,9 @@ def GeomOpt_GEOMETRIC(
         The optimized geometry with updated positions, forces, and energy
     """
     import os
-    if "OMP_NUM_THREADS" not in os.environ:
-        os.environ["OMP_NUM_THREADS"] = "1"
+    from ffpopt.runtime.CpuThreads import pin_math_threads
+
+    pin_math_threads(1)
 
     import copy
     import ase.io

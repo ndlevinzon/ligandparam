@@ -58,6 +58,7 @@ Optional extras
 .. code-block:: bash
 
     pip install ".[tblite]" # GFN2-xTB (lig-dihed-correct --model xtb)
+    pip install ".[aimnet]" # AIMNet2 (Python 3.11-3.13 + PyTorch 2.8+; --model aimnet2)
     pip install ".[dihed]"  # ndfes + geometric (required by ffpopt WaveFront)
     pip install ".[ml]"     # DeepMD (use conda for TensorFlow on HPC)
     pip install ".[sage]"   # OpenFF Sage conversion
@@ -65,6 +66,8 @@ Optional extras
     pip install ".[all]"
 
 ``lig-dihed-correct --model xtb`` needs ``tblite`` (``pip install ".[tblite]"``).
+``--model aimnet2`` needs the ``aimnet`` extra and a matching PyTorch
+(CPU HPC: install the CPU torch wheel first; see :doc:`dihedrals`).
 DeepMD recipes need TensorFlow; on HPC install it from conda, not pip::
 
     conda install -c conda-forge tensorflow deepmd-kit

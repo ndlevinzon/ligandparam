@@ -720,15 +720,21 @@ def _execute_bond_scan_jobs(
         split_note = " (prefer wf depth)"
     else:
         split_note = " (flat; no nested spawn)"
+    used = int(n_bond_workers) * int(n_wf)
+    leftover = max(0, int(nproc) - used)
+    leftover_note = f", {used}/{nproc} cores" + (
+        f" ({leftover} leftover)" if leftover else ""
+    )
     log.info(
         "[twist] parallel bond scans: %s, %s job(s), nproc=%s -> "
-        "%s bond worker(s) x wf_nproc=%s%s%s",
+        "%s bond worker(s) x wf_nproc=%s%s%s%s",
         label,
         len(jobs),
         nproc,
         n_bond_workers,
         n_wf,
         split_note,
+        leftover_note,
         " (ASE-first)" if ase_first else "",
     )
 

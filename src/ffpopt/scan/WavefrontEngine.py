@@ -98,6 +98,9 @@ def _init_worker(los, con, template_struct, reslist=None) -> None:
     1-D jobs pass a single ``Constraint`` and ``reslist is None``.
     N-D jobs pass a ``ConstraintList`` plus a ``RestraintList``.
     """
+    from ffpopt.ase.Aimnet import configure_aimnet_spawn_worker
+
+    configure_aimnet_spawn_worker(los)
     clear_los_calc(los)
     _WORKER["los"] = los
     _WORKER["template"] = copy.deepcopy(template_struct)
@@ -1025,6 +1028,14 @@ class Wavefront:
 
     def calculate(self) -> None:
         """Apply the wavefront algorithm (1-D queue or N-D threads/MPI)."""
+        from ffpopt.ase.Aimnet import aimnet_gpu_plan_message, cap_aimnet_nproc
+
+        model = getattr(getattr(self.los, "args", None), "model", None)
+        old = max(1, int(self.nproc))
+        new = cap_aimnet_nproc(old, model)
+        if new != old:
+            print_wavefront(aimnet_gpu_plan_message(old, new, model))
+            self.nproc = new
         if self.is_nd:
             if getattr(self, "use_mpi", False):
                 return self.calculate_mpi()

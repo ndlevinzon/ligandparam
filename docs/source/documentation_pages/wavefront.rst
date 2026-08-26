@@ -165,7 +165,7 @@ MM then HL
 Under ``--fast`` (or ``FFPOPT_MM_THEN_HL=1``), each HL node is a cheap
 constrained min then one dear refine. Sander is used when a ``parm7``
 is on the structure; otherwise tblite GFN-FF. Soft-dihed k-ramps run
-entirely on MM; one XTB/QDpi2 opt follows at the final k (in-band) or
+entirely on MM; one XTB / AIMNet2 / QDpi2 opt follows at the final k (in-band) or
 after the MM hard IC. Sander / GFN-FF scans skip this (already cheap).
 Force off with ``FFPOPT_MM_THEN_HL=0``. MM failure falls back to HL from
 the parent Cartesian. Logs: ``[wavefront]`` for the staging, ``[affdo]``
@@ -175,7 +175,7 @@ Persistent calculator cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``get_persistent_calc`` caches the expensive
-base model (XTB / QDpi2 / sander) on ``ListOfStruct._ffpopt_calc_cache``.
+base model (XTB / AIMNet2 / QDpi2 / sander) on ``ListOfStruct._ffpopt_calc_cache``.
 Serial ``nproc=1`` checkpoints unbind that cache for the pickle, then
 **restore it** so the next node does not rebuild XTB. Spawn workers never
 receive the live handle: ``ListOfStruct.__getstate__`` drops ``calc`` and
@@ -199,7 +199,7 @@ Flattened vs nested ``nproc``
 * **Fragment workers** flatten: never both axes ``> 1`` (nested spawn
   inside an already-spawned worker is dominated by bootstrap).
 * **Whole-ligand** (not nested under a fragment pool) may keep a 2-D
-  bond x wavefront split (e.g. 8 x 5 on 44 cores) when
+  bond x wavefront split (e.g. 4 x 11 on 44 cores for 8 bonds) when
   ``prefer_wf_depth`` is on.
 * Small fair-share leases prefer **breadth** (many concurrent bonds /
   fragments, ``wf_nproc=1``) so independent scans fill the allocation.

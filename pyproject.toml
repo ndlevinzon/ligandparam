@@ -50,12 +50,20 @@ ml = [
   "deepmd-kit",
 ]
 
-# Optional ffpopt ML potentials (--model mace / ani* / aimnet2*).
+# Optional ffpopt ML potentials (--model mace / ani*).
 # Packages and versions vary by CUDA / torch stack; install matching
 # wheels for your environment after this meta-extra if needed.
 ml-potentials = [
   "mace-torch",
   "torchani",
+]
+
+# AIMNet2 neural potential (--model aimnet2). Needs Python 3.11-3.13 and
+# PyTorch 2.8+. On CPU HPC: pip install torch --index-url
+# https://download.pytorch.org/whl/cpu  then pip install -e ".[aimnet]".
+# ASE is already a ligandparam core dep; extra "ase" pulls aimnet's ASE extra.
+aimnet = [
+  "aimnet[ase]",
 ]
 
 dihed = [
@@ -90,6 +98,7 @@ all = [
   "ligandparam[tblite]",
   "ligandparam[ml]",
   "ligandparam[ml-potentials]",
+  "ligandparam[aimnet]",
   "ligandparam[dihed]",
   "ligandparam[jax]",
   "ligandparam[misc]",

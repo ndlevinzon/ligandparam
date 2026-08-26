@@ -547,6 +547,14 @@ def run_dihed_twist_workflow(
         )
     std = {**std_defaults, **standard_kwargs}
     model = std["model"]
+    from ffpopt.ase.Aimnet import aimnet_gpu_plan_message, cap_aimnet_nproc
+
+    capped = cap_aimnet_nproc(nproc, model)
+    if capped != nproc:
+        log.info("[twist] %s", aimnet_gpu_plan_message(nproc, capped, model))
+        nproc = capped
+        if budget_total is None:
+            budget_tot = nproc
 
     # Fast presets: only replace knobs still at library defaults.
     fast_knobs = {

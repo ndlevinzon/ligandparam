@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **XTB core split** - ``prefer_depth`` nproc packing now uses leftover cores
+  (44 cores / 8 bonds -> 4x11, not 8x5 with 4 idle; pipelined HL+orig 16
+  jobs -> 11x4, not 16x2 with 12 idle). BLAS/OpenMP stay 1 thread per
+  worker unless already exported.
+
+- **AIMNet2 HL model** - ``--model aimnet2`` (PyPI ``aimnet``, wB97M-D3).
+  Family aliases: ``aimnet2-2025``, ``aimnet2-b973c``, ``aimnet2-nse``,
+  ``aimnet2-pd``, ``aimnet2-rxn`` (older ``aimnet2_wb97m`` / ``aimnet2_qr``
+  still resolve). Extra ``pip install -e ".[aimnet]"`` (Python 3.11-3.13,
+  PyTorch 2.8+). Under ``--fast``: ASE-first, MM-then-HL, wavefront depth
+  like ``xtb``. ``FFPOPT_AIMNET_DEVICE=cpu|cuda``. On GPU, wavefront spawn
+  workers are capped to ``n_gpu * FFPOPT_AIMNET_PER_GPU`` (default 4) and
+  round-robin pinned to ``CUDA_VISIBLE_DEVICES`` so ``-n 44`` does not OOM.
+
 ---
 
 ## [1.6.0] - 2026-08-25

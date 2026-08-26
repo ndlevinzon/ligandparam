@@ -48,7 +48,7 @@ def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = N
     Default on for:
 
     * ``FFPOPT_PREF_WF_DEPTH=1``
-    * XTB-like HL models when fast mode is on
+    * XTB-like and AIMNet2 HL models when fast mode is on
 
     Sander / Amber MM used to always prefer depth; that is now decided by
     :func:`prefer_bond_pool_depth` so small fair-share leases can run bonds
@@ -60,8 +60,7 @@ def prefer_wavefront_depth(*, model: str | None = None, fast: Optional[bool] = N
         return False
     if not fast_wavefront_enabled(fast):
         return False
-    m = (model or "").strip().lower()
-    return m in {"xtb", "gfn2-xtb", "gfn2", "tblite"} or m.startswith("xtb")
+    return is_xtb_like_model(model) or is_aimnet_like_model(model)
 
 
 def prefer_bond_pool_depth(
@@ -163,6 +162,8 @@ def split_nproc_for_items(
     fragment worker. Bond-scan callers that are *not* nested should pass
     ``flatten_nested=False`` with ``prefer_depth=True`` so a 2-bond batch on
     44 cores is ``2 x 22``, not a serial ``1 x 44`` wavefront that cannot fill.
+    Depth splits pack leftover cores (44 cores / 8 jobs -> ``4 x 11``, not
+    ``8 x 5`` with 4 idle).
     """
     nproc = max(1, int(nproc))
     n_items = max(1, int(n_items))
@@ -175,8 +176,20 @@ def split_nproc_for_items(
         if min_inner is None:
             min_inner = max(1, env_int("FFPOPT_MIN_WF_NPROC"))
         min_inner = max(1, int(min_inner))
-        n_outer = min(n_items, max(1, nproc // min_inner))
-        n_inner = max(1, nproc // n_outer)
+        max_outer = min(n_items, max(1, nproc // min_inner))
+        # Use as many cores as possible, then as many concurrent outer jobs
+        # as possible (so 44 cores / 16 HL+orig jobs is 11x4, not 16x2
+        # with 12 leftover).
+        n_outer, n_inner = 1, nproc
+        best_used, best_outer = nproc, 1
+        for cand_outer in range(1, max_outer + 1):
+            cand_inner = nproc // cand_outer
+            if cand_inner < min_inner:
+                continue
+            used = cand_outer * cand_inner
+            if used > best_used or (used == best_used and cand_outer > best_outer):
+                n_outer, n_inner = cand_outer, cand_inner
+                best_used, best_outer = used, cand_outer
     if flatten_nested and n_outer > 1 and n_inner > 1:
         if prefer_depth:
             return 1, nproc
@@ -201,6 +214,13 @@ def is_sander_like_model(model: str | None) -> bool:
 def is_xtb_like_model(model: str | None) -> bool:
     m = (model or "").strip().lower()
     return m in {"xtb", "gfn2-xtb", "gfn2", "tblite"} or m.startswith("xtb")
+
+
+def is_aimnet_like_model(model: str | None) -> bool:
+    """True for ``--model aimnet2`` and AIMNet2 family aliases."""
+    from ffpopt.ase.Aimnet import is_aimnet_model
+
+    return is_aimnet_model(model)
 
 
 def is_gfnff_model(model: str | None) -> bool:
@@ -276,8 +296,8 @@ def is_qdpi2_model(model: str | None) -> bool:
 def prefer_ase_first_model(model: str | None, *, fast: Optional[bool] = None) -> bool:
     """True when wavefront should default to ASE-first (skip geomeTRIC ladder).
 
-    Always for sander/MM. Under fast mode also for XTB-like and QDpi2 HL.
-    Override with ``FFPOPT_ASE_FIRST=0|1``.
+    Always for sander/MM. Under fast mode also for XTB-like, AIMNet2, and
+    QDpi2 HL. Override with ``FFPOPT_ASE_FIRST=0|1``.
     """
     raw = env_value("FFPOPT_ASE_FIRST")
     if raw is not None:
@@ -287,7 +307,7 @@ def prefer_ase_first_model(model: str | None, *, fast: Optional[bool] = None) ->
         return True
     if not fast_wavefront_enabled(fast):
         return False
-    return is_xtb_like_model(m) or is_qdpi2_model(m)
+    return is_xtb_like_model(m) or is_qdpi2_model(m) or is_aimnet_like_model(m)
 
 
 def qdpi2_opt_components(*, fast: Optional[bool] = None) -> str:

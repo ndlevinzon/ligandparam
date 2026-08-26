@@ -25,13 +25,13 @@
   // Minimum cores kept per wavefront when splitting nproc with prefer-depth.
   "FFPOPT_MIN_WF_NPROC": 2,
 
-  // ASE-first (skip geomeTRIC ladder). null = auto (sander always; xtb/qdpi2
-  // under --fast). 1/0 to force.
+  // ASE-first (skip geomeTRIC ladder). null = auto (sander always;
+  // xtb / aimnet2 / qdpi2 under --fast). 1/0 to force.
   "FFPOPT_ASE_FIRST": null,
 
-  // MM-relax then one HL opt per node. null = on under --fast for xtb/qdpi2
-  // (not sander). 1/0 to force. Soft-dihed: k-ramp on MM, one HL at final k
-  // or after the MM hard IC.
+  // MM-relax then one HL opt per node. null = on under --fast for
+  // xtb / aimnet2 / qdpi2 (not sander). 1/0 to force. Soft-dihed: k-ramp
+  // on MM, one HL at final k or after the MM hard IC.
   "FFPOPT_MM_THEN_HL": null,
   // Cheap engine: sander | gfnff. null = sander if parm7 exists, else GFN-FF.
   "FFPOPT_MM_THEN_HL_MODEL": null,
@@ -117,5 +117,15 @@
   "FFPOPT_XTB_ETEMP": 500.0,
   "FFPOPT_XTB_MIXER_DAMPING": 0.25,
   // eeq (preferred) or sad. Unknown values are ignored by older tblite.
-  "FFPOPT_XTB_GUESS": "eeq"
+  "FFPOPT_XTB_GUESS": "eeq",
+
+  // --- AIMNet2 -------------------------------------------------------------
+  // Torch device for --model aimnet2. null = auto (cuda if available, else cpu).
+  // On CPU-only HPC nodes set cpu (or CUDA_VISIBLE_DEVICES=-1).
+    "FFPOPT_AIMNET_DEVICE": null,
+  // Concurrent AIMNet2 processes per visible GPU (wavefront spawn workers).
+  // 44 CPU workers on one GPU will OOM; default 4. Ignored on CPU.
+  "FFPOPT_AIMNET_PER_GPU": 4,
+  // Absolute AIMNet2 worker cap. null = n_gpu * FFPOPT_AIMNET_PER_GPU.
+  "FFPOPT_AIMNET_WORKERS": null
 }

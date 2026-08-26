@@ -439,6 +439,13 @@ class TestOptionalExtras(unittest.TestCase):
             self.skipTest("optional: tblite (pip install '.[tblite]')")
         import tblite  # noqa: F401
 
+    def test_aimnet_optional(self):
+        if not _has_module("aimnet"):
+            self.skipTest(
+                "optional: aimnet (Python 3.11-3.13; pip install '.[aimnet]')"
+            )
+        from aimnet.calculators import AIMNet2ASE  # noqa: F401
+
     def test_ambertools_on_path_optional(self):
         found = {
             name: shutil.which(name)

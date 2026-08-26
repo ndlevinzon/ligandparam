@@ -98,9 +98,11 @@ High-level models
 Pass ``--model`` to ``lig-dihed-correct``. Useful options without qdpi:
 
 * ``xtb`` - GFN2-xTB via tblite (recommended light default)
+* ``aimnet2`` - AIMNet2 neural net (wB97M-D3); faster than DFT, often
+  similar wall time to ``xtb`` on CPU. Variants: ``aimnet2-2025``,
+  ``aimnet2-b973c``, ``aimnet2-nse``, ``aimnet2-pd``, ``aimnet2-rxn``
 * ``ani2x`` / ``ani1x`` / ``ani1ccx`` - TorchANI (element limits apply)
 * ``mace`` / ``mace-off23_*`` - MACE-OFF (pytorch + model files)
-* ``aimnet2`` (and variants)
 * Psi4 as ``theory/basis`` (separate psi4 environment)
 * ``dftb2`` / ``dftb3`` - via Amber/sander SQM
 
@@ -151,5 +153,13 @@ Requirements
 * AmberTools ``tleap`` on ``PATH`` (scission writes fragment ``parm7`` / ``rst7``)
 * Calculator stack for the chosen ``--model``
 * For ``xtb``: ``pip install ".[tblite,dihed]"``
+* For ``aimnet2``: Python **3.11-3.13** (not 3.14), then
+  ``pip install torch --index-url https://download.pytorch.org/whl/cpu``
+  and ``pip install ".[aimnet]"``. First run downloads weights (do this
+  on a login node). CPU-only: ``export FFPOPT_AIMNET_DEVICE=cpu``.
+  GPU Slurm: CUDA torch wheel, ``FFPOPT_AIMNET_DEVICE=cuda``, GPU
+  partition + ``--gres=gpu``. Do not use ``-n`` as CPU-core count; the
+  wavefront caps AIMNet2 workers to ``n_gpu * FFPOPT_AIMNET_PER_GPU``
+  (default 4) and pins each spawn worker to one visible GPU.
 
 See :doc:`ffpopt`, :doc:`wavefront`, :doc:`scission`, and :doc:`cli`.

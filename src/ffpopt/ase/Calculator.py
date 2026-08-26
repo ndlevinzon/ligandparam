@@ -32,9 +32,9 @@
 #
 
 import os
-for key in ["OMP_NUM_THREADS","DP_INTRA_OP_PARALLELISM_THREADS","DP_INTER_OP_PARALLELISM_THREADS"]:
-    if key not in os.environ:
-        os.environ[key] = "1"
+from ffpopt.runtime.CpuThreads import pin_math_threads
+
+pin_math_threads(1)
 
 from ase.calculators.calculator import Calculator, all_changes
 from collections import defaultdict as ddict
@@ -118,6 +118,7 @@ class GenCalculator(Calculator):
         # print("input kwargs=",kwargs)
         # print("input num_threads=",kwargs.get("num_threads",None))
         
+        self.mode_raw = str(mode)
         self.mode=mode.upper()
         self.charge=charge
         self.spin=spin
@@ -214,8 +215,14 @@ class GenCalculator(Calculator):
                 from pyscf.neo import Pyscf_NEO
                 self.calc = Pyscf_NEO(basis=basis, xc=xc, charge=self.charge, spin=self.spin-1, quantum_nuc=quantum_nuc, nuc_basis=nuc_basis)
         elif "AIMNET" in self.mode:
-            from aimnet.calculators import AIMNet2ASE
-            self.calc = AIMNet2ASE(base_calc=self.mode.lower(),charge=self.charge)
+            from .Aimnet import make_aimnet2_calculator
+
+            self.calc = make_aimnet2_calculator(
+                self.mode_raw,
+                charge=self.charge,
+                spin=self.spin,
+                mfile=kwargs.get("mfile"),
+            )
         elif "OMOL25" in self.mode:
             print("Using OMOL25 model")
             from fairchem.core import pretrained_mlip, FAIRChemCalculator
@@ -406,6 +413,8 @@ class GenCalculator(Calculator):
         import ase
         if self.charge is not None:
             atoms.info["charge"] = self.charge
+        if getattr(self, "spin", None) is not None:
+            atoms.info["mult"] = self.spin
         if properties is None:
             properties = self.implemented_properties
         Calculator.calculate(self, atoms, properties, system_changes)

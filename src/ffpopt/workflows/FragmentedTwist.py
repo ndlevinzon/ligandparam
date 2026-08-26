@@ -527,8 +527,9 @@ def run_fragmented_dihed_twist_workflow(
     log = _resolve_logger(logger)
     # Nested spawn pools + ASE/sander: keep BLAS/OMP at 1 unless the user
     # already set it (avoids oversubscribe when many workers share a node).
-    if "OMP_NUM_THREADS" not in os.environ:
-        os.environ["OMP_NUM_THREADS"] = "1"
+    from ffpopt.runtime.CpuThreads import pin_math_threads
+
+    pin_math_threads(1)
     mol2_path, lib_path, parent_frcmod = _parent_paths_from_args(
         mol2=mol2, lib=lib, frcmod=frcmod, bundle=bundle
     )

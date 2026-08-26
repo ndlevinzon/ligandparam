@@ -175,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         "--model",
         type=str,
         default="qdpi2",
-        help="High-level ffpopt model (default: qdpi2)",
+        help="High-level ffpopt model (default: qdpi2). Light options: xtb, aimnet2.",
     )
     parser.add_argument("--maxiter", type=int, default=2, help="Fit iterations (default: 2)")
     parser.add_argument("--nprim", type=int, default=3, help="Cosine primitives (default: 3)")

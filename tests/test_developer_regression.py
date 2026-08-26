@@ -1851,6 +1851,89 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIn("0.5", text)
         self.assertIn("p.save(", text)
 
+    def test_aimnet_model_aliases_and_fast_policy(self):
+        from ffpopt.ase.Aimnet import (
+            is_aimnet_model,
+            resolve_aimnet_model_name,
+        )
+        from ffpopt.runtime.FastWavefront import (
+            is_aimnet_like_model,
+            mm_then_hl_enabled,
+            prefer_ase_first_model,
+            prefer_wavefront_depth,
+        )
+
+        self.assertEqual(resolve_aimnet_model_name("aimnet2"), ("aimnet2", 0))
+        self.assertEqual(resolve_aimnet_model_name("aimnet2_wb97m"), ("aimnet2", 0))
+        self.assertEqual(resolve_aimnet_model_name("aimnet2-2025"), ("aimnet2-2025", 0))
+        self.assertEqual(resolve_aimnet_model_name("aimnet2_b973c"), ("aimnet2-b973c", 0))
+        self.assertEqual(resolve_aimnet_model_name("aimnet2_qr"), ("aimnet2-rxn", 0))
+        self.assertEqual(resolve_aimnet_model_name("aimnet2-nse_2"), ("aimnet2-nse", 2))
+        self.assertEqual(
+            resolve_aimnet_model_name("isayevlab/aimnet2-wb97m-d3")[0],
+            "isayevlab/aimnet2-wb97m-d3",
+        )
+        self.assertEqual(
+            resolve_aimnet_model_name("ISAYEVLAB/AIMNET2-WB97M-D3")[0],
+            "isayevlab/aimnet2-wb97m-d3",
+        )
+        self.assertTrue(is_aimnet_model("aimnet2"))
+        self.assertTrue(is_aimnet_like_model("AIMNet2-2025"))
+        self.assertFalse(is_aimnet_model("xtb"))
+        self.assertTrue(prefer_ase_first_model("aimnet2", fast=True))
+        self.assertFalse(prefer_ase_first_model("aimnet2", fast=False))
+        self.assertTrue(prefer_wavefront_depth(model="aimnet2", fast=True))
+        self.assertTrue(mm_then_hl_enabled("aimnet2", fast=True))
+        from ffpopt.ase.Aimnet import _INSTALL_HINT, _import_aimnet
+
+        self.assertIn(".[aimnet]", _INSTALL_HINT)
+        import builtins
+
+        real_import = builtins.__import__
+
+        def _no_aimnet(name, *args, **kwargs):
+            if str(name).startswith("aimnet"):
+                raise ImportError("No module named 'aimnet'")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", _no_aimnet):
+            with self.assertRaises(ImportError) as ctx:
+                _import_aimnet()
+        self.assertIn(".[aimnet]", str(ctx.exception))
+
+    def test_aimnet_gpu_worker_cap_and_pin(self):
+        from ffpopt.ase.Aimnet import (
+            cap_aimnet_nproc,
+            pin_aimnet_worker_cuda,
+            visible_cuda_ids,
+        )
+        from ffpopt.runtime.EnvDefaults import clear_defaults_cache
+
+        env = {
+            "CUDA_VISIBLE_DEVICES": "0,1",
+            "FFPOPT_AIMNET_PER_GPU": "4",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("FFPOPT_AIMNET_DEVICE", None)
+            os.environ.pop("FFPOPT_AIMNET_WORKERS", None)
+            clear_defaults_cache()
+            self.assertEqual(visible_cuda_ids(), ["0", "1"])
+            self.assertEqual(cap_aimnet_nproc(44, "aimnet2"), 8)
+            self.assertEqual(cap_aimnet_nproc(44, "xtb"), 44)
+            os.environ["FFPOPT_AIMNET_WORKERS"] = "2"
+            clear_defaults_cache()
+            self.assertEqual(cap_aimnet_nproc(44, "aimnet2"), 2)
+            os.environ.pop("FFPOPT_AIMNET_WORKERS", None)
+            os.environ["FFPOPT_AIMNET_DEVICE"] = "cpu"
+            clear_defaults_cache()
+            self.assertEqual(cap_aimnet_nproc(44, "aimnet2"), 44)
+        with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "2,3"}, clear=False):
+            self.assertEqual(pin_aimnet_worker_cuda(0), "2")
+            self.assertEqual(os.environ["CUDA_VISIBLE_DEVICES"], "2")
+            self.assertEqual(os.environ.get("FFPOPT_AIMNET_DEVICE"), "cuda")
+        os.environ.pop("FFPOPT_AIMNET_DEVICE", None)
+        clear_defaults_cache()
+
     def test_gendihedfit_outputs_complete_rejects_truncated_py(self):
         from ffpopt.workflows.TwistHelpers import gendihedfit_outputs_complete
 
@@ -2493,8 +2576,18 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             44, 2, prefer_depth=True, flatten_nested=False
         )
         self.assertEqual((n_o, n_i), (2, 22))
+        # Absorb leftover cores (old 8x5 left 4 idle; 16 HL+orig jobs were 16x2).
+        self.assertEqual(
+            split_nproc_for_items(44, 8, prefer_depth=True, flatten_nested=False),
+            (4, 11),
+        )
+        self.assertEqual(
+            split_nproc_for_items(44, 16, prefer_depth=True, flatten_nested=False),
+            (11, 4),
+        )
         self.assertTrue(prefer_ase_first_model("xtb", fast=True))
         self.assertFalse(prefer_ase_first_model("xtb", fast=False))
+        self.assertTrue(prefer_ase_first_model("aimnet2", fast=True))
         with patch.dict(os.environ, {"FFPOPT_FAST_WAVEFRONT": "1"}):
             self.assertEqual(qdpi2_opt_components(), "xtb")
         with patch.dict(os.environ, {"FFPOPT_QDPI2_OPT": "both"}):

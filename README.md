@@ -46,7 +46,7 @@ Both modes start from the same Amber triplet and the same `lig-dihed-correct` CL
 |--|------------------------|-------------------------------------|
 | **What is scanned** | Scission caps; each rotatable bond in a small fragment | The intact parent ligand |
 | **Why use it** | Cheaper HL opts; local environment around each torsion | Coupled rotors / bulky detergents that fragments distort |
-| **CPU** | Fragment workers fair-share `-n`; flatten bond x wavefront inside a worker | One parent job; nested bond x wavefront (e.g. 8 x 5 on 44 cores) |
+| **CPU** | Fragment workers fair-share `-n`; flatten bond x wavefront inside a worker | One parent job; nested bond x wavefront (e.g. 4 x 11 on 44 cores for 8 bonds) |
 | **Bond batches** | `FFPOPT_MAX_BONDS_PER_TWIST` (default 2), MM updated between batches | `FFPOPT_WHOLE_MAX_BONDS_PER_TWIST` (default 8) |
 | **Output** | Merged parent `{label}.dihed.frcmod` | Parent `{label}.dihed.frcmod` (no fragment merge) |
 | **Lib** | Unchanged | Unchanged |
@@ -61,7 +61,7 @@ lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast
 lig-scission fragment -d CHA3 -r CHA --label chaps
 ```
 
-Use this for typical drug-like ligands. Prefer `--model xtb` (tblite) when you do not have QDpi2.
+Use this for typical drug-like ligands. Prefer `--model xtb` (tblite) or `--model aimnet2` when you do not have QDpi2.
 
 ### Whole-ligand
 
@@ -126,6 +126,7 @@ Env knobs (`FFPOPT_*`) live in [`src/ffpopt/pkgdata/files/env_defaults.json`](sr
 | [AmberTools](https://ambermd.org/AmberTools.php) (`antechamber`, `parmchk2`, `tleap`) | Typing, frcmod / lib, fragment `parm7`/`rst7` |
 | Gaussian (`g16` or compatible) | Optimization and RESP ESP |
 | tblite (extra `[tblite]`) | `--model xtb` dihedral scans |
+| AIMNet2 (extra `[aimnet]`) | `--model aimnet2` (Python 3.11-3.13 + PyTorch 2.8+) |
 
 ---
 
