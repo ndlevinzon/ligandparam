@@ -505,6 +505,23 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
         np.testing.assert_allclose(out[0], crd[0], atol=1e-12)
         np.testing.assert_allclose(out[1], crd[1], atol=1e-12)
 
+    def test_cpt_dihed_collinear_does_not_warn(self):
+        import warnings
+        import numpy as np
+        from ffpopt.geom.Geometry import CptAngle, CptDihed
+
+        a = np.array([0.0, 0.0, 0.0])
+        b = np.array([1.0, 0.0, 0.0])
+        c = np.array([2.0, 0.0, 0.0])
+        d = np.array([3.0, 0.0, 0.0])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            dih = CptDihed(a, b, c, d)
+            ang = CptAngle(a, b, c)
+        self.assertTrue(np.isfinite(dih))
+        self.assertTrue(np.isfinite(ang))
+        self.assertFalse(any("arccos" in str(w.message).lower() for w in caught))
+
     def test_seed_struct_rigid_dihed_rotates_and_clash_fallback(self):
         import numpy as np
         from unittest.mock import patch
@@ -781,6 +798,42 @@ class TestLoggingContracts(unittest.TestCase):
                 )
         fail_out = buf.getvalue()
         self.assertIn("[wavefront] Node 0 failed at 0: optimization_error:", fail_out)
+
+    def test_mark_node_failed_survives_pickle_io_error(self):
+        import numpy as np
+        from ffpopt.scan.WavefrontMixins import mark_node_failed
+
+        node = SimpleNamespace(
+            node_id=1,
+            node_pkl="node.pckl",
+            struct=SimpleNamespace(data={"elements": ["C"]}),
+            angle=270,
+            los=None,
+        )
+        with patch(
+            "ffpopt.scan.WavefrontMixins.atomic_pickle_dump",
+            side_effect=FileNotFoundError("node.pckl.tmp"),
+        ):
+            mark_node_failed(
+                node,
+                "optimization_error",
+                RuntimeError("ASE pre-opt fmax=68.1 eV/Ang exceeds 50"),
+            )
+        self.assertTrue(node.complete)
+        self.assertFalse(node.active)
+        self.assertTrue(np.isinf(node.energy))
+        self.assertIn("optimization_error", node.error)
+
+    def test_atomic_pickle_dump_roundtrip(self):
+        import tempfile
+        from pathlib import Path
+        from ffpopt.scan.WavefrontMixins import atomic_pickle_dump, pickle_load_compat
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "sub" / "node.pckl"
+            atomic_pickle_dump({"n": 3}, path)
+            self.assertTrue(path.is_file())
+            self.assertEqual(pickle_load_compat(path)["n"], 3)
 
     def test_attach_console_handlers_idempotent(self):
         from ffpopt.runtime.Console import attach_console_handlers
@@ -2026,6 +2079,20 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertFalse(Path(prefix + "_optim.xyz").exists())
             self.assertFalse((td / "orphan_geom.log").exists())
             self.assertEqual(sweep_geometric_scratch_dir(td), 0)
+
+    def test_prepare_geometric_tmpdir_removes_leftover_r2(self):
+        from ffpopt.geom.Geometric import prepare_geometric_tmpdir
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            prefix = str(td / "level_1_angle_270_id_1_node_geom")
+            leftover = Path(prefix + ".r2.tmp")
+            leftover.mkdir()
+            (leftover / "x").write_text("old")
+            Path(prefix + ".tmp").mkdir()
+            prepare_geometric_tmpdir(prefix)
+            self.assertFalse(Path(prefix + ".tmp").exists())
+            self.assertFalse(leftover.exists())
 
     def test_is_soft_opt_and_evaluate_policy(self):
         from ffpopt.geom.GeomOpt import is_soft_opt_recovery

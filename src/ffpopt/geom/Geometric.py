@@ -105,10 +105,34 @@ def patch_brent_not_bracketed() -> None:
     Optimizer.optimize_step = _optimize_step
 
 
+def patch_geometric_tmp_makedirs() -> None:
+    """geomeTRIC ``os.makedirs(prefix+'.tmp')`` has no ``exist_ok`` (FileExistsError)."""
+    try:
+        import geometric.optimize as go
+    except ImportError:
+        return
+    os_mod = getattr(go, "os", None)
+    if os_mod is None:
+        return
+    current = os_mod.makedirs
+    if getattr(current, "_ffpopt_exist_ok", False):
+        return
+
+    def _makedirs(name, mode=0o777, exist_ok=False):
+        text = str(name).rstrip("/\\")
+        if text.endswith(".tmp"):
+            exist_ok = True
+        return current(name, mode=mode, exist_ok=exist_ok)
+
+    _makedirs._ffpopt_exist_ok = True  # type: ignore[attr-defined]
+    os_mod.makedirs = _makedirs
+
+
 def apply_geometric_compat_patches() -> None:
     """Install all ffpopt <-> geomeTRIC compatibility patches."""
     patch_constrained_cartesian_fallback()
     patch_brent_not_bracketed()
+    patch_geometric_tmp_makedirs()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -400,7 +424,13 @@ def run_geometric_inprocess(
         kwargs["logIni"] = str(log_ini)
     kwargs.update(extra_kwargs)
 
-    progress = run_optimizer(**kwargs)
+    prepare_geometric_tmpdir(prefix)
+    try:
+        progress = run_optimizer(**kwargs)
+    except FileExistsError:
+        # Leftover ``{prefix}.tmp`` from a killed worker / k-ramp reuse.
+        prepare_geometric_tmpdir(prefix)
+        progress = run_optimizer(**kwargs)
 
     coords = np.asarray(progress.xyzs[-1], dtype=float)
     energy_ha = None
@@ -449,6 +479,30 @@ def _rm_path(path: Path) -> bool:
     except OSError:
         return False
     return False
+
+
+def prepare_geometric_tmpdir(prefix: PathLike) -> str:
+    """Remove leftover ``{prefix}.tmp`` so geomeTRIC ``os.makedirs`` can succeed.
+
+    geomeTRIC calls ``os.makedirs(prefix + '.tmp')`` without ``exist_ok``. A
+    killed worker, job restart, or k-ramp reuse leaves that directory and
+    raises ``FileExistsError``. Also drops ``{prefix}.r*.tmp`` recovery dirs
+    for the same prefix.
+    """
+    prefix = str(prefix)
+    tmpdir = prefix + ".tmp"
+    _rm_path(Path(tmpdir))
+    parent = Path(prefix).parent
+    stem = Path(prefix).name
+    if parent.is_dir() and stem:
+        try:
+            for p in parent.iterdir():
+                name = p.name
+                if name.startswith(stem + ".r") and name.endswith(".tmp"):
+                    _rm_path(p)
+        except OSError:
+            pass
+    return tmpdir
 
 
 def cleanup_geometric_scratch(prefix: PathLike, *, keep_optim: bool = False) -> int:

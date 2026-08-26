@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Wavefront node failure I/O** - leftover geomeTRIC ``{prefix}.tmp`` dirs
+  no longer abort with ``FileExistsError``; node pickle writes use unique
+  tmp names, fsync, and retries so NFS ``os.replace`` cannot kill the pool.
+  A broken-geometry node is marked failed instead of crashing
+  ``lig-dihed-correct``. Dihedral ``arccos`` clips collinear atoms.
+
 ### Added
 
 - **XTB core split** - ``prefer_depth`` nproc packing now uses leftover cores

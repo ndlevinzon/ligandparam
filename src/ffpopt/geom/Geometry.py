@@ -26,6 +26,21 @@ def _cross(v1, v2):
                      v1[0]*v2[1] - v1[1]*v2[0]])
 
 
+def _clipped_cos(num, den):
+    """Return a cosine in ``[-1, 1]`` (0 if collinear / degenerate)."""
+    den = float(den)
+    if not np.isfinite(den) or abs(den) < 1.0e-18:
+        return 0.0
+    x = float(num) / den
+    if not np.isfinite(x):
+        return 0.0
+    if x > 1.0:
+        return 1.0
+    if x < -1.0:
+        return -1.0
+    return x
+
+
 def CptDist(a,b):
     """The distance between two points
 
@@ -103,7 +118,7 @@ def CptAngle(a,b,c):
     l2 = np.linalg.norm(v2)
     n = np.dot(v1, v2)
     d = (l1*l2)
-    return np.degrees( np.arccos(n/d) )
+    return np.degrees(np.arccos(_clipped_cos(n, d)))
 
 
 
@@ -139,7 +154,7 @@ def CptDihed(a,b,c,d):
     # Now find the angle between these cross-products
     l1 = np.linalg.norm(v1xv2)
     l2 = np.linalg.norm(v2xv3)
-    cosa = np.dot(v1xv2, v2xv3) / (l1 * l2)
+    cosa = _clipped_cos(np.dot(v1xv2, v2xv3), l1 * l2)
     if np.dot(v3, v1xv2) <= 0.0 :
         return np.degrees(np.arccos(cosa))
     else :
@@ -282,7 +297,7 @@ def CptAngleAndGrd(ca,cb,cc):
     l2 = np.sqrt(np.dot(v2, v2))
     n = np.dot(v1, v2)
     d = (l1*l2)
-    cosa = n / d
+    cosa = _clipped_cos(n, d)
     z = np.arccos(cosa) * f
     dzdca = -f/np.sqrt(1.-cosa**2)
     dddv1 = v1/l1
@@ -360,7 +375,7 @@ def CptDihedAndGrd(a,b,c,d):
     # Now find the angle between these cross-products
     l1 = np.linalg.norm(v1xv2)
     l2 = np.linalg.norm(v2xv3)
-    cosa = min(1,max(-1,np.dot(v1xv2, v2xv3) / (l1 * l2)))
+    cosa = _clipped_cos(np.dot(v1xv2, v2xv3), l1 * l2)
     if np.dot(v3, v1xv2) <= 0.0 :
         T =  np.degrees(np.arccos(cosa))
     else :

@@ -107,7 +107,11 @@ def apply_slim_node_result(node: Any, result: dict, *, clone_fn=None) -> None:
 
 
 def write_node_pickle(node: Any, *, verbose: bool = False) -> None:
-    """Pickle ``node`` without ``los`` (restored after write)."""
+    """Pickle ``node`` without ``los`` (restored after write).
+
+    I/O errors are logged, not raised: a failed opt must still mark the node
+    so the wavefront can skip it instead of killing the pool.
+    """
     if verbose:
         print_wavefront(
             f"Saving node {node.node_pkl}  (exists? {Path(node.node_pkl).is_file()})"
@@ -116,17 +120,72 @@ def write_node_pickle(node: Any, *, verbose: bool = False) -> None:
     node.los = None
     try:
         atomic_pickle_dump(node, node.node_pkl)
+    except OSError as exc:
+        print_wavefront(
+            f"could not write node pickle {node.node_pkl}: "
+            f"{type(exc).__name__}: {exc}"
+        )
     finally:
         node.los = los
 
 
 def atomic_pickle_dump(obj: Any, path) -> None:
-    """Write a pickle via ``tmp`` + ``os.replace`` (crash-safe)."""
+    """Write a pickle via unique ``tmp`` + ``os.replace`` (crash-safe).
+
+    Unique tmp names avoid colliding with geomeTRIC ``*.tmp`` directories.
+    ``fsync`` plus retries absorb NFS/VAST ``FileNotFoundError`` on replace.
+    """
+    import time
+
     path = Path(path)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "wb") as f:
-        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
-    os.replace(tmp, path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    replaced = False
+    try:
+        with open(tmp, "wb") as f:
+            pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.flush()
+            os.fsync(f.fileno())
+        _replace_with_retry(tmp, path)
+        replaced = True
+    finally:
+        # Do not unlink after a successful replace: NFS can still see the old
+        # name and unlinking it would delete the dest file.
+        if not replaced:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+
+
+def _replace_with_retry(src: Path, dst: Path, *, attempts: int = 8) -> None:
+    """``os.replace`` with backoff, then copy, for flaky network filesystems."""
+    import time
+
+    last: Optional[OSError] = None
+    for i in range(max(1, int(attempts))):
+        try:
+            os.replace(src, dst)
+            return
+        except OSError as exc:
+            last = exc
+            if not src.is_file():
+                time.sleep(0.05 * (2 ** i))
+                if not src.is_file():
+                    break
+            else:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                time.sleep(0.05 * (2 ** i))
+    if last is None:
+        raise FileNotFoundError(str(src))
+    try:
+        import shutil
+
+        shutil.copyfile(src, dst)
+        src.unlink()
+    except OSError:
+        raise last from last
 
 
 def pickle_checkpoint_keep_calc_cache(obj: Any, path, los) -> None:
@@ -527,12 +586,17 @@ def run_soft_dihed_opt(
             k, list(idxs), float(angle), tol_deg=tol
         )
         try:
+            k_prefix = (
+                _geom_prefix_stage(ramp_prefix, f"k{i:02d}")
+                if ramp_prefix
+                else None
+            )
             last_geom = opt_fn(
                 ramp_los,
                 start,
                 constraints=None,
                 restraints=[rest],
-                geom_prefix=ramp_prefix,
+                geom_prefix=k_prefix,
             )
         except Exception as exc:
             if last_geom is None:
