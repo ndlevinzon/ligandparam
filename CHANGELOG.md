@@ -42,8 +42,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   dropped from the fit so sibling torsions keep running.
 - **Dihedral FC cap** - barrier-only still wrote PK of thousands because
   unbounded ``lstsq`` seeded the fit, then ``x0 +/- 2/5`` kept that
-  explosion. Fourier force constants are now clipped and bounded at
-  ``FFPOPT_DIHED_FC_MAX`` (default 25 kcal/mol).
+  explosion. ``FFPOPT_DIHED_FC_MAX`` (default 25 kcal/mol) remains as an
+  Amber-safety valve; the model is now ridge / SVD + energy-domain
+  barrier (see Added).
 
 ### Added
 
@@ -59,6 +60,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bond x wavefront so those dihedrals are one correlated joint system.
   9+ rotors on one fragment still chunk at 8 with MM updates between
   batches, matching ``--whole-ligand``.
+
+- **Fourier FC regularization** - unbounded ``lstsq`` + post-hoc PK clip is
+  replaced by truncated SVD / Tikhonov ridge, an energy-domain cap on
+  reconstructed ``V(phi)`` (default 2x data barrier, abs 30 kcal/mol on a
+  dense grid), and nested ``nprim`` AIC. ``FFPOPT_DIHED_FC_MAX`` (25) remains
+  an Amber-safety valve only. See Sphinx ``fourier_fit``.
 
 - **AIMNet2 HL model** - ``--model aimnet2`` (PyPI ``aimnet``, wB97M-D3).
   Family aliases: ``aimnet2-2025``, ``aimnet2-b973c``, ``aimnet2-nse``,

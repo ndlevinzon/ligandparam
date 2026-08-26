@@ -107,10 +107,22 @@
   "FFPOPT_DIHED_FIT_REOPT": false,
   // barrier | torsion | full. CLI --fit-mode / --fit-full still win.
   "FFPOPT_FIT_MODE": "barrier",
-  // Absolute |PK| cap (kcal/mol) for Fourier force constants. Unbounded
-  // lstsq on coupled 1-4 paths (e.g. sulfate s6-o) otherwise writes
-  // thousands of kcal/mol into the frcmod.
+  // Amber-safety valve: last-ditch |PK| clip (kcal/mol). The model is ridge /
+  // truncated SVD plus an energy-domain V(phi) barrier, not this box.
   "FFPOPT_DIHED_FC_MAX": 25.0,
+  // Drop SVD modes with sigma < rel * sigma_max (identifiability).
+  "FFPOPT_DIHED_SVD_REL": 1e-4,
+  // Tikhonov lambda on ||K||^2. 0 = truncated SVD first; increased if the
+  // reconstructed barrier exceeds the energy-domain limit.
+  "FFPOPT_DIHED_RIDGE_LAMBDA": 0.0,
+  // Reconstructed shape peak-to-peak <= alpha * data peak-to-peak.
+  "FFPOPT_DIHED_BARRIER_ALPHA": 2.0,
+  // Absolute V(phi) peak-to-peak ceiling on a dense 0-360 grid (kcal/mol).
+  // 0 disables. Typical organic rotors are well below 30.
+  "FFPOPT_DIHED_BARRIER_ABS": 30.0,
+  // Nested n=1..nprim AIC; keep the smallest k within the AIC window.
+  "FFPOPT_DIHED_NPRIM_SELECT": true,
+  "FFPOPT_DIHED_AIC_WINDOW": 2.0,
   // lsq | lbfgsb | jax. CLI --fit-backend still wins.
   "FFPOPT_FIT_BACKEND": "lsq",
   // Amber 1-4 electrostatic / VDW scale (used when the CLI omits them).

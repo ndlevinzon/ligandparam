@@ -80,6 +80,7 @@ See the examples directory and the pages below for details.
    ./documentation_pages/installation.rst
    ./documentation_pages/cli.rst
    ./documentation_pages/dihedrals.rst
+   ./documentation_pages/fourier_fit.rst
    ./documentation_pages/wavefront.rst
    ./documentation_pages/recipes.rst
    ./documentation_pages/stages.rst

@@ -2637,6 +2637,64 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         out = clip_dihed_fcs([6439.0, -1278.0, 1.4], where="test")
         np.testing.assert_allclose(out, [cap, -cap, 1.4])
 
+    def test_fourier_ridge_beats_cancelling_harmonics(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitRegularize import tikhonov_svd_solve
+
+        # Clustered scan + tiny singular modes: naive pinv (rcond=0) explodes.
+        phi = np.deg2rad(np.array([0.0, 2.0, 4.0, 6.0, 8.0]))
+        A = np.column_stack([np.cos(n * phi) for n in (1, 2, 3)])
+        A = A - np.mean(A, axis=0, keepdims=True)
+        y = 0.3 * A[:, 0] + 0.02 * np.array([0.0, 1.0, -1.0, 0.4, -0.3])
+        y = y - np.mean(y)
+        x_raw = np.linalg.pinv(A, rcond=0.0) @ y
+        x_r, info = tikhonov_svd_solve(A, y, lam=0.0, rel_cutoff=1.0e-4)
+        self.assertGreater(
+            float(np.linalg.norm(x_raw)),
+            10.0 * float(np.linalg.norm(x_r)) + 1.0,
+        )
+        self.assertGreaterEqual(info["n_kept"], 1)
+
+    def test_fourier_nprim_aic_picks_single_harmonic(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitRegularize import fit_fourier_nprim
+
+        angs = np.linspace(0.0, 350.0, 36)
+        y = 1.5 * np.cos(np.deg2rad(angs))
+        y = y - np.mean(y)
+        with patch.dict(os.environ, {"FFPOPT_DIHED_NPRIM_SELECT": "1"}, clear=False):
+            dfcn, x, info = fit_fourier_nprim(
+                angs, y, 3, [0, 1, 2, 3], pname="test-n1"
+            )
+        self.assertEqual(info["nprim"], 1)
+        self.assertEqual(len(dfcn.prims), 1)
+        self.assertGreater(float(x[0]), 0.5)
+
+    def test_fourier_energy_domain_barrier_scales_vphi(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitRegularize import (
+            dense_torsion_ptp,
+            solve_regularized_fcs,
+        )
+        from ffpopt.dihed.DihedFourier import GetDihedClasses
+
+        dfcn = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        A = np.array([[1.0], [-1.0], [0.5], [-0.5]])
+        y = np.array([80.0, -80.0, 40.0, -40.0])
+        with patch.dict(
+            os.environ,
+            {
+                "FFPOPT_DIHED_BARRIER_ABS": "30",
+                "FFPOPT_DIHED_BARRIER_ALPHA": "1",
+                "FFPOPT_DIHED_RIDGE_LAMBDA": "0",
+            },
+            clear=False,
+        ):
+            x, info = solve_regularized_fcs(A, y, dfcn=dfcn, where="test-barrier")
+        self.assertLessEqual(dense_torsion_ptp(dfcn), 30.0 * 1.05)
+        self.assertLessEqual(float(np.max(np.abs(x))), 25.0)
+        self.assertIsNotNone(info.get("dense_ptp"))
+
     def test_geomopt_facade_exports(self):
         from ffpopt.geom import GeomOptAse, GeomOptParallel
         from ffpopt.geom.GeomOpt import CalcNode, GeomOpt, GeomOpt_ASE

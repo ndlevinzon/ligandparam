@@ -130,8 +130,10 @@ deg.
 GenDihedFit's objective is a **shape match**: mean-centered HL-LL residual
 (``d = (hl - ll) - mean(hl - ll)``). Independent min-shifts of HL and LL are
 not used in chi^2 (plot files may still min-shift for display). Under fixed
-geometry, force constants enter linearly and are solved with bounded linear
-least squares (phase fixed at 0).
+geometry, force constants enter linearly and are solved with ridge /
+truncated SVD plus an energy-domain ``V(phi)`` barrier. ``|PK|<=25`` is
+an Amber-safety valve. Nested ``nprim`` AIC keeps the fewest harmonics
+that fit (see Sphinx ``fourier_fit``).
 
 ## AFFDO-style extras (opt-in)
 

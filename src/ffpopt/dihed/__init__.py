@@ -10,6 +10,7 @@ __all__ = [
     "DihedFourier",
     "DihedParmEd",
     "DihedFitSolve",
+    "DihedFitRegularize",
     "ExtendedFit",
     "DeltaPuckerFit",
 ]

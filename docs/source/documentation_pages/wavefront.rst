@@ -264,7 +264,7 @@ into ``TIMESTAMP [ffpopt:...] [scope] ...``:
   summary, finished
 * ``[affdo]`` - soft-dihed k-ramp, extras, extended-fit chi^2
 * ``[twist]`` - bond batches, skip_existing, GenDihedFit orchestration
-* ``[ffpopt]`` - geomeTRIC / ASE recovery, isolated LS rank notes
+* ``[ffpopt]`` - geomeTRIC / ASE recovery, Fourier ridge / nprim AIC
 
 All of these are ASCII (``+/-``, ``deg``, ``chi^2``) for latin-1 Slurm
 ``.out`` files.
@@ -274,6 +274,7 @@ See also
 
 * :doc:`ffpopt` - workflows and Python API
 * :doc:`dihedrals` - ``lig-dihed-correct`` fragment vs whole-ligand
+* :doc:`fourier_fit` - ridge / SVD, energy-domain barrier, nprim AIC
 * :doc:`design_philosophy` - why 1-D and N-D share one engine
 * ``src/ffpopt/GLOSSARY.md`` - short definitions
 * ``src/ffpopt/README.md`` - package README (same policy table)

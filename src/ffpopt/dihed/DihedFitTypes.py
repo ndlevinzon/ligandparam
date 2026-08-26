@@ -575,9 +575,9 @@ class FitInputType(object):
     def make_initial_guesses(self, args=None, caches=None):
         """Create initial FC guesses matching the NL (all-torsions-deleted) model.
 
-        Prefers a joint linear least-squares solve over all fitted parameter types
-        using the fixed-geometry LL cache. Falls back to per-type isolated LS when
-        the joint design is rank-deficient or no cache is available.
+        Prefers a joint regularized linear solve over all fitted parameter types
+        using the fixed-geometry LL cache. Falls back to per-type isolated LS
+        when no cache is available or the joint solve fails.
 
         Parameters
         ----------
@@ -604,10 +604,9 @@ class FitInputType(object):
             raise ValueError(
                 "make_initial_guesses: no usable HL/LL profile geometries to fit"
             )
-        if npts < n + 1:
+        if npts < 2:
             raise ValueError(
-                f"make_initial_guesses: need >= {n + 1} scan points for "
-                f"{n} parameters; have {npts}"
+                f"make_initial_guesses: need >= 2 scan points; have {npts}"
             )
 
         if caches is None and args is not None and not use_dihed_fit_reopt():
@@ -617,19 +616,24 @@ class FitInputType(object):
 
         if caches is not None:
             try:
+                from ffpopt.constants import (
+                    AU_PER_ELECTRON_VOLT,
+                    AU_PER_KCAL_PER_MOL,
+                )
+                from ffpopt.dihed.DihedFitRegularize import (
+                    apply_nprim_selection_from_caches,
+                )
+
+                kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
+                apply_nprim_selection_from_caches(self, caches, kcal_per_ev)
                 x, info = joint_linear_solve_from_caches(self, caches)
                 print(
                     f"[ffpopt] Joint linear initial guess: rank={info['rank']}/"
                     f"{info['nparam']}, cond~={info['cond']:.3e}, "
                     f"npts={info['npts']}"
                 )
-                if info["rank"] >= info["nparam"]:
-                    self.set_params(x)
-                    return x
-                print(
-                    "[ffpopt] Joint design rank-deficient; "
-                    "falling back to isolated LS"
-                )
+                self.set_params(x)
+                return x
             except Exception as exc:
                 print(f"[ffpopt] Joint LS failed ({exc}); falling back to isolated LS")
 
@@ -674,11 +678,14 @@ class FitInputType(object):
                 bests.mol, bestidxs, llgeoms, hlenes, nprim, pname
             )
             # Share one MultiDihedFcn object on the ParamType.
+            n_keep = len(dfcns.prims)
             for s in self.systems:
                 for pinst in s.pinstances:
                     if pinst.ptype.name == pname:
                         pinst.ptype.dfcns = dfcns
+                        pinst.ptype.nprim = n_keep
             self.ptypedict[pname].dfcns = dfcns
+            self.ptypedict[pname].nprim = n_keep
         return self.get_params()
 
             

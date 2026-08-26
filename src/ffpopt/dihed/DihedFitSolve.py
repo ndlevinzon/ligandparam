@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from ffpopt.dihed.DihedFourier import GetDihedClasses
 from ffpopt.dihed.DihedMath import shape_match_delta
 from ffpopt.dihed.DihedParmEd import DeleteDihedrals, GetMultiDihedFcnFromIdxs
 
@@ -15,7 +14,11 @@ def dihed_fc_abs_max() -> float:
 
 
 def clip_dihed_fcs(x, *, where: str = "fit"):
-    """Clip a force-constant vector to ``+/- FFPOPT_DIHED_FC_MAX`` kcal/mol."""
+    """Amber-safety valve: clip FCs to ``+/- FFPOPT_DIHED_FC_MAX`` kcal/mol.
+
+    Regularization (ridge / SVD + energy-domain barrier) is the model.
+    This box is only to keep a wild PK out of a ``frcmod``.
+    """
     import numpy as np
 
     cap = dihed_fc_abs_max()
@@ -25,8 +28,8 @@ def clip_dihed_fcs(x, *, where: str = "fit"):
     if n_hit:
         peak = float(np.max(np.abs(arr))) if arr.size else 0.0
         print(
-            f"[ffpopt] clipped {n_hit} dihedral FC(s) to +/-{cap:g} kcal/mol "
-            f"(peak was {peak:.3g}) at {where}"
+            f"[ffpopt] Amber FC valve clipped {n_hit} dihedral FC(s) to "
+            f"+/-{cap:g} kcal/mol (peak was {peak:.3g}) at {where}"
         )
     return clipped
 
@@ -132,18 +135,15 @@ def IsolatedLinearSolve(mol,idxs,losll,hlenes,nprim,pname):
         A MultiDihedFcn object representing the best-fit dihedral function for the given parameters.
         
     """
-    #from ffpopt.AmberParm import GetDihedClasses
     from ffpopt.geom.Constraints import FillConstraints
     from ffpopt.geom.Constraints import Constraint
     import numpy as np
-    import copy
     from ffpopt.constants import AU_PER_KCAL_PER_MOL
     from ffpopt.constants import AU_PER_ELECTRON_VOLT
 
     KCAL_PER_EV = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
 
     graph = losll.structs[0].GetGraph()
-    dfcns = GetDihedClasses(idxs=idxs)[nprim]
     list_of_scans = [ losll ]
     cons = [ Constraint("dihed",idxs,graph=graph) ]
     list_of_enes = EnergyScansWithoutDihedrals(mol,list_of_scans,cons)
@@ -174,43 +174,22 @@ def IsolatedLinearSolve(mol,idxs,losll,hlenes,nprim,pname):
     y_c = y - np.mean(y)
 
     npts = len(y)
-    if npts < nprim + 1:
+    if npts < 2:
         raise ValueError(
-            f"IsolatedLinearSolve({pname}): need >= {nprim + 1} points, have {npts}"
+            f"IsolatedLinearSolve({pname}): need >= 2 points, have {npts}"
         )
 
-    bestdfcn = None
-    bestchisq = 1.e+30
-    bestvalues = []
-    best_rank = None
-    for ifcn,dfcn in enumerate(dfcns):
-        A = np.zeros( (npts, nprim) )
-        for iprim,prim in enumerate(dfcn.prims):
-            A[:,iprim] = prim.CptEterm(angs)
-        A_c = A - np.mean(A, axis=0, keepdims=True)
-        x, _residues, rank, singular = np.linalg.lstsq(A_c, y_c, rcond=None)
-        x = clip_dihed_fcs(x, where=f"IsolatedLinearSolve({pname})")
-        if rank < nprim:
-            print(
-                f"[ffpopt] IsolatedLinearSolve({pname}) class {ifcn}: "
-                f"rank={rank}/{nprim}, s={singular}"
-            )
-        dfcn.SetFCs(x)
-        v = dfcn.CptEne(angs)
-        d = shape_match_delta(hlenes, llenes + v)
-        chisq = float(np.dot(d, d))
-        if chisq < bestchisq:
-            bestchisq = chisq
-            bestdfcn = copy.deepcopy(dfcn)
-            bestvalues = v
-            best_rank = rank
+    from ffpopt.dihed.DihedFitRegularize import fit_fourier_nprim
 
-    if bestdfcn is None:
-        raise ValueError(f"IsolatedLinearSolve({pname}): no usable Fourier class")
-    if best_rank is not None and best_rank < nprim:
+    bestdfcn, _x, iso_info = fit_fourier_nprim(
+        angs, y_c, nprim, idxs, pname=pname
+    )
+    bestvalues = bestdfcn.CptEne(angs)
+    best_rank = iso_info.get("rank")
+    if best_rank is not None and best_rank < len(bestdfcn.prims):
         print(
-            f"[ffpopt] IsolatedLinearSolve({pname}): best rank={best_rank} "
-            f"< nprim={nprim}"
+            f"[ffpopt] IsolatedLinearSolve({pname}): SVD rank={best_rank} "
+            f"< nprim={len(bestdfcn.prims)}"
         )
 
     # Display-only min shifts for iso.*.dat plots.
@@ -321,32 +300,28 @@ def joint_design_matrix_from_caches(finp, caches, kcal_per_ev):
 
 
 def joint_linear_solve_from_caches(finp, caches):
-    """Joint ``lstsq`` over all fitted FCs using fixed-geometry caches."""
+    """Joint regularized FC solve over all fitted types (fixed-geometry caches)."""
     import numpy as np
     from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
+    from ffpopt.dihed.DihedFitRegularize import (
+        enforce_per_type_dense_barriers,
+        solve_regularized_fcs,
+    )
 
     kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
     A, y, nparam = joint_design_matrix_from_caches(finp, caches, kcal_per_ev)
     npts = A.shape[0]
-    if npts < nparam + 1:
-        raise ValueError(
-            f"joint LS: need >= {nparam + 1} points, have {npts}"
-        )
-    x, residuals, rank, singular = np.linalg.lstsq(A, y, rcond=None)
-    cond = (
-        float(singular[0] / singular[-1])
-        if len(singular) and singular[-1] > 0
-        else float("inf")
-    )
-    info = {
-        "npts": npts,
-        "nparam": nparam,
-        "rank": int(rank),
-        "singular": singular,
-        "cond": cond,
-        "residuals": residuals,
-    }
-    return clip_dihed_fcs(x, where="joint LS"), info
+    if npts < 2:
+        raise ValueError(f"joint LS: need >= 2 points, have {npts}")
+    x, info = solve_regularized_fcs(A, y, where="joint LS")
+    info["npts"] = npts
+    info["nparam"] = nparam
+    residuals = info.get("residuals")
+    if residuals is None:
+        info["residuals"] = y - (A @ x)
+    finp.set_params(x)
+    x = enforce_per_type_dense_barriers(finp, where="joint LS dense")
+    return x, info
 
 
 def build_fixed_geometry_ll_cache(system, args):
@@ -638,7 +613,7 @@ def NonlinearSolve(args,finp):
         The function modifies the FitInputType instance in place, setting the optimized dihedral parameters.
     
     """
-    from scipy.optimize import minimize, lsq_linear
+    from scipy.optimize import minimize
     import numpy as np
     from ffpopt.dihed.ExtendedFit import (
         configure_fit_input,
@@ -721,26 +696,15 @@ def NonlinearSolve(args,finp):
     xhi = np.full_like(x, cap, dtype=float)
 
     if not reopt:
-        # Fixed-geometry FCs enter linearly - bounded linear least squares.
-        from ffpopt.constants import AU_PER_KCAL_PER_MOL, AU_PER_ELECTRON_VOLT
-
-        kcal_per_ev = AU_PER_ELECTRON_VOLT() / AU_PER_KCAL_PER_MOL()
-        A, y, nparam = joint_design_matrix_from_caches(
-            finp, finp._ll_cache, kcal_per_ev
-        )
+        # Fixed-geometry FCs enter linearly - ridge/SVD + energy-domain barrier.
+        x, info = joint_linear_solve_from_caches(finp, finp._ll_cache)
         print(
-            f"[ffpopt] Fixed-geom FC solve via lsq_linear "
-            f"(npts={A.shape[0]}, nparam={nparam})"
+            f"[ffpopt] Fixed-geom FC solve via Fourier ridge "
+            f"(npts={info.get('npts')}, nparam={info.get('nparam')}, "
+            f"kept {info.get('n_kept')}/{info.get('n_modes')} SVD modes)"
         )
-        res = lsq_linear(A, y, bounds=(xlo, xhi), method="bvls")
-        print(
-            f"[ffpopt] lsq_linear: success={bool(res.success)} "
-            f"status={res.status} cost={float(res.cost):.6e} "
-            f"nit={int(res.nit)} msg={res.message}"
-        )
-        finp.set_params(res.x)
         # One objective evaluation for mfit.*.dat plots / chi^2 report.
-        chisq = DihedFitObjFcn(res.x, finp)
+        chisq = DihedFitObjFcn(x, finp)
         print(f"[ffpopt] Final shape-match chi^2 = {chisq:.6e}")
         return
 

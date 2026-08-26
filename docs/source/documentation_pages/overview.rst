@@ -73,7 +73,8 @@ Two ffpopt modes:
   parent. Use when fragments would distort coupled rotors. Optional extras:
   ``--soft-dihed-restraint``, ``--multi-centroid``, ``--fit-full``.
 
-See also :doc:`cli`, :doc:`ffpopt`, :doc:`wavefront`, and :doc:`scission`.
+See also :doc:`cli`, :doc:`ffpopt`, :doc:`wavefront`, :doc:`fourier_fit`,
+and :doc:`scission`.
 
 For how we intend the code to stay maintainable (SOLID, DRY, KISS, YAGNI,
 separation of concerns) and a maintainability score, see

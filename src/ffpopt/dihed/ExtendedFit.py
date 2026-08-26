@@ -1,6 +1,7 @@
 """Extended dihedral fit knobs: phase, period, scee/scnb + L-BFGS-B / JAX.
 
-Default GenDihedFit remains barrier-height (FC) only via ``lsq_linear``.
+Default GenDihedFit remains barrier-height (FC) only via Fourier ridge
+(truncated SVD / Tikhonov + energy-domain barrier). Enable the AFFDO-style
 Enable the AFFDO-style vector with CLI / env flags; backends:
 
 * ``lsq`` - fixed-geometry FC-only (legacy; used when only FCs are free)

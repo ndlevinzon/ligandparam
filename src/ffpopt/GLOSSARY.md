@@ -161,9 +161,22 @@ fragment atom names do not exist in the parent topology.
 **Definition.** Number of cosine primitives (periodicities 1...nprim) fitted
 per torsion parameter family.
 
-**Detail.** Default is 3 (periods 1, 2, and 3).
+**Detail.** Default is 3 (periods 1, 2, and 3). Nested AIC keeps the
+smallest ``k`` in the AIC window unless ``FFPOPT_DIHED_NPRIM_SELECT=0``.
 
-**Authoritative source.** `src/ffpopt/dihed/DihedFitTypes.py` (`nprim` on `ParamType`)
+**Authoritative source.** `src/ffpopt/dihed/DihedFitTypes.py` (`nprim` on `ParamType`); `docs/source/documentation_pages/fourier_fit.rst`
+
+### Fourier ridge (dihedral FC)
+
+**Definition.** Tikhonov / truncated-SVD solve for Fourier force constants,
+then an energy-domain cap on reconstructed ``V(phi)``. ``FFPOPT_DIHED_FC_MAX``
+is an Amber-safety valve only.
+
+**Detail.** Unbounded least squares invents huge cancelling harmonics on
+gappy or non-torsional residuals. Ridge picks the unique small-K series;
+dense-grid ``V(phi)`` peak-to-peak is capped (default 30 kcal/mol).
+
+**Authoritative source.** `src/ffpopt/dihed/DihedFitRegularize.py`
 
 ## Operational terms
 

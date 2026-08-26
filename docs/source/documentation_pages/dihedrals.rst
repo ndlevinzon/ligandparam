@@ -118,11 +118,13 @@ Fit numerics (shape-match chi^2)
 GenDihedFit matches **profile shape**, not absolute energy zero:
 
 * Objective: ``d = (hl - ll) - mean(hl - ll)`` (free vertical offset)
-* Fixed-geometry path: analytical torsions + bounded ``lsq_linear``
+* Fixed-geometry path: ridge / truncated SVD + energy-domain :math:`V(\phi)`
+  barrier; ``|PK|<=25`` is an Amber-safety valve only
+* Nested ``nprim`` AIC (fewest harmonics in the AIC window)
 * HL/LL scan JSONs are always angle-aligned before fitting
 
-See ``src/ffpopt/README.md`` and :doc:`wavefront` for the wavefront
-expansion, spawn policy, and wall-time algorithms.
+See :doc:`fourier_fit` for why unbounded least squares explodes, and
+``src/ffpopt/README.md`` / :doc:`wavefront` for the wavefront expansion.
 
 geomeTRIC notes
 ---------------
