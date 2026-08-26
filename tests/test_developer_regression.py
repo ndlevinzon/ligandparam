@@ -2718,6 +2718,14 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(classify_dihed_rotor("c3-c3-ss-c3"), "polar_sp3")
         self.assertEqual(classify_dihed_rotor("c3-c3-c3-oh"), "sp3_sp3")
         self.assertEqual(classify_dihed_rotor("o -c -ns-c3"), "unsaturated")
+        # Fit-input keys are "{res}_{types}"; the residue must not be a 5th type.
+        self.assertEqual(
+            parse_dihed_type_key("CHA_c3-c3-c3-h1"), ("c3", "c3", "c3", "h1")
+        )
+        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-c3-c3"), "alkane")
+        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-s6-o"), "sulfate_phosphate")
+        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-n4-c3"), "amine_ammonium")
+        self.assertEqual(classify_dihed_rotor("CHA_o-c-ns-c3"), "unsaturated")
 
         policy_env = {
             "FFPOPT_DIHED_SP3_BARRIER_MAX": "20",
@@ -2731,7 +2739,7 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         stiff.SetFCs([15.4])
         with patch.dict(os.environ, policy_env, clear=False):
             out, action, ptp = apply_sp3_rotor_policy(
-                stiff, "c3-c3-s6-o", where="test"
+                stiff, "CHA_c3-c3-s6-o", where="test"
             )
         self.assertEqual(action, "zero_sulfate_phosphate")
         self.assertAlmostEqual(float(out.prims[0].fc), 0.0)

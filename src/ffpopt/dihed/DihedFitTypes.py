@@ -763,10 +763,19 @@ class FitInputType(object):
         for pname in self.ptypedict:
             ptype = self.ptypedict[pname]
             if ptype.masks is not None and ptype.dfcns is not None:
+                prims = list(ptype.dfcns.prims)
+                # K=0 means "keep GAFF": omit the key so merge does not
+                # overwrite the parent term with a zero barrier.
+                if prims and all(abs(float(p.fc)) < 1.0e-12 for p in prims):
+                    print(
+                        f"[ffpopt] skip writing {pname}: all FCs are 0 "
+                        "(keep parent GAFF)"
+                    )
+                    continue
                 scee = float(getattr(self, "scee", 1.2))
                 scnb = float(getattr(self, "scnb", 2.0))
                 typs = parmed_dihedral_type_list_from_prims(
-                    ptype.dfcns.prims,
+                    prims,
                     scee=scee,
                     scnb=scnb,
                     label=pname,

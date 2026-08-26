@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Chemical-group dihedral caps** - fit keys are ``{res}_{types}``
+  (``CHA_c3-c3-c3-h1``). The rotor classifier treated the residue as a
+  fifth Amber type and marked every torsion unsaturated, so alkane /
+  sulfate / n4 caps never ran. Parser now strips the residue prefix.
+  All-zero FCs are omitted from the fragment frcmod so merge keeps
+  parent GAFF instead of writing PK=0.
 - **Wavefront node failure I/O** - leftover geomeTRIC ``{prefix}.tmp`` dirs
   no longer abort with ``FileExistsError``; node pickle writes use unique
   tmp names, fsync, and retries so NFS ``os.replace`` cannot kill the pool.

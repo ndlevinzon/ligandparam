@@ -117,10 +117,19 @@ _THIO_SP3 = frozenset({"s", "sh", "ss"})
 
 
 def parse_dihed_type_key(name: str) -> tuple[str, str, str, str] | None:
-    """Four Amber types from a DIHE key such as ``c3-c3-s6-o`` or ``c -ns-c3-c3``."""
+    """Four Amber types from a DIHE key such as ``c3-c3-s6-o`` or ``c -ns-c3-c3``.
+
+    Fit-input names are ``{res}_{t1}-{t2}-{t3}-{t4}`` (e.g. ``CHA_c3-c3-c3-h1``).
+    The residue prefix must be stripped or the extra token makes this look
+    like five types and the chemical-group policy classifies the rotor as
+    unsaturated (caps never fire).
+    """
     import re
 
-    parts = re.findall(r"[A-Za-z][A-Za-z0-9]?", str(name or "").strip())
+    text = str(name or "").strip()
+    if "_" in text:
+        text = text.rsplit("_", 1)[-1]
+    parts = re.findall(r"[A-Za-z][A-Za-z0-9]?", text)
     if len(parts) != 4:
         return None
     return tuple(p.lower() for p in parts)

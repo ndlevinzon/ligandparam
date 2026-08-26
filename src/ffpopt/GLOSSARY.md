@@ -177,7 +177,9 @@ gappy or non-torsional residuals. Ridge picks the unique small-K series;
 dense-grid ``V(phi)`` peak-to-peak is capped (default 30 kcal/mol).
 After AIC, a chemical-group table zeros or caps remaining ``V(phi)``
 (alkane 5/20, sulfate/phosphate 4/10, polar sp3 8/20, generic sp3 reject
-20). Unsaturated (amide) types keep the 30 kcal ceiling.
+20). Fit keys are ``{res}_{types}`` (``CHA_c3-c3-c3-h1``); the residue
+prefix is stripped before classification. Unsaturated (amide) types keep
+the 30 kcal ceiling. All-zero FCs are not written, so merge keeps GAFF.
 
 **Authoritative source.** `src/ffpopt/dihed/DihedFitRegularize.py`
 
