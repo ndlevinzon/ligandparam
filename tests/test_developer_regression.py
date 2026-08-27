@@ -574,12 +574,47 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
         self.assertTrue(
             skip_hard_ic_after_inband(two_stage=False, dphi_deg=0.2)
         )
-        self.assertFalse(
+        self.assertTrue(
             skip_hard_ic_after_inband(two_stage=True, dphi_deg=0.2)
         )
         self.assertTrue(
             skip_hard_ic_after_inband(two_stage=True, dphi_deg=0.01)
         )
+
+    def test_node_wall_timeout_kills_hung_callable(self):
+        import time
+        from ffpopt.runtime.WallTimeout import (
+            fork_wall_available,
+            run_with_node_wall,
+            timed_out_node_result,
+        )
+
+        payload = timed_out_node_result(
+            {"angle": 280.0, "coords": None}, message="wall_timeout: 300s"
+        )
+        self.assertFalse(payload["active"])
+        self.assertTrue(payload["complete"])
+        self.assertEqual(payload["error"], "wall_timeout: 300s")
+        self.assertEqual(run_with_node_wall(lambda: 7, wall_sec=0), 7)
+
+        if not fork_wall_available():
+            self.skipTest("fork wall-clock timeout is Linux-only")
+
+        def _hang():
+            time.sleep(5)
+            return {"ok": True}
+
+        out = run_with_node_wall(
+            _hang, wall_sec=0.3, job={"angle": 280.0}
+        )
+        self.assertIn("wall_timeout", str(out.get("error")))
+        self.assertEqual(out.get("complete"), True)
+
+        def _fast():
+            return {"energy": 1.0, "complete": True}
+
+        ok = run_with_node_wall(_fast, wall_sec=2.0, job={"angle": 10.0})
+        self.assertEqual(ok["energy"], 1.0)
 
     def test_format_drain_wait_line(self):
         from types import SimpleNamespace
@@ -691,7 +726,7 @@ class TestEnvDefaults(unittest.TestCase):
         import re
         from ffpopt.runtime.EnvDefaults import packaged_defaults
 
-        allow = {"FFPOPT_IN_SPAWN_WORKER", "FFPOPT_DEFAULTS"}
+        allow = {"FFPOPT_IN_SPAWN_WORKER", "FFPOPT_DEFAULTS", "FFPOPT_IN_WALL_CHILD"}
         keys = set(packaged_defaults())
         name_re = re.compile(r"^FFPOPT_[A-Z0-9_]+$")
         found: set[str] = set()

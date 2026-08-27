@@ -19,6 +19,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ``FFPOPT_SOFT_DIHED_LOST_WELL_DEG`` (30 deg) instead of yanking k
   across a 180 deg miss.
 
+- **Wavefront node wall-clock** - a single in-flight HL hard IC (DDM
+  280 deg, ``pending=0 in-flight=1``) can stall the whole 60-core job
+  for hours; extra CPUs cannot parallelize that opt. In-band MM k-ramps
+  now skip the unconstrained HL hard IC and do one restrained HL at the
+  final k (bias ~0.02 kcal). Any node still running after
+  ``FFPOPT_WF_NODE_WALL_SEC`` (default 300s) is SIGTERM'd so a deferred
+  neighbor seed can run.
+
 ### Fixed
 
 - **ASE ``ignore_bad_restart_file`` FutureWarning** - ``ase.calculators.amber.SANDER``

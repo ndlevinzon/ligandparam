@@ -9,7 +9,7 @@ order:
 3. Per-key ``export FFPOPT_*=...`` (always wins)
 
 ``null`` in JSON means "leave to code policy" (for example ASE-first auto).
-Internal process flags (``FFPOPT_IN_SPAWN_WORKER``) are not in this file.
+Internal process flags (``FFPOPT_IN_SPAWN_WORKER``, ``FFPOPT_IN_WALL_CHILD``) are not in this file.
 """
 
 from __future__ import annotations

@@ -264,15 +264,15 @@ def lost_dihedral_well_delta(observed, target, *, limit_deg) -> float | None:
 
 
 def skip_hard_ic_after_inband(*, two_stage: bool, dphi_deg: float | None) -> bool:
-    """True when an in-band k-ramp should not start a second hard-IC opt.
+    """Skip unconstrained hard IC once the k-ramp is in-band.
 
-    Tiny ``|dphi|`` is always skippable (bias is below DFT noise). MM-only
-    scans (no HL stage) also skip: the restrained min *is* the profile, and
-    the follow-up ASE/geomeTRIC hard IC can sit silent for an hour.
+    Residual bias at k=500 kcal/mol/rad^2 and 0.5 deg is ~0.02 kcal/mol.
+    The follow-up unconstrained HL hard IC is what hangs DDM (one in-flight
+    node, idle siblings). Two-stage still does one restrained HL at the
+    final k. ``two_stage`` / ``dphi_deg`` kept for call-site compat.
     """
-    if dphi_deg is not None and float(dphi_deg) <= SOFT_DIHED_HARD_IC_SKIP_DEG:
-        return True
-    return not two_stage
+    _ = (two_stage, dphi_deg)
+    return True
 
 
 class LostDihedralWellError(RuntimeError):
@@ -728,7 +728,13 @@ def run_soft_dihed_opt(
             )
             if skip_hard_ic_after_inband(two_stage=two_stage, dphi_deg=dphi):
                 skip_hard = True
-                if (
+                if two_stage:
+                    print(
+                        f"[affdo] {tag}: in-band at k={k:g}; "
+                        "HL at final k (skip unconstrained hard IC)",
+                        flush=True,
+                    )
+                elif (
                     dphi is not None
                     and dphi <= SOFT_DIHED_HARD_IC_SKIP_DEG
                 ):
@@ -741,7 +747,7 @@ def run_soft_dihed_opt(
                 else:
                     print(
                         f"[affdo] {tag}: in-band at k={k:g}; "
-                        f"skipping hard IC (MM-only wavefront)",
+                        "skipping hard IC (MM-only wavefront)",
                         flush=True,
                     )
             else:
@@ -1630,7 +1636,17 @@ def run_mp_spawn_drain_loop(
                 if on_dispatch is not None:
                     on_dispatch(node)
                 if pool is None:
-                    node.calculate()
+                    from ffpopt.runtime.WallTimeout import run_with_node_wall
+
+                    job = node.to_job() if hasattr(node, "to_job") else None
+
+                    def _serial():
+                        node.calculate()
+                        return node.to_result()
+
+                    result = run_with_node_wall(_serial, job=job)
+                    if result is not None:
+                        node.apply_result(result)
                     pending.extend(on_complete(node))
                     since_checkpoint += 1
                     break

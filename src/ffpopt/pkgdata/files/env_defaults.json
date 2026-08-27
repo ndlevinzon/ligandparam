@@ -31,7 +31,7 @@
 
   // MM-relax then one HL opt per node. null = on under --fast for
   // xtb / aimnet2 / qdpi2 (not sander). 1/0 to force. Soft-dihed: k-ramp
-  // on MM, one HL at final k or after the MM hard IC.
+  // on MM, then one restrained HL at the final k (no unconstrained hard IC).
   "FFPOPT_MM_THEN_HL": null,
   // Cheap engine: sander | gfnff. null = sander if parm7 exists, else GFN-FF.
   "FFPOPT_MM_THEN_HL_MODEL": null,
@@ -49,6 +49,12 @@
   // Drain-loop heartbeat while in-flight nodes produce no completions (sec).
   // 0 = disable. Stops a long hard-IC opt from looking like a hang.
   "FFPOPT_WF_HEARTBEAT_SEC": 60,
+
+  // Kill a wavefront node (fork+SIGTERM) if its opt exceeds this many
+  // seconds. The drain loop then marks it failed and can run a deferred
+  // neighbor seed. 0 = disable. Linux only; DDM 280 deg hung for hours
+  // in one unconstrained HL hard IC while siblings sat idle.
+  "FFPOPT_WF_NODE_WALL_SEC": 300,
 
   // 1-D BFS re-expansion guards (cycle graph C_{360/delta}).
   // Max hard_significant_improve spawns per bin (0 = unlimited).

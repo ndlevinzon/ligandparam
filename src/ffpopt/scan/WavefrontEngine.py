@@ -134,20 +134,25 @@ def _struct_from_coords(coords) -> Struct:
 
 def _run_node_job(job: dict) -> dict:
     """Worker entry: slim coords job in -> slim result out (no ``los``)."""
-    if "rcs" in job:
-        node = WavefrontNode.from_job(
-            job, _WORKER["los"], _WORKER["conlist"], _WORKER["reslist"]
-        )
-    else:
-        if "con" in job and job["con"] is not None:
-            from ffpopt.geom.Constraints import Constraint
+    from ffpopt.runtime.WallTimeout import run_with_node_wall
 
-            con = Constraint.from_dict(job["con"])
+    def _body() -> dict:
+        if "rcs" in job:
+            node = WavefrontNode.from_job(
+                job, _WORKER["los"], _WORKER["conlist"], _WORKER["reslist"]
+            )
         else:
-            con = _WORKER["con"]
-        node = WavefrontNode.from_job(job, _WORKER["los"], con)
-    node.calculate()
-    return node.to_result()
+            if "con" in job and job["con"] is not None:
+                from ffpopt.geom.Constraints import Constraint
+
+                con = Constraint.from_dict(job["con"])
+            else:
+                con = _WORKER["con"]
+            node = WavefrontNode.from_job(job, _WORKER["los"], con)
+        node.calculate()
+        return node.to_result()
+
+    return run_with_node_wall(_body, job=job)
 
 
 def _run_node(node: "WavefrontNode") -> "WavefrontNode":
