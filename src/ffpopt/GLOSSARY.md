@@ -50,7 +50,11 @@ with 1-D / N-D facades (`WaveFront`, `WaveFrontND`). Neighbors, spawn, and
 recovery follow `evaluate_wavefront_minimum`. After the 1-D ring is
 filled, re-expansion is capped (per-bin expand limit, coverage Cauchy,
 2-cycle ping-pong detector) so two neighbors cannot walk for dozens of
-levels. Speedups: seed coalescing
+levels. A Laplacian spike or failed bin is reseeded from a better
+neighbor (`FFPOPT_WF_RESCUE_*`). In-band soft-dihed skips unconstrained
+hard IC; a lost well (`|dphi| > 30` deg) fails instead of yanking k.
+A node still running after `FFPOPT_WF_NODE_WALL_SEC` (300 s) is killed
+so a deferred seed can run. Speedups: seed coalescing
 (one pending job per loc), N-D von Neumann stencil, persistent calculator
 cache (restored after checkpoint; never pickled into spawn workers), reused
 spawn pools, flattened fragment `nproc`. Soft-dihed k-ramp is `[affdo]`;
@@ -68,6 +72,36 @@ cheaper parent energy replaces the queued seed, or is deferred if that loc
 is already in flight.
 
 **Authoritative source.** `src/ffpopt/scan/WavefrontEngine.py` (`_enqueue_visit`)
+
+### Outlier rescue
+
+**Definition.** After a 1-D node finishes, reseed Laplacian-spike or failed
+bins from a better cycle neighbor (Kabsch-lerp when both neighbors agree).
+
+**Detail.** Inactive BFS never retries a wrong-basin bin (DDM 240 deg sat
+~6 kcal above 230/250). Caps: `FFPOPT_WF_RESCUE_KCAL` (2),
+`FFPOPT_WF_RESCUE_MAX` (2).
+
+**Authoritative source.** `src/ffpopt/scan/WavefrontEngine.py` (`_rescue_outlier_bins`)
+
+### Lost well
+
+**Definition.** Soft k-ramp observation more than
+`FFPOPT_SOFT_DIHED_LOST_WELL_DEG` (30 deg) from the target; the node fails
+instead of yanking k across a ~180 deg miss.
+
+**Authoritative source.** `src/ffpopt/scan/WavefrontMixins.py` (`LostDihedralWellError`)
+
+### Node wall-clock
+
+**Definition.** Kill a wavefront opt that exceeds `FFPOPT_WF_NODE_WALL_SEC`
+(default 300 s) so the drain loop can run a deferred seed.
+
+**Detail.** Extra CPUs do not help `pending=0 in-flight=1`. The timeout
+child is `os.fork` (daemon pool workers cannot `multiprocessing.Process`).
+Linux only; `0` disables.
+
+**Authoritative source.** `src/ffpopt/runtime/WallTimeout.py`
 
 ### Rigid-rotate seed
 
@@ -87,11 +121,13 @@ constraint or soft restraint is unchanged.
 angle, then one high-level (XTB / QDpi2) refine from those coordinates.
 
 **Detail.** Default on under `--fast` for non-MM models (`FFPOPT_MM_THEN_HL`).
-Soft-dihed runs the k-ramp on MM and does one HL opt at the final k or after
-the MM hard IC. MM-only (sander) scans skip the extra hard IC when the
-k-ramp is already in-band. Stored node energies are always the HL values.
-The drain loop heartbeats every 60s while in-flight nodes produce no
-completions (`FFPOPT_WF_HEARTBEAT_SEC`).
+Soft-dihed runs the k-ramp on MM. Once in-band, one restrained HL opt runs
+at the final k (no unconstrained hard IC). A lost well (`|dphi|` above
+`FFPOPT_SOFT_DIHED_LOST_WELL_DEG`) fails the node instead of doubling k.
+MM-only (sander) scans keep the restrained min. Stored node energies are
+always the HL values. The drain loop heartbeats every 60s while in-flight
+nodes produce no completions (`FFPOPT_WF_HEARTBEAT_SEC`). A hung opt is
+killed after `FFPOPT_WF_NODE_WALL_SEC` (default 300 s).
 
 **Authoritative source.** `src/ffpopt/scan/WavefrontMixins.py`
 (`geomopt_mm_then_hl`, `run_soft_dihed_opt`)
@@ -146,7 +182,8 @@ already match.
 free vertical offset (not independent HL/LL min-shifts).
 
 **Detail.** Under fixed geometry, FCs enter linearly and are solved with
-bounded `lsq_linear`. Phase is kept at 0 for this pass.
+ridge / truncated SVD plus an energy-domain ``V(phi)`` barrier. Phase is
+kept at 0 for this pass.
 
 **Authoritative source.** `src/ffpopt/dihed/DihedMath.py` (`shape_match_delta`);
 `src/ffpopt/dihed/DihedFitSolve.py` (`NonlinearSolve`)
@@ -182,10 +219,11 @@ is an Amber-safety valve only.
 gappy or non-torsional residuals. Ridge picks the unique small-K series;
 dense-grid ``V(phi)`` peak-to-peak is capped (default 30 kcal/mol).
 After AIC, a chemical-group table zeros or caps remaining ``V(phi)``
-(alkane 5/20, sulfate/phosphate 4/10, polar sp3 8/20, generic sp3 reject
-20). Fit keys are ``{res}_{types}`` (``CHA_c3-c3-c3-h1``); the residue
-prefix is stripped before classification. Unsaturated (amide) types keep
-the 30 kcal ceiling. All-zero FCs are not written, so merge keeps GAFF.
+(alkane 5/20 including parmchk2 analog ``c6``, sulfate/phosphate 4/10,
+polar sp3 8/20, generic sp3 reject 20). Fit keys are ``{res}_{types}``
+(``CHA_c3-c3-c3-h1``); the residue prefix is stripped before
+classification. Unsaturated (amide) types keep the 30 kcal ceiling.
+All-zero FCs are not written, so merge keeps GAFF.
 
 **Authoritative source.** `src/ffpopt/dihed/DihedFitRegularize.py`
 
@@ -247,6 +285,9 @@ with more than two fit bonds use whole-ligand joint packing
 (``ffpopt.workflows.BondBatches``; ``FFPOPT_WHOLE_MAX_BONDS_PER_TWIST``,
 ``FFPOPT_BOND_COUPLE_RADIUS``) so those rotors are one correlated system.
 1–2-bond fragments keep independent 1-D wavefronts.
+Changing the chemical-group table (for example adding ``c6``) does not
+rewrite skipped ``itNN.frcmod`` files; delete the fit artifacts and keep
+scan ``.dat`` / JSON to refit.
 
 **Authoritative source.** `src/ffpopt/workflows/`
 

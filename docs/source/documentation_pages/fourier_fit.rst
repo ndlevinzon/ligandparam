@@ -72,9 +72,12 @@ What ffpopt does instead
    single huge cosine on a sensitive rotor. After AIC, the four Amber
    types (central bond = types 2-3) pick a class:
 
-   * **alkane** (only ``c3`` / ``cx`` / ``cy`` / ``hc`` / ``h1`` / ``h2``
-     / ``h3`` / ``hx``): cap
+   * **alkane** (only ``c3`` / ``c6`` / ``cx`` / ``cy`` / ``hc`` / ``h1`` /
+     ``h2`` / ``h3`` / ``hx``): cap
      ``FFPOPT_DIHED_ALKANE_BARRIER_MAX`` (5 kcal); reject at 20.
+     ``c6`` is not stock GAFF; parmchk2 analogizes maltoside / detergent
+     carbons to ``c3``. Without it, every ``c3-c6`` / ``c6-os`` rotor was
+     classified unsaturated and sat on the 30 kcal ceiling.
    * **sulfate_phosphate** (``s4`` / ``s6`` / ``p4`` / ``p5`` on the
      central bond): cap 4 kcal, reject 10
      (``FFPOPT_DIHED_SULFATE_BARRIER_CAP`` /
@@ -88,6 +91,14 @@ What ffpopt does instead
      ``FFPOPT_DIHED_SP3_BARRIER_MAX`` (20 kcal); no extra cap.
    * **unsaturated** (amide ``c``-``ns``, carbonyl, ...): keep the 30 kcal
      global ceiling.
+
+   Fit keys are ``{res}_{types}`` (``CHA_h1-c3-c6-c6``). The residue
+   prefix is stripped before classification; leaving it on looks like
+   five types and the rotor is treated as unsaturated (caps never fire).
+
+   Changing the table does not rewrite on-disk ``itNN.frcmod`` under
+   ``skip_existing``. Delete the fit artifacts (keep scan ``.dat`` /
+   JSON) to refit after a classification fix such as adding ``c6``.
 
    Reject means :math:`K=0` (keep GAFF). ``FFPOPT_DIHED_FC_MAX`` is
    unchanged.
@@ -110,7 +121,8 @@ Logs (ASCII)
 
    [ffpopt] nprim select c3-c3-s6-o: max=3 -> 1 (AIC=..., rss=..., window=2)
    [ffpopt] sulfate_phosphate rotor c3-c3-s6-o: Vptp=31 kcal > 10; K=0 (keep GAFF)
-   [ffpopt] alkane rotor c3-c3-c3-c3: Vptp=12 -> 5 kcal
+   [ffpopt] alkane rotor h1-c3-c6-c6: Vptp=32 kcal > 20; K=0 (keep GAFF)
+   [ffpopt] alcohol_ether rotor c6-c6-os-c3: Vptp=12 -> 8 kcal
    [ffpopt] amine_ammonium rotor c3-c3-n4-c3: Vptp=12 -> 8 kcal
    [ffpopt] Fourier ridge at joint LS: kept 2/3 SVD modes, lambda=0, ...
    [ffpopt] energy-domain barrier joint LS dense: ... Vptp 48 -> 30 kcal

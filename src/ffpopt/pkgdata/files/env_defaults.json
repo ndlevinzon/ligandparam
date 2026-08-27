@@ -124,8 +124,10 @@
   // extra ConfSearch starts only for jagged torsions. null = always scan all.
   "FFPOPT_CENTROID_FOURIER_MAX": 0.5,
 
-  // Soft-dihedral k-doubling cap (kcal/mol/rad^2). After this, one hard-IC
-  // opt starts from the last soft coordinates instead of the original seed.
+  // Soft-dihedral k-doubling cap (kcal/mol/rad^2). Once in-band,
+  // unconstrained hard IC is skipped; two-stage does one restrained HL
+  // at this k. Lost well (see FFPOPT_SOFT_DIHED_LOST_WELL_DEG) aborts
+  // instead of doubling.
   "FFPOPT_SOFT_DIHED_KMAX": 8000.0,
   // Abort k-doubling when |dphi| exceeds this (deg). Whole-ligand seeds
   // that lose the well (50 deg vs target 230) must not yank k to 1000.
@@ -157,8 +159,9 @@
   // (residual is not a torsion; keep GAFF). 0 disables. Also the reject
   // rung for alkane / polar sp3. Does not change FFPOPT_DIHED_FC_MAX.
   "FFPOPT_DIHED_SP3_BARRIER_MAX": 20.0,
-  // Alkane-like (c3/hc/h1/h2/h3/hx only): scale Vptp down to this (kcal)
-  // when below the sp3 reject threshold. 0 disables.
+  // Alkane-like (c3/c6/cx/cy/hc/h1/h2/h3/hx only): scale Vptp down to
+  // this (kcal) when below the sp3 reject threshold. 0 disables.
+  // c6 is the parmchk2 sugar analog of c3 (maltoside / detergent).
   "FFPOPT_DIHED_ALKANE_BARRIER_MAX": 5.0,
   // C-OH / C-OS / C-N3 / C-N4 / thioether: scale Vptp to this (kcal)
   // when below the sp3 reject. 0 disables.

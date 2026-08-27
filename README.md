@@ -77,7 +77,7 @@ lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 44 --fast \
 | Flag | Role |
 |------|------|
 | `--whole-ligand` | No scission; twist the parent |
-| `--soft-dihed-restraint` | Harmonic dihedral spring (500 kcal/mol/rad^2, +/-0.5 deg) instead of a hard IC; k doubles up to 8000 if the angle is out of band, then one hard IC unless already within 0.05 deg |
+| `--soft-dihed-restraint` | Harmonic dihedral spring (500 kcal/mol/rad^2, +/-0.5 deg) instead of a hard IC; k doubles up to 8000 if out of band. A lost well (`|dphi|` > 30 deg) fails the node. Once in-band, unconstrained hard IC is skipped; two-stage (`--fast`) does one restrained HL opt at the final k |
 | `--multi-centroid N` | Extra ConfSearch starts; keep the smoothest HL profile. Centroid-0 + orig share one pool; extra starts only if Fourier RMSE exceeds `FFPOPT_CENTROID_FOURIER_MAX` (default 0.5 kcal). Costly on large ligands -- try 0 or 2 before 5 |
 | `--fit-full --fit-backend jax` | Fit FC + phase + period + scee/scnb (default is barrier / FC-only). JAX extra: from the clone, `pip install -e '.[jax]'` (not PyPI `ligandparam[jax]`, which is 1.0.0) |
 | `--boltzmann-charges` | Boltzmann-average charges over centroid mol2s (needs `--multi-centroid >= 2`) |
@@ -105,7 +105,7 @@ Env knobs (`FFPOPT_*`) live in [`src/ffpopt/pkgdata/files/env_defaults.json`](sr
 - **Gaussian** geometry + ESP / RESP; **Amber** Antechamber / `parmchk2` / LEaP
 - **ffpopt fragment twist** (scission + per-fragment wavefront + DIHE merge)
 - **ffpopt whole-ligand twist** (`--whole-ligand` plus optional soft restraint / multi-centroid / full fit)
-- **Wavefront scans** that expand from seeds (coalesced pending jobs, von Neumann N-D neighbors, `--fast` presets; see docs *Wavefront scans*)
+- **Wavefront scans** that expand from seeds (coalesced pending jobs, von Neumann N-D neighbors, outlier rescue, node wall-clock, `--fast` presets; see docs *Wavefront scans*)
 - **ASCII console** for Slurm latin-1 logs (`[wavefront]`, `[twist]`, `[affdo]` scopes)
 - **CLI** for batch param, fragmentation, SMILES -> PDB, Sage conversion
 

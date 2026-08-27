@@ -123,10 +123,11 @@ GenDihedFit matches **profile shape**, not absolute energy zero:
 * Fixed-geometry path: ridge / truncated SVD + energy-domain :math:`V(\phi)`
   barrier; ``|PK|<=25`` is an Amber-safety valve only
 * Nested ``nprim`` AIC (fewest harmonics in the AIC window)
-* Chemical-group table after AIC: alkane cap 5 / reject 20; sulfate or
-  phosphate cap 4 / reject 10; alcohol / ether / amine / thioether cap 8
-  / reject 20; other sp3-sp3 reject 20; unsaturated keep 30 kcal.
-  ``|PK|<=25`` unchanged.
+* Chemical-group table after AIC: alkane (``c3`` / ``c6`` / ``cx`` /
+  ``cy`` / H types) cap 5 / reject 20; sulfate or phosphate cap 4 /
+  reject 10; alcohol / ether / amine / thioether cap 8 / reject 20;
+  other sp3-sp3 reject 20; unsaturated keep 30 kcal. ``c6`` is the
+  parmchk2 sugar analog of ``c3``. ``|PK|<=25`` unchanged.
 * HL/LL scan JSONs are always angle-aligned before fitting
 
 See :doc:`fourier_fit` for why unbounded least squares explodes, and
@@ -146,7 +147,9 @@ system instead of aborting.
 Soft / loose recoveries (``soft-maxiter``, ``*-soft``, ``loose``, ``*-loose``)
 may fill the profile but follow the soft spawn policy (seed once; do not
 displace a lower soft min with a worse hard point). ``--soft-dihed-restraint``
-uses a harmonic k-ramp then an optional hard IC; see :doc:`wavefront`.
+uses a harmonic k-ramp; once in-band, unconstrained hard IC is skipped
+(two-stage does one restrained HL at the final k). A lost well
+(``|dphi|`` above 30 deg) fails the node. See :doc:`wavefront`.
 
 If opts are still unstable:
 

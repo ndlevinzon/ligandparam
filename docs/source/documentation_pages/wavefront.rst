@@ -120,6 +120,19 @@ scan). After the usual energy test, spawn is demoted when:
 The better energy is still stored. ``wf_max_levels`` now stops spawning
 instead of raising.
 
+Outlier rescue
+~~~~~~~~~~~~~~
+
+Inactive BFS nodes never spawn, so a wrong-basin bin can sit forever
+(DDM 240 deg was ~6 kcal above 230/250). After each completion the engine
+inspects that angle and its two cycle neighbors. If the stored min is a
+discrete Laplacian spike
+(``E - 0.5(E_- + E_+) >= FFPOPT_WF_RESCUE_KCAL``, default 2 kcal) or the
+bin failed, it reseeds from the lower-energy neighbor. When both
+neighbors agree, their coordinates are Kabsch-aligned and lerped.
+At most ``FFPOPT_WF_RESCUE_MAX`` retries per bin (default 2). Logs:
+``[wavefront] rescue angle 240 from 230+250 lerp (spike ... kcal)``.
+
 Rigid-rotate seed
 ~~~~~~~~~~~~~~~~~
 
@@ -150,15 +163,18 @@ does **not** hard-snap the scanned dihedral before opt. Before GeomOpt,
 clash keeps the parent Cartesian. The optimizer then sees a harmonic
 spring (default ``k=500`` kcal/mol/rad^2, ``+/-0.5`` deg). If the angle
 is still out of band, ``k`` doubles from the last coordinates up to
-``FFPOPT_SOFT_DIHED_KMAX`` (default 8000). A hard-IC opt then runs from
-those coords unless ``|dphi| <= 0.05`` deg (bias then ~0.003 kcal/mol,
-skipped). MM-only scans (sander ``orig`` / ``itNN``) skip the extra hard
-IC whenever the k-ramp is already in-band; a second ASE/geomeTRIC opt
-was sitting silent for an hour with no wavefront logs. While in-flight
-nodes produce no completions, the drain loop prints
-``waiting: pending=N in-flight=M for Xs`` every 60s
+``FFPOPT_SOFT_DIHED_KMAX`` (default 8000), unless ``|dphi|`` exceeds
+``FFPOPT_SOFT_DIHED_LOST_WELL_DEG`` (default 30 deg): that is a 180 deg
+miss, not a 10 deg neighbor step, so the node fails and waits for
+outlier rescue instead of yanking ``k`` to 1000. Once the k-ramp is
+**in-band**, unconstrained hard IC is skipped (residual at 0.5 deg and
+``k=500`` is ~0.02 kcal/mol). MM-only scans keep the restrained min.
+Two-stage (MM then HL) does one restrained HL opt at the final ``k``.
+While in-flight nodes produce no completions, the drain loop prints
+``waiting: pending=N in-flight=M for Xs angles=...`` every 60s
 (``FFPOPT_WF_HEARTBEAT_SEC``). Precheck still does not hard-snap. Logs:
-``[wavefront]`` for the rigid rotate, ``[affdo]`` for the k-ramp.
+``[wavefront]`` for the rigid rotate, ``[affdo]`` for the k-ramp
+(``HL at final k (skip unconstrained hard IC)`` / ``lost well``).
 
 geomeTRIC recovery
 ~~~~~~~~~~~~~~~~~~
@@ -178,8 +194,9 @@ uniform. Objective: ``d = (hl - ll) - mean(hl - ll)`` (free vertical
 offset). Under fixed geometry, force constants enter linearly
 (ridge / truncated SVD, phase 0). Isolated linear guesses and joint LS share
 the same residual. After AIC, a chemical-group table zeros or caps
-remaining Vptp on alkane, sulfate/phosphate, polar sp3, and generic sp3
-rotors. ``--fit-full`` optionally frees phase /
+remaining Vptp on alkane (including parmchk2 analog ``c6``),
+sulfate/phosphate, polar sp3, and generic sp3 rotors.
+``--fit-full`` optionally frees phase /
 period / scee/scnb (SciPy L-BFGS-B or JAX). See :doc:`fourier_fit`.
 
 Algorithms that keep wall-time down
@@ -191,11 +208,24 @@ MM then HL
 Under ``--fast`` (or ``FFPOPT_MM_THEN_HL=1``), each HL node is a cheap
 constrained min then one dear refine. Sander is used when a ``parm7``
 is on the structure; otherwise tblite GFN-FF. Soft-dihed k-ramps run
-entirely on MM; one XTB / AIMNet2 / QDpi2 opt follows at the final k (in-band) or
-after the MM hard IC. Sander / GFN-FF scans skip this (already cheap).
-Force off with ``FFPOPT_MM_THEN_HL=0``. MM failure falls back to HL from
-the parent Cartesian. Logs: ``[wavefront]`` for the staging, ``[affdo]``
-for k-ramp details.
+entirely on MM; once in-band, one restrained XTB / AIMNet2 / QDpi2 opt
+follows at the final ``k`` (no unconstrained HL hard IC). Sander /
+GFN-FF scans skip this (already cheap). Force off with
+``FFPOPT_MM_THEN_HL=0``. MM failure falls back to HL from the parent
+Cartesian. Logs: ``[wavefront]`` for the staging, ``[affdo]`` for
+k-ramp details.
+
+Node wall-clock
+~~~~~~~~~~~~~~~
+
+A single in-flight HL opt (``pending=0 in-flight=1``) can stall the
+whole node: extra CPUs do not parallelize that SCF. After
+``FFPOPT_WF_NODE_WALL_SEC`` (default 300 s) the worker ``os.fork`` child
+is SIGTERM'd (wavefront pool workers are daemons, so
+``multiprocessing.Process`` is not allowed). The node is marked failed
+and a deferred neighbor seed can run. ``0`` disables. Linux only;
+Windows runs the opt in-process. Logs:
+``[wavefront] node wall timeout (300s) at 280``.
 
 Persistent calculator cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -290,6 +320,9 @@ Independent HL and reference-sander (``orig``) scans share one job
 queue. ``skip_existing`` reuses on-disk JSON **only** when the companion
 ``.dat`` exists and the frame count is exactly ``360/delta``. ``itNN``
 LL rescans warm-start from the prior LL checkpoint when present.
+Fitted ``itNN.frcmod`` is also skipped: after a chemical-group table
+change (for example adding ``c6``), delete the fit files and keep the
+scan ``.dat`` / JSON so the wavefront is not rerun.
 
 Logging
 -------
@@ -298,9 +331,9 @@ Stdout uses a leading ``[scope]`` token. The console formatter peels it
 into ``TIMESTAMP [ffpopt:...] [scope] ...``:
 
 * ``[wavefront]`` - checkpoint found/missing, starting scan, rigid-rotate
-  seed, MM-then-HL staging, min-update / coalesce, node fail, progress,
-  summary, finished
-* ``[affdo]`` - soft-dihed k-ramp, extras, extended-fit chi^2
+  seed, MM-then-HL staging, min-update / coalesce / rescue, node fail /
+  wall timeout, drain heartbeat, progress, summary, finished
+* ``[affdo]`` - soft-dihed k-ramp (in-band / lost well), extras, extended-fit chi^2
 * ``[twist]`` - bond batches, skip_existing, GenDihedFit orchestration
 * ``[ffpopt]`` - geomeTRIC / ASE recovery, Fourier ridge / nprim AIC
 

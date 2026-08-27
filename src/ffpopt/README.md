@@ -123,8 +123,14 @@ deg.
 * **Rigid-rotate seed** - ``RotateMask`` branch twisted by wrapped ``dphi``
   before GeomOpt; clash reverts to the parent Cartesian.
 * **MM then HL** - under ``--fast``, sander (or GFN-FF) min at the target,
-  then one XTB/QDpi2 refine. Soft-dihed: k-ramp on MM, one HL at final k.
-* **Soft-dihed k-ramp** - harmonic ``k`` doubles to 8000, then optional hard IC.
+  then one XTB/QDpi2 refine. Soft-dihed: k-ramp on MM; once in-band, one
+  restrained HL at the final k (no unconstrained hard IC).
+* **Soft-dihed k-ramp** - harmonic ``k`` doubles to 8000 unless ``|dphi|``
+  exceeds 30 deg (lost well). In-band skips unconstrained hard IC.
+* **Outlier rescue** - Laplacian-spike or failed bins reseed from a
+  neighbor (``FFPOPT_WF_RESCUE_*``).
+* **Node wall-clock** - kill an opt after ``FFPOPT_WF_NODE_WALL_SEC``
+  (300 s) so a deferred seed can run.
 
 ## Dihedral fit chi^2
 
@@ -135,8 +141,10 @@ geometry, force constants enter linearly and are solved with ridge /
 truncated SVD plus an energy-domain ``V(phi)`` barrier. ``|PK|<=25`` is
 an Amber-safety valve. Nested ``nprim`` AIC keeps the fewest harmonics
 that fit (see Sphinx ``fourier_fit``). After AIC, a chemical-group table
-zeros or caps remaining Vptp (alkane 5/20, sulfate 4/10, polar sp3 8/20,
-generic sp3 reject 20; amide keeps 30 kcal).
+zeros or caps remaining Vptp (alkane 5/20 including parmchk2 analog
+``c6``, sulfate 4/10, polar sp3 8/20, generic sp3 reject 20; amide
+keeps 30 kcal). Fit keys ``{res}_{types}`` strip the residue prefix
+before classification.
 
 ## AFFDO-style extras (opt-in)
 
@@ -150,7 +158,7 @@ Fragmented twist remains the default. For whole-ligand / AFFDO-like runs::
 |------|----------|
 | ``--whole-ligand`` | No scission; twist parent rotatable bonds |
 | ``--multi-centroid N`` | ConfSearch starts; pick smoothest HL profile (Fourier + roughness). Centroid-0 + ``orig`` share one CPU pool; extra starts only if Fourier RMSE exceeds ``FFPOPT_CENTROID_FOURIER_MAX`` (default 0.5 kcal). |
-| ``--soft-dihed-restraint`` | Harmonic dihedral spring (500 kcal/mol/rad^2, +/-0.5 deg) via geomeTRIC + ASE |
+| ``--soft-dihed-restraint`` | Harmonic dihedral spring (500 kcal/mol/rad^2, +/-0.5 deg). In-band skips unconstrained hard IC; lost well (``|dphi|`` > 30 deg) fails the node. |
 | ``--fit-full`` / ``--fit-mode`` | FC + phase + period + scee/scnb (default remains barrier-only) |
 | ``--fit-backend jax`` | L-BFGS-B with JAX autodiff (``pip install -e '.[jax]'`` from the clone; conda-forge ``jax`` on HPC) |
 | ``--boltzmann-charges`` | Average centroid mol2 charges (when available) |
