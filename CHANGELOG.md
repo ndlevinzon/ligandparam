@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **MM-only hard-IC stall** - sander rescans with ``--soft-dihed-restraint``
+  logged ``in-band at k=500; finishing with hard IC`` then went silent for
+  an hour. The drain loop only prints on checkpoint, so a long ASE/geomeTRIC
+  hard IC looks hung. In-band MM k-ramps now skip that second opt (HL
+  two-stage still does one hard IC unless ``|dphi| <= 0.05`` deg). The
+  drain loop heartbeats every 60s (``FFPOPT_WF_HEARTBEAT_SEC``) with
+  pending/in-flight angles.
+
 - **Nested bond leftover waves** - a phase-2 correlated fragment (no
   shared CPU budget) dumped all 8 bonds into a 6-worker pool at
   ``wf_nproc=10``. After 6 finished, the last two stayed at 10 workers
@@ -65,8 +73,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Success quote** - after ``lig-dihed-correct`` writes a dihedral
   frcmod with no failed fragments, stdout logs
-  ``LIGANDPARAM reminds you: "..."`` from a random line in
-  ``src/ligandparam/pkgdata/quotes.txt`` (one quote per line).
+  ``YYYY-mm-dd HH:MM:SS [ligandparam] INFO: LIGANDPARAM reminds you: ...``
+  from a random line in ``src/ligandparam/pkgdata/quotes.txt`` (one quote
+  per line; spoken quotes in the file are kept, not wrapped again).
 
 - **Two-phase fragment CPU schedule** - cheap 1-D fragments (1-2 fit
   bonds) share ``-n`` in parallel first. Correlated / AFFDO-style

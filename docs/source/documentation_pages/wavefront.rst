@@ -133,8 +133,13 @@ spring (default ``k=500`` kcal/mol/rad^2, ``+/-0.5`` deg). If the angle
 is still out of band, ``k`` doubles from the last coordinates up to
 ``FFPOPT_SOFT_DIHED_KMAX`` (default 8000). A hard-IC opt then runs from
 those coords unless ``|dphi| <= 0.05`` deg (bias then ~0.003 kcal/mol,
-skipped). Precheck still does not hard-snap. Logs: ``[wavefront]`` for
-the rigid rotate, ``[affdo]`` for the k-ramp.
+skipped). MM-only scans (sander ``orig`` / ``itNN``) skip the extra hard
+IC whenever the k-ramp is already in-band; a second ASE/geomeTRIC opt
+was sitting silent for an hour with no wavefront logs. While in-flight
+nodes produce no completions, the drain loop prints
+``waiting: pending=N in-flight=M for Xs`` every 60s
+(``FFPOPT_WF_HEARTBEAT_SEC``). Precheck still does not hard-snap. Logs:
+``[wavefront]`` for the rigid rotate, ``[affdo]`` for the k-ramp.
 
 geomeTRIC recovery
 ~~~~~~~~~~~~~~~~~~

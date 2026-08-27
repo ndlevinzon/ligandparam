@@ -46,6 +46,10 @@
   // Completed nodes between wavefront checkpoints. null = nproc (x4 if --fast).
   "FFPOPT_WF_CHECKPOINT_EVERY": null,
 
+  // Drain-loop heartbeat while in-flight nodes produce no completions (sec).
+  // 0 = disable. Stops a long hard-IC opt from looking like a hang.
+  "FFPOPT_WF_HEARTBEAT_SEC": 60,
+
   // Write per-node pickles after successful opts. Failures always write.
   // null = off under --fast, on otherwise.
   "FFPOPT_WF_NODE_PICKLE": null,

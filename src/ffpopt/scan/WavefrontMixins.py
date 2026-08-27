@@ -239,6 +239,49 @@ SOFT_DIHED_TOL_DEFAULT = 0.5
 SOFT_DIHED_HARD_IC_SKIP_DEG = 0.05
 
 
+def skip_hard_ic_after_inband(*, two_stage: bool, dphi_deg: float | None) -> bool:
+    """True when an in-band k-ramp should not start a second hard-IC opt.
+
+    Tiny ``|dphi|`` is always skippable (bias is below DFT noise). MM-only
+    scans (no HL stage) also skip: the restrained min *is* the profile, and
+    the follow-up ASE/geomeTRIC hard IC can sit silent for an hour.
+    """
+    if dphi_deg is not None and float(dphi_deg) <= SOFT_DIHED_HARD_IC_SKIP_DEG:
+        return True
+    return not two_stage
+
+
+def format_drain_wait_line(
+    *,
+    pending: int,
+    in_flight: int,
+    waited_sec: float,
+    nodes=(),
+) -> str:
+    """Heartbeat line while the drain loop has in-flight work but no completions."""
+    parts = [
+        f"waiting: pending={int(pending)} in-flight={int(in_flight)} "
+        f"for {int(waited_sec)}s"
+    ]
+    labels = []
+    for node in nodes:
+        ang = getattr(node, "angle", None)
+        if ang is not None:
+            try:
+                labels.append(str(int(round(float(ang))) % 360))
+            except (TypeError, ValueError):
+                labels.append(f"id={getattr(node, 'node_id', '?')}")
+        else:
+            labels.append(f"id={getattr(node, 'node_id', '?')}")
+    if labels:
+        shown = labels[:8]
+        extra = ",".join(shown)
+        if len(labels) > 8:
+            extra += f"+{len(labels) - 8}"
+        parts.append(f"angles={extra}")
+    return " ".join(parts)
+
+
 def soft_dihed_k_schedule(k0, kmax, *, max_steps: int = 8) -> list[float]:
     """``k0, 2 k0, 4 k0, ...`` up to ``kmax`` (inclusive when reachable)."""
     k = float(k0)
@@ -632,14 +675,24 @@ def run_soft_dihed_opt(
                 if last_z is not None
                 else None
             )
-            if dphi is not None and dphi <= SOFT_DIHED_HARD_IC_SKIP_DEG:
+            if skip_hard_ic_after_inband(two_stage=two_stage, dphi_deg=dphi):
                 skip_hard = True
-                print(
-                    f"[affdo] {tag}: in-band at k={k:g}; "
-                    f"|dphi|={dphi:.3f} deg <= {SOFT_DIHED_HARD_IC_SKIP_DEG:g} "
-                    f"deg; skipping hard IC",
-                    flush=True,
-                )
+                if (
+                    dphi is not None
+                    and dphi <= SOFT_DIHED_HARD_IC_SKIP_DEG
+                ):
+                    print(
+                        f"[affdo] {tag}: in-band at k={k:g}; "
+                        f"|dphi|={dphi:.3f} deg <= {SOFT_DIHED_HARD_IC_SKIP_DEG:g} "
+                        f"deg; skipping hard IC",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"[affdo] {tag}: in-band at k={k:g}; "
+                        f"skipping hard IC (MM-only wavefront)",
+                        flush=True,
+                    )
             else:
                 print(
                     f"[affdo] {tag}: in-band at k={k:g}; finishing with hard IC "
@@ -701,19 +754,24 @@ def run_soft_dihed_opt(
                 "HL hard IC from last soft coords"
             )
         print(f"[affdo] {tag}: one HL hard IC (warm start)", flush=True)
-        return opt_fn(
+        out = opt_fn(
             los,
             hard_start,
             constraints=constraints,
             geom_prefix=geom_prefix,
         )
+        print(f"[affdo] {tag}: hard IC done", flush=True)
+        return out
 
-    return opt_fn(
+    print(f"[affdo] {tag}: hard IC running", flush=True)
+    out = opt_fn(
         los,
         hard_start,
         constraints=constraints,
         geom_prefix=geom_prefix,
     )
+    print(f"[affdo] {tag}: hard IC done", flush=True)
+    return out
 
 
 def empty_scan_error_message(wavefront, out_path) -> str:
@@ -1234,6 +1292,7 @@ def run_mp_spawn_drain_loop(
     terminate_pool: bool = True,
     on_dispatch=None,
     on_skip=None,
+    heartbeat_sec: float | None = None,
 ) -> None:
     """Shared multiprocessing drain loop for 1-D and N-D wavefront scans.
 
@@ -1243,12 +1302,23 @@ def run_mp_spawn_drain_loop(
 
     ``on_dispatch`` is called when a node is about to run (pending -> in-flight).
     ``on_skip`` is called when a queued node is dropped as inactive.
+    While in-flight work produces no completions, a heartbeat line is printed
+    every ``heartbeat_sec`` (``FFPOPT_WF_HEARTBEAT_SEC``, default 60; ``0``
+    disables) so a long hard-IC opt is not mistaken for a hang.
     """
     import time
+
+    from ffpopt.runtime.EnvDefaults import env_float
+
+    if heartbeat_sec is None:
+        heartbeat_sec = float(env_float("FFPOPT_WF_HEARTBEAT_SEC", 60.0))
+    heartbeat_sec = max(0.0, float(heartbeat_sec))
 
     try:
         in_flight = {}
         since_checkpoint = 0
+        last_progress = time.monotonic()
+        last_heartbeat = last_progress
         while pending or in_flight:
             while pending and len(in_flight) < nproc:
                 node = pending.popleft()
@@ -1281,7 +1351,24 @@ def run_mp_spawn_drain_loop(
                         pending.extend(on_complete(node))
                         since_checkpoint += 1
                         progressed = True
-                if not progressed:
+                now = time.monotonic()
+                if progressed:
+                    last_progress = now
+                    last_heartbeat = now
+                else:
+                    if (
+                        heartbeat_sec > 0
+                        and now - last_heartbeat >= heartbeat_sec
+                    ):
+                        print_wavefront(
+                            format_drain_wait_line(
+                                pending=len(pending),
+                                in_flight=len(in_flight),
+                                waited_sec=now - last_progress,
+                                nodes=list(in_flight.values()),
+                            )
+                        )
+                        last_heartbeat = now
                     time.sleep(0.05)
 
             if since_checkpoint >= checkpoint_every:

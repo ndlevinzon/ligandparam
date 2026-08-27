@@ -85,7 +85,10 @@ angle, then one high-level (XTB / QDpi2) refine from those coordinates.
 
 **Detail.** Default on under `--fast` for non-MM models (`FFPOPT_MM_THEN_HL`).
 Soft-dihed runs the k-ramp on MM and does one HL opt at the final k or after
-the MM hard IC. Stored node energies are always the HL values.
+the MM hard IC. MM-only (sander) scans skip the extra hard IC when the
+k-ramp is already in-band. Stored node energies are always the HL values.
+The drain loop heartbeats every 60s while in-flight nodes produce no
+completions (`FFPOPT_WF_HEARTBEAT_SEC`).
 
 **Authoritative source.** `src/ffpopt/scan/WavefrontMixins.py`
 (`geomopt_mm_then_hl`, `run_soft_dihed_opt`)

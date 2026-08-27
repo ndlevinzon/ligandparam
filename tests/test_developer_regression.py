@@ -568,6 +568,32 @@ class TestWavefrontMixinHelpers(unittest.TestCase):
             np.asarray(kept.data["positions"], dtype=float), crd
         )
 
+    def test_skip_hard_ic_after_inband_mm_only(self):
+        from ffpopt.scan.WavefrontMixins import skip_hard_ic_after_inband
+
+        self.assertTrue(
+            skip_hard_ic_after_inband(two_stage=False, dphi_deg=0.2)
+        )
+        self.assertFalse(
+            skip_hard_ic_after_inband(two_stage=True, dphi_deg=0.2)
+        )
+        self.assertTrue(
+            skip_hard_ic_after_inband(two_stage=True, dphi_deg=0.01)
+        )
+
+    def test_format_drain_wait_line(self):
+        from types import SimpleNamespace
+        from ffpopt.scan.WavefrontMixins import format_drain_wait_line
+
+        line = format_drain_wait_line(
+            pending=2,
+            in_flight=7,
+            waited_sec=3600,
+            nodes=[SimpleNamespace(angle=80), SimpleNamespace(angle=90)],
+        )
+        self.assertIn("waiting: pending=2 in-flight=7 for 3600s", line)
+        self.assertIn("angles=80,90", line)
+
 
 class TestScissionHelpers(unittest.TestCase):
     def test_safe_name_and_param_key(self):
@@ -753,7 +779,15 @@ class TestLoggingContracts(unittest.TestCase):
 
             self.assertEqual(
                 format_reminder_line("hello"),
-                'LIGANDPARAM reminds you: "hello"',
+                "LIGANDPARAM reminds you: hello",
+            )
+            self.assertEqual(
+                format_reminder_line(
+                    '"It is nothing to die; it is dreadful not to live."'
+                    " - Victor Hugo, Les Miserables"
+                ),
+                'LIGANDPARAM reminds you: "It is nothing to die; '
+                'it is dreadful not to live." - Victor Hugo, Les Miserables',
             )
             self.assertFalse(dihed_correct_ok(None))
             self.assertFalse(dihed_correct_ok({"merged_frcmod": "/no/such.frcmod"}))
@@ -774,7 +808,11 @@ class TestLoggingContracts(unittest.TestCase):
             with patch("sys.stdout", io.StringIO()) as buf:
                 picked = log_success_quote(quotes_path=path)
             self.assertIn(picked, ("first quote", "wrapped"))
-            self.assertIn('LIGANDPARAM reminds you: "', buf.getvalue())
+            out = buf.getvalue()
+            self.assertIn("[ligandparam]", out)
+            self.assertIn("INFO:", out)
+            self.assertIn("LIGANDPARAM reminds you:", out)
+            self.assertNotIn('reminds you: "', out)
 
     def test_print_affdo_strips_non_ascii(self):
         from ffpopt.affdo.AffdoLog import print_affdo

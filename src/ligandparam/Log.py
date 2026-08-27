@@ -40,10 +40,14 @@ def load_quotes(path: Path | None = None) -> list[str]:
 
 
 def format_reminder_line(quote: str) -> str:
-    """Return the success reminder line for one quote."""
+    """Return the success reminder line for one quote.
+
+    The quotes file already wraps spoken text in ``"..."``; this does not
+    add a second pair around the whole line.
+    """
     from ffpopt.runtime.Console import ascii_for_stdio
 
-    return ascii_for_stdio(f'LIGANDPARAM reminds you: "{quote}"')
+    return ascii_for_stdio(f"LIGANDPARAM reminds you: {quote}")
 
 
 def log_success_quote(
@@ -51,18 +55,29 @@ def log_success_quote(
     *,
     quotes_path: Path | None = None,
 ) -> Optional[str]:
-    """Pick a random quote and write it to the logger and stdout.
+    """Pick a random quote and print it with the console log prefix.
 
-    No-op when the quotes file is missing or has no usable lines.
+    Writes one stdout line::
+
+        YYYY-mm-dd HH:MM:SS [ligandparam] INFO: LIGANDPARAM reminds you: ...
+
+    ``logger`` is accepted for call-site compatibility but is not used to
+    emit a second copy. No-op when the quotes file is missing or empty.
     """
     quotes = load_quotes(quotes_path)
     if not quotes:
         return None
+    from ffpopt.runtime.Console import format_console_line
+
+    _ = logger
     quote = random.choice(quotes)
     line = format_reminder_line(quote)
-    if logger is not None:
-        logger.info("%s", line)
-    print(line, file=sys.stdout, flush=True)
+    print(
+        format_console_line(f"INFO: {line}", tag="ligandparam"),
+        end="",
+        file=sys.stdout,
+        flush=True,
+    )
     return quote
 
 
