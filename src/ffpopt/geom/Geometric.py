@@ -130,9 +130,13 @@ def patch_geometric_tmp_makedirs() -> None:
 
 def apply_geometric_compat_patches() -> None:
     """Install all ffpopt <-> geomeTRIC compatibility patches."""
-    from ffpopt.runtime.Console import install_stale_handle_logging_guard
+    from ffpopt.runtime.Console import (
+        install_ase_futurewarning_filter,
+        install_stale_handle_logging_guard,
+    )
 
     install_stale_handle_logging_guard()
+    install_ase_futurewarning_filter()
     patch_constrained_cartesian_fallback()
     patch_brent_not_bracketed()
     patch_geometric_tmp_makedirs()
@@ -903,7 +907,6 @@ def _run_geometric_with_watchdog(
         stall_timeout_sec = _geometric_stall_timeout_sec()
 
     child_env = os.environ.copy()
-    #child_env["PYTHONWARNINGS"] = "ignore:ignore_bad_restart_file:FutureWarning"
 
     proc = subp.Popen(cmds, text=True, env=child_env,
                       start_new_session=True)

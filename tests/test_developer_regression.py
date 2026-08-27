@@ -732,6 +732,26 @@ class TestLoggingContracts(unittest.TestCase):
         console_mod._BANNER_PRINTED = False
         os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
 
+    def test_ase_ignore_bad_restart_file_warning_filtered(self):
+        import warnings
+        from ffpopt.runtime.Console import install_ase_futurewarning_filter
+
+        install_ase_futurewarning_filter()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.warn(
+                'The keyword "ignore_bad_restart_file" is deprecated and '
+                "will be removed in a future version of ASE.  Passing more "
+                "than one positional argument to Calculator is also deprecated.",
+                FutureWarning,
+                stacklevel=1,
+            )
+        self.assertFalse(
+            any("ignore_bad_restart_file" in str(w.message) for w in caught)
+        )
+        self.assertIn(
+            "ignore_bad_restart_file", os.environ.get("PYTHONWARNINGS", "")
+        )
+
     def test_stale_file_handle_logging_guard(self):
         import io
         import logging

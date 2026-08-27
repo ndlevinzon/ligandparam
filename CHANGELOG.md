@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **ASE ``ignore_bad_restart_file`` FutureWarning** - ``ase.calculators.amber.SANDER``
+  still uses the deprecated Calculator constructor, so every spawn worker
+  reprinted the warning to stderr. The warning is filtered at process
+  start (and via ``PYTHONWARNINGS`` for child interpreters); our MOPAC
+  wrapper no longer forwards that keyword.
+
 - **VAST stale log handles** - geomeTRIC's ``RawFileHandler`` flush on
   scratch raises ``OSError: [Errno 116] Stale file handle``; Python then
   dumps a ``Logging error`` traceback per optimizer step in spawn

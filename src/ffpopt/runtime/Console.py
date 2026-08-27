@@ -134,6 +134,41 @@ def install_stale_handle_logging_guard() -> None:
     logging.StreamHandler.flush = _flush
 
 
+def install_ase_futurewarning_filter() -> None:
+    """Silence ASE ``ignore_bad_restart_file`` FutureWarning (stderr flood).
+
+    ``ase.calculators.amber.SANDER`` still calls ``Calculator`` with extra
+    positional args / that deprecated keyword. Each spawn worker would
+    otherwise print the same warning on every calculator build.
+
+    ``PYTHONWARNINGS`` is also set so multiprocessing spawn workers and
+    geomeTRIC child interpreters apply the same filter at startup.
+    """
+    import os
+    import warnings
+
+    if getattr(install_ase_futurewarning_filter, "_done", False):
+        return
+    warnings.filterwarnings(
+        "ignore",
+        category=FutureWarning,
+        message=r".*ignore_bad_restart_file.*",
+        module=r"ase\.calculators(\.calculator)?",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        category=FutureWarning,
+        message=r".*ignore_bad_restart_file.*",
+    )
+    extra = "ignore:.*ignore_bad_restart_file:FutureWarning"
+    existing = os.environ.get("PYTHONWARNINGS", "")
+    if "ignore_bad_restart_file" not in existing:
+        os.environ["PYTHONWARNINGS"] = (
+            f"{existing},{extra}" if existing else extra
+        )
+    install_ase_futurewarning_filter._done = True  # type: ignore[attr-defined]
+
+
 def ascii_for_stdio(text: str) -> str:
     """Return ``text`` encoded as ASCII suitable for stdout / Slurm logs."""
     if not text or text.isascii():
@@ -183,6 +218,7 @@ class _AsciiStdio:
 def ensure_ascii_stdio() -> None:
     """Wrap ``sys.stdout`` / ``sys.stderr`` so print() cannot emit non-ASCII."""
     install_stale_handle_logging_guard()
+    install_ase_futurewarning_filter()
     for attr in ("stdout", "stderr"):
         stream = getattr(sys, attr, None)
         if stream is None or getattr(stream, "_lp_ascii_stdio", False):

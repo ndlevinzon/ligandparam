@@ -39,6 +39,10 @@ pin_math_threads(1)
 from ase.calculators.calculator import Calculator, all_changes
 from collections import defaultdict as ddict
 
+from ffpopt.runtime.Console import install_ase_futurewarning_filter
+
+install_ase_futurewarning_filter()
+
 from ffpopt.AmberParm import CopyParm
 
 
@@ -653,7 +657,8 @@ class SanderCalculator(Calculator):
         self.calc = SANDER(top=self.parm,
                            crd=self.mol,
                            mm_options=self.mm_options)
-        Calculator.__init__(self,**kwargs)
+        kwargs.pop("ignore_bad_restart_file", None)
+        Calculator.__init__(self, **kwargs)
 
     def calculate(self,
                   atoms=None,
@@ -733,7 +738,8 @@ class SanderSQMCalculator(Calculator):
                            qm_options=self.qm_options)
         
         
-        Calculator.__init__(self,**kwargs)
+        kwargs.pop("ignore_bad_restart_file", None)
+        Calculator.__init__(self, **kwargs)
 
     def calculate(self,
                   atoms=None,

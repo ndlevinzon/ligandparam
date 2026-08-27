@@ -102,9 +102,10 @@ class MOPAC(FileIOCalculator):
         """
         if label is None:
             label = generate_temp_filename()
-        
-        FileIOCalculator.__init__(self, restart, ignore_bad_restart_file,
-                                  label, atoms, **kwargs)
+        kwargs.pop("ignore_bad_restart_file", None)
+        FileIOCalculator.__init__(
+            self, restart=restart, label=label, atoms=atoms, **kwargs
+        )
 
         
         

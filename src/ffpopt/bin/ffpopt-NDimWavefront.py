@@ -1,14 +1,5 @@
 #!python
 
-# import warnings
-
-# warnings.filterwarnings(
-#     "ignore", 
-#     category=FutureWarning, 
-#     message=r'.*ignore_bad_restart_file.*'
-# )
-
-    
 if __name__ == "__main__":
     import argparse
     from ffpopt.Options import AddStandardOptions
