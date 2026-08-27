@@ -4061,6 +4061,81 @@ class TestSrcImportGraph(unittest.TestCase):
         self.assertEqual(broken, [], "unresolved in-tree imports:\n" + "\n".join(broken))
 
 
+class TestGaussianOrientationBudget(unittest.TestCase):
+    def test_mem_is_split_not_replicated(self):
+        from ffpopt.runtime.FastWavefront import (
+            split_core_budget,
+            split_gaussian_orientation_budget,
+        )
+
+        # Old breadth+flatten plan: 28 workers x 1 core, each with the
+        # full --mem (the Triton OOM).
+        self.assertEqual(split_core_budget(60, 28), (28, 1))
+
+        n_workers, job_nproc, job_mem = split_gaussian_orientation_budget(
+            60, 28, 32
+        )
+        self.assertGreaterEqual(job_mem, 4)
+        self.assertLessEqual(n_workers * job_nproc, 60)
+        self.assertLessEqual(n_workers * job_mem, 32)
+        self.assertLess(n_workers, 28)
+        self.assertGreater(job_nproc, 1)
+
+    def test_tiny_mem_stays_serial(self):
+        from ffpopt.runtime.FastWavefront import split_gaussian_orientation_budget
+
+        n_workers, job_nproc, job_mem = split_gaussian_orientation_budget(
+            60, 28, 1
+        )
+        self.assertEqual((n_workers, job_nproc, job_mem), (1, 60, 1))
+
+    def test_gaussian_failure_includes_returncode(self):
+        import tempfile
+        from unittest.mock import patch
+
+        from ligandparam.Interfaces import Gaussian
+
+        class _Proc:
+            returncode = 137
+            stdout = b""
+            stderr = b"Killed"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gau = Gaussian(
+                cwd=tmp,
+                gaussian_root="",
+                gauss_exedir="",
+                gaussian_binary="g16",
+                gaussian_scratch="",
+            )
+            with patch(
+                "ligandparam.Interfaces.subprocess.run", return_value=_Proc()
+            ):
+                with self.assertRaises(RuntimeError) as ctx:
+                    gau.call(inp_pipe="job.com", out_pipe="job.log")
+        msg = str(ctx.exception)
+        self.assertIn("returncode=137", msg)
+        self.assertIn("OOM", msg)
+
+    def test_parmhelper_sed_escape_is_valid(self):
+        import warnings
+        from pathlib import Path
+
+        src = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "ligandparam"
+            / "multiresp"
+            / "ParmHelper.py"
+        )
+        text = src.read_text(encoding="utf-8")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", SyntaxWarning)
+            compile(text, str(src), "exec")
+        syn = [w for w in caught if issubclass(w.category, SyntaxWarning)]
+        self.assertEqual(syn, [], [str(w.message) for w in syn])
+
+
 class TestRecipeDefaultsIsolation(unittest.TestCase):
     def test_fresh_defaults_not_shared(self):
         from ligandparam.Parametrization import fresh_recipe_defaults

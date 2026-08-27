@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Gaussian orientation ESP OOM** - Rotate pooled 28 ``so3_n28`` jobs as
+  ``n_jobs x 1`` core and wrote the full ``--mem`` into every ``%MEM``
+  header (Triton: 28 x 32 GB on a 32 GB node; ``slurmstepd`` reported
+  6 ``oom_kill`` events). The empty ``RuntimeError`` from ``gau.call``
+  hid the kill. Cores and GB are now split
+  (``n_workers * %NProc <= --nproc``, ``n_workers * %MEM <= --mem``,
+  at least 4 GB per job unless the allocation is smaller). Failed
+  Gaussian / Amber subprocesses include returncode, SIGKILL / OOM hint,
+  and stderr. ``ParmHelper`` slurm ``sed`` no longer uses an invalid
+  ``\!`` escape (SyntaxWarning on Python 3.12+).
+
 ## [1.6.1] - 2026-08-27
 
 ### Added

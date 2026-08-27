@@ -10,6 +10,39 @@ from pathlib import Path
 from ligandparam.Log import get_logger
 
 
+def _pipe_text(blob) -> str:
+    """Decode subprocess PIPE bytes for logs / exception messages."""
+    if blob is None:
+        return ""
+    if isinstance(blob, bytes):
+        return blob.decode("utf-8", errors="replace")
+    return str(blob)
+
+
+def _subprocess_failure_message(cwd, p, tool: str = "Command") -> str:
+    """Build a RuntimeError body from a failed ``subprocess.run`` result."""
+    stdout = _pipe_text(p.stdout).strip()
+    stderr = _pipe_text(p.stderr).strip()
+    rc = p.returncode
+    hint = ""
+    if rc in (-9, 9, 137):
+        hint = (
+            " Process was SIGKILL'd (often the Slurm OOM killer). "
+            "For orientation ESP, --mem is the node budget and is split "
+            "across concurrent jobs."
+        )
+
+    def _tail(text: str, n: int = 1500) -> str:
+        return text[-n:] if len(text) > n else text
+
+    parts = [f"{tool} at {cwd} failed (returncode={rc}).{hint}"]
+    if stderr:
+        parts.append(f"stderr: {_tail(stderr)}")
+    if stdout:
+        parts.append(f"stdout: {_tail(stdout)}")
+    return " ".join(parts)
+
+
 class SimpleInterface:
     """Base wrapper for calling an external program.
 
@@ -102,10 +135,9 @@ class SimpleInterface:
                 env=env,
             )
             if p.returncode != 0:
-                self.logger.error(f"Command at {self.cwd} failed.")
-                self.logger.error(p.stdout)
-                self.logger.error(p.stderr)
-                raise RuntimeError(p.stderr)
+                msg = _subprocess_failure_message(self.cwd, p, tool=self.method)
+                self.logger.error(msg)
+                raise RuntimeError(msg)
 
         return
 
@@ -262,10 +294,9 @@ class Gaussian(SimpleInterface):
                 env=env,
             )
             if p.returncode != 0:
-                self.logger.error(f"Gaussian run at {self.cwd} failed.")
-                self.logger.error(p.stdout)
-                self.logger.error(p.stderr)
-                raise RuntimeError
+                msg = _subprocess_failure_message(self.cwd, p, tool="Gaussian")
+                self.logger.error(msg)
+                raise RuntimeError(msg)
 
         return
 

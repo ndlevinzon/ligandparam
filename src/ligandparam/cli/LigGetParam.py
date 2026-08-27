@@ -180,7 +180,17 @@ def main():
     parser.add_argument("--sqm", action="store_true", help="Use SQM calculations")
     parser.add_argument("-rn", "--recipe_name", type=str, required=True, help="Recipe name for the ligand processing")
     parser.add_argument("-n", "--nproc", type=int, default=1, help="Number of processes to use (default: 1)")
-    parser.add_argument("-mem", "--mem", type=int, default=1, help="Memory in GB to allocate for the process (default: 1GB)")
+    parser.add_argument(
+        "-mem",
+        "--mem",
+        type=int,
+        default=1,
+        help=(
+            "Node memory budget in GB, split across concurrent orientation "
+            "ESP jobs (default: 1). Do not set this to the per-job Gaussian "
+            "request; n_workers * %%MEM <= this value."
+        ),
+    )
     parser.add_argument("-ref", "--reference_pdb", type=str, default=None, help="Reference PDB file for name fixing (optional)")
     parser.add_argument(
         "-O",

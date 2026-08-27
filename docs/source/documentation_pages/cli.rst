@@ -66,6 +66,10 @@ Notes
 -----
 
 * ``-d`` / ``-r`` match between ``lig-getparam`` and the post-processing CLIs.
+* ``lig-getparam --mem`` is the **node** Gaussian budget (GB). Orientation ESP
+  splits it across concurrent jobs (``n_workers * %MEM <= --mem``). Writing
+  the full allocation into every ``.com`` OOM-kills the node (Triton Rotate
+  on 60 cores / 32 GB). Leave a few GB in the Slurm request for Python / OS.
 * ``--label`` is the recipe **file stem** (e.g. ``chaps`` from ``chaps.mol2``),
   not necessarily the residue name (``CHA``).
 * Outputs for dihedral correction default to ``{label}.dihed.frcmod`` beside

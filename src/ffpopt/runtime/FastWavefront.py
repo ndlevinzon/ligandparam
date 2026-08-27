@@ -202,9 +202,52 @@ def split_core_budget(total_cores: int, n_jobs: int) -> tuple[int, int]:
     """Split a core budget across concurrent jobs (breadth-first).
 
     Equivalent to :func:`split_nproc_for_items` with ``prefer_depth=False``.
-    Prefer this name from ESP / Gaussian pool callers.
+    Flattening (``n_jobs x 1``) is for nested wavefront spawn, not for
+    Gaussian orientation ESP (use :func:`split_gaussian_orientation_budget`).
     """
     return split_nproc_for_items(total_cores, n_jobs, prefer_depth=False)
+
+
+_MIN_GAUSSIAN_JOB_MEM_GB = 4
+
+
+def split_gaussian_orientation_budget(
+    nproc: int,
+    n_jobs: int,
+    mem_gb: int,
+    *,
+    min_mem_gb: int = _MIN_GAUSSIAN_JOB_MEM_GB,
+) -> tuple[int, int, int]:
+    """Split cores and GB across concurrent Gaussian orientation ESP jobs.
+
+    Returns ``(n_workers, job_nproc, job_mem_gb)`` with
+    ``n_workers * job_nproc <= nproc`` and
+    ``n_workers * job_mem_gb <= mem_gb`` (each at least 1).
+
+    Does **not** flatten to one core per orientation. Flattening 28 ESP
+    jobs each with the full ``--mem`` is what OOM-killed a 60-core / 32 GB
+    Triton Rotate stage (``slurmstepd`` ``oom_kill``). Concurrent jobs are
+    capped so each receives at least ``min_mem_gb`` (or the full allocation
+    if ``mem_gb`` is smaller).
+    """
+    nproc = max(1, int(nproc))
+    n_jobs = max(1, int(n_jobs))
+    mem_gb = max(1, int(mem_gb))
+    min_mem_gb = max(1, int(min_mem_gb))
+    floor = min(min_mem_gb, mem_gb)
+    max_by_mem = max(1, mem_gb // floor)
+    n_cap = min(n_jobs, nproc, max_by_mem)
+    n_workers, job_nproc = split_nproc_for_items(
+        nproc,
+        n_cap,
+        prefer_depth=True,
+        min_inner=1,
+        flatten_nested=False,
+    )
+    n_workers = max(1, int(n_workers))
+    job_nproc = max(1, int(job_nproc))
+    job_mem = max(1, mem_gb // n_workers)
+    return n_workers, job_nproc, job_mem
 
 
 def is_sander_like_model(model: str | None) -> bool:

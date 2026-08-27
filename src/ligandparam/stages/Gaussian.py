@@ -19,7 +19,9 @@ from ligandparam.io.Orientations import (
 )
 from ligandparam.Interfaces import Gaussian, Antechamber
 from ligandparam.Log import get_logger
-from ffpopt.runtime.FastWavefront import split_core_budget as split_gaussian_job_budget
+from ffpopt.runtime.FastWavefront import (
+    split_gaussian_orientation_budget,
+)
 
 #
 logger = logging.getLogger("ligandparam.gaussian")
@@ -148,7 +150,7 @@ def _run_gaussian_rotation_job(payload: dict) -> dict:
     _set(
         status="running",
         stage="gaussian",
-        detail=f"{out_log} | %NProc={payload.get('job_nproc', '?')}",
+        detail=f"{out_log} | %NProc={payload.get('job_nproc', '?')} %MEM={payload.get('job_mem', '?')}GB",
         log_path=str(log_path),
     )
     try:
@@ -177,7 +179,7 @@ def _run_gaussian_rotation_job(payload: dict) -> dict:
             status="failed",
             stage="failed",
             detail=type(exc).__name__,
-            error=str(exc)[:200],
+            error=str(exc)[:500],
         )
         raise
 
@@ -590,6 +592,10 @@ class StageGaussianRotation(AbstractStage):
     nproc : int, optional
         Total core budget for this stage. Concurrent jobs and per-job
         ``%NProc`` are chosen so ``n_workers * %NProc <= nproc``.
+    mem : int, optional
+        Total memory budget (GB). Split across concurrent jobs so
+        ``n_workers * %MEM <= mem`` (each job also gets at least 4 GB
+        unless the allocation is smaller).
     """
 
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
@@ -670,8 +676,9 @@ class StageGaussianRotation(AbstractStage):
             Always returns False (rotation calculations are not pre-completed).
         """
         job_nproc = getattr(self, "_job_nproc", None) or self.nproc
+        job_mem = getattr(self, "_job_mem", None) or self.mem
         self.header = [f"%NPROC={job_nproc}",
-                       f"%MEM={self.mem}GB"]
+                       f"%MEM={job_mem}GB"]
 
         # __init__ tries to set up the coordinates object, but it may not have been available at init time.
         if not getattr(self, "coord_object", None):
@@ -719,8 +726,9 @@ class StageGaussianRotation(AbstractStage):
     def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
         """Execute Gaussian RESP calculations for each rotated ligand.
 
-        Pools over ``.com`` jobs. ``nproc`` is the total core budget: workers and
-        per-job ``%NProc`` satisfy ``n_workers * %NProc <= nproc``.
+        Pools over ``.com`` jobs. ``nproc`` and ``mem`` are the **node**
+        budgets: workers, per-job ``%NProc``, and per-job ``%MEM`` satisfy
+        ``n_workers * %NProc <= nproc`` and ``n_workers * %MEM <= mem``.
 
         Parameters
         ----------
@@ -729,7 +737,9 @@ class StageGaussianRotation(AbstractStage):
         nproc : int, optional
             Total processor budget for concurrent orientation jobs.
         mem : int, optional
-            Amount of memory to use (in GB) written into each ``%MEM`` header.
+            Total memory budget (GB) split across concurrent ``%MEM`` headers.
+            Do not treat this as per-job memory: writing the full allocation
+            into every orientation ``.com`` OOM-kills the node.
         """
         import multiprocessing as mp
 
@@ -738,12 +748,16 @@ class StageGaussianRotation(AbstractStage):
         # Prefer self. so subclasses / tests can override or patch setup.
         self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         n_orients = self._n_orientation_count()
-        n_workers, job_nproc = split_gaussian_job_budget(self.nproc, n_orients)
+        n_workers, job_nproc, job_mem = split_gaussian_orientation_budget(
+            self.nproc, n_orients, self.mem
+        )
         self._rotation_n_workers = n_workers
         self._job_nproc = job_nproc
+        self._job_mem = job_mem
         self.logger.info(
             f"Gaussian rotation parallel plan: {n_orients} job(s), "
-            f"nproc={self.nproc} -> {n_workers} worker(s) x %NProc={job_nproc}"
+            f"nproc={self.nproc} mem={self.mem}GB -> "
+            f"{n_workers} worker(s) x %NProc={job_nproc} x %MEM={job_mem}GB"
         )
         self.setup(self.out_gaussian_label)
 
@@ -791,7 +805,7 @@ class StageGaussianRotation(AbstractStage):
                 job_id,
                 status="queued",
                 stage="queued",
-                detail=f"{out_log.name} | %NProc={job_nproc}",
+                detail=f"{out_log.name} | %NProc={job_nproc} %MEM={job_mem}GB",
                 log_path=str(out_log),
             )
             pending.append(
@@ -802,6 +816,7 @@ class StageGaussianRotation(AbstractStage):
                     "job_id": job_id,
                     "status_path": str(status_path),
                     "job_nproc": int(job_nproc),
+                    "job_mem": int(job_mem),
                     "force": bool(self.force_gaussian_rerun),
                     "dry_run": bool(dry_run),
                     "gaussian_root": self.gaussian_root,
