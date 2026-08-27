@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-08-27
+
 ### Added
 
 - **Whole-ligand wavefront rescue** - a bin whose stored min is a discrete
@@ -423,7 +425,8 @@ Prior releases focused on core RESP / FreeLigand recipes, orientation protocols 
 
 ---
 
-[Unreleased]: https://github.com/piskulichz/ligandparam/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/piskulichz/ligandparam/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/piskulichz/ligandparam/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/piskulichz/ligandparam/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/piskulichz/ligandparam/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/piskulichz/ligandparam/compare/v1.4.1...v1.5.0

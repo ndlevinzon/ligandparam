@@ -255,7 +255,7 @@ tests/
 3. Keep stdout, comments, and docs ASCII (`+/-`, `deg`, `chi^2`, `->`)
 4. Open a PR that says why the change is needed
 
-Release: bump `version` in `pyproject.toml` and `__version__` in `src/ligandparam/__init__.py`, commit, `git tag 1.6.0 && git push origin --tags`.
+Release: bump `version` in `pyproject.toml` and `__version__` in `src/ligandparam/__init__.py`, commit, `git tag 1.6.1 && git push origin --tags`.
 
 ---
 
