@@ -47,7 +47,10 @@ until neighboring energies agree within a threshold.
 **Detail.** Replaces the older sequential forward/reverse `DihedScan` path in
 modern twist workflows. One implementation (`ffpopt.scan.WavefrontEngine`)
 with 1-D / N-D facades (`WaveFront`, `WaveFrontND`). Neighbors, spawn, and
-recovery follow `evaluate_wavefront_minimum`. Speedups: seed coalescing
+recovery follow `evaluate_wavefront_minimum`. After the 1-D ring is
+filled, re-expansion is capped (per-bin expand limit, coverage Cauchy,
+2-cycle ping-pong detector) so two neighbors cannot walk for dozens of
+levels. Speedups: seed coalescing
 (one pending job per loc), N-D von Neumann stencil, persistent calculator
 cache (restored after checkpoint; never pickled into spawn workers), reused
 spawn pools, flattened fragment `nproc`. Soft-dihed k-ramp is `[affdo]`;

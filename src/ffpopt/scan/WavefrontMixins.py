@@ -932,6 +932,61 @@ def evaluate_wavefront_minimum(
     }
 
 
+def demote_redundant_spawn(
+    *,
+    reason: str,
+    loc,
+    prior_expands: int,
+    max_expand_per_loc: int,
+    n_hard_bins: int,
+    n_grid: int,
+    improve_ev: float | None,
+    threshold_ev: float,
+    coverage_spawn_factor: float,
+    recent_spawn_locs: list,
+    pingpong_window: int,
+    pingpong_unique_max: int = 2,
+) -> str | None:
+    """Return a demote reason, or None to keep spawning.
+
+    The 1-D wavefront is BFS on the cycle ``C_{360/delta}``. After the
+    profile is filled, ``hard_significant_improve`` can ping-pong two
+    neighboring bins for dozens of levels (DDM ``orig_10-11-19-16`` was
+    177 nodes / 31 levels for 36 bins). Guards:
+
+    * **expand cap** - at most ``max_expand_per_loc`` re-expansions per bin
+      (Dijkstra-style visit limit).
+    * **coverage Cauchy** - once enough bins have a hard min, spawn only if
+      the improvement is ``coverage_spawn_factor`` times the usual threshold.
+    * **ping-pong** - if the last ``pingpong_window`` spawns used at most
+      ``pingpong_unique_max`` distinct bins and ``loc`` is one of them, freeze
+      that 2-cycle.
+    """
+    if reason != "hard_significant_improve":
+        return None
+    if max_expand_per_loc > 0 and int(prior_expands) >= int(max_expand_per_loc):
+        return "expand_cap"
+    covered = int(n_grid) > 0 and int(n_hard_bins) >= max(1, int(n_grid) - 2)
+    thr = max(0.0, float(threshold_ev))
+    factor = float(coverage_spawn_factor)
+    if (
+        covered
+        and factor > 1.0
+        and improve_ev is not None
+        and np.isfinite(improve_ev)
+        and float(improve_ev) < thr * factor
+    ):
+        return "coverage_cauchy"
+    window = int(pingpong_window)
+    if window > 0:
+        recent = list(recent_spawn_locs)[-window:]
+        if len(recent) >= window:
+            uniq = {x for x in recent}
+            if len(uniq) <= int(pingpong_unique_max) and loc in uniq:
+                return "pingpong"
+    return None
+
+
 def stamp_node_soft_flag(node: Any, *, incumbent_geom=None) -> tuple[bool, bool]:
     """Refresh ``node.soft_opt`` from recovery tags; return (node, incumbent) flags."""
     from ffpopt.geom.GeomOpt import is_soft_opt_recovery
@@ -1030,6 +1085,21 @@ def format_minimum_decision_message(
             f"{label} {loc} is not active, energy {energy} "
             f"is not lower than minimum {old}."
         )
+    if reason == "expand_cap":
+        return (
+            f"no spawn {noun} {loc}: expand cap "
+            f"(kept E={energy}; stop re-walking this bin)"
+        )
+    if reason == "coverage_cauchy":
+        return (
+            f"no spawn {noun} {loc}: coverage complete "
+            f"(improve {energy} vs {old} below Cauchy factor; profile filled)"
+        )
+    if reason == "pingpong":
+        return (
+            f"no spawn {noun} {loc}: ping-pong frontier "
+            f"(two-bin cycle; stop walking)"
+        )
     if reason == "nonfinite":
         return f"{label} {loc} is inactive due to failed optimization."
     return f"{label} {loc} inactive ({reason}): energy {energy}."
@@ -1045,11 +1115,13 @@ def apply_wavefront_minimum_to_node(
     incumbent_soft: bool,
     on_update,
     noun: str = "coordinate",
+    spawn_guard=None,
 ) -> dict:
     """Shared evaluate-node tail: policy, logs, ``node.active``.
 
     ``on_update(node, reason, old_energy)`` stores the new min when the
-    policy says ``update_min``.
+    policy says ``update_min``. ``spawn_guard(decision, loc, node, old)``
+    may demote ``active`` after the min is stored (coverage / ping-pong).
     """
     if not getattr(node, "active", True):
         return {"update_min": False, "active": False, "reason": "already_inactive"}
@@ -1086,6 +1158,21 @@ def apply_wavefront_minimum_to_node(
             noun=noun,
         )
     )
+    if decision["active"] and spawn_guard is not None:
+        guarded = spawn_guard(decision, loc, node, old)
+        if guarded is not None:
+            decision = guarded
+            if not decision.get("active") and decision.get("reason") != reason:
+                print_wavefront(
+                    format_minimum_decision_message(
+                        decision["reason"],
+                        loc=loc,
+                        energy=node.energy,
+                        old=old,
+                        recovery=recovery,
+                        noun=noun,
+                    )
+                )
     node.active = bool(decision["active"])
     return decision
 

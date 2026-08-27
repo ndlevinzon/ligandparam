@@ -50,6 +50,14 @@
   // 0 = disable. Stops a long hard-IC opt from looking like a hang.
   "FFPOPT_WF_HEARTBEAT_SEC": 60,
 
+  // 1-D BFS re-expansion guards (cycle graph C_{360/delta}).
+  // Max hard_significant_improve spawns per bin (0 = unlimited).
+  "FFPOPT_WF_MAX_EXPAND": 3,
+  // After the profile is filled, spawn only if dE >= factor * threshold.
+  "FFPOPT_WF_COVERAGE_SPAWN_FACTOR": 4.0,
+  // If the last N spawns used at most 2 bins, freeze that 2-cycle (0 = off).
+  "FFPOPT_WF_PINGPONG_WINDOW": 8,
+
   // Write per-node pickles after successful opts. Failures always write.
   // null = off under --fast, on otherwise.
   "FFPOPT_WF_NODE_PICKLE": null,

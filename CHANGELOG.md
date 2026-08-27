@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Wavefront ping-pong** - after a 36-bin profile is filled, BFS can
+  walk two neighboring angles for dozens of levels (DDM
+  ``orig_10-11-19-16``: 177 nodes / 31 levels, last 12 levels were a
+  2-node cycle). Re-expansion now stops via an expand cap per bin (3),
+  a coverage Cauchy test (spawn only if ``dE`` is 4x the usual
+  threshold), and a ping-pong detector on the last 8 spawns.
+  ``max_levels`` demotes spawn instead of raising. Tunable:
+  ``FFPOPT_WF_MAX_EXPAND``, ``FFPOPT_WF_COVERAGE_SPAWN_FACTOR``,
+  ``FFPOPT_WF_PINGPONG_WINDOW``.
+
 - **MM-only hard-IC stall** - sander rescans with ``--soft-dihed-restraint``
   logged ``in-band at k=500; finishing with hard IC`` then went silent for
   an hour. The drain loop only prints on checkpoint, so a long ASE/geomeTRIC

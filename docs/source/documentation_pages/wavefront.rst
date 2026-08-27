@@ -101,6 +101,25 @@ Without coalescing, bulky whole-ligand rotors enqueue many redundant
 visits to the same angle. Occupancy is rebuilt from the resume queue on
 checkpoint restart.
 
+Re-expansion guards
+~~~~~~~~~~~~~~~~~~~
+
+The 1-D wavefront is BFS on the cycle ``C_{360/delta}``. After every
+bin has a hard minimum, a tiny ``hard_significant_improve`` can ping-pong
+two neighbors for dozens of levels (177 nodes / 31 levels for a 36-bin
+scan). After the usual energy test, spawn is demoted when:
+
+* that bin has already re-expanded ``FFPOPT_WF_MAX_EXPAND`` times
+  (default 3);
+* the profile is filled and ``dE`` is below
+  ``FFPOPT_WF_COVERAGE_SPAWN_FACTOR`` times the usual threshold
+  (default 4);
+* the last ``FFPOPT_WF_PINGPONG_WINDOW`` spawns used at most two bins
+  and this loc is one of them (default window 8).
+
+The better energy is still stored. ``wf_max_levels`` now stops spawning
+instead of raising.
+
 Rigid-rotate seed
 ~~~~~~~~~~~~~~~~~
 

@@ -20,11 +20,13 @@ from .WavefrontMixins import (
     atomic_pickle_dump,
     clear_los_calc,
     clone_struct_geometry,
+    demote_redundant_spawn,
     dihed_seed_targets,
     ensure_soft_opt_attrs,
     finalize_successful_node_opt,
     format_wavefront_progress,
     geomopt_mm_then_hl,
+    kcal_threshold_to_ev,
     load_wavefront_pickle,
     mark_node_failed,
     merge_standard_wavefront_kwargs,
@@ -686,6 +688,8 @@ class Wavefront:
         self._pending_by_loc = {}
         self._inflight_locs = set()
         self._deferred_seeds = {}
+        self._expand_count = {}
+        self._recent_spawns = []
         self.grid = copy.deepcopy(grid) if grid is not None else None
         self.conlist = copy.deepcopy(conlist) if conlist is not None else None
         self.reslist = copy.deepcopy(reslist) if reslist is not None else None
@@ -1273,9 +1277,12 @@ class Wavefront:
         if node.active:
             if self.max_levels > 0 and node.level + 1 > self.max_levels:
                 print_wavefront(
-                    f"reached maximum levels: {self.max_levels}; stopping"
+                    f"max_levels={self.max_levels}; not spawning from "
+                    f"{getattr(node, 'angle', getattr(node, 'rcs', '?'))}"
                 )
-                raise ValueError("Too many levels, something is wrong with the wavefront algorithm.")
+                node.active = False
+                extra = self._finish_loc(node)
+                return [extra] if extra is not None else []
             spawned.extend(self.spawn_neighbors(node))
         extra = self._finish_loc(node)
         if extra is not None:
@@ -1289,6 +1296,77 @@ class Wavefront:
             self._inflight_locs = set()
         if getattr(self, "_deferred_seeds", None) is None:
             self._deferred_seeds = {}
+        if getattr(self, "_expand_count", None) is None:
+            self._expand_count = {}
+        if getattr(self, "_recent_spawns", None) is None:
+            self._recent_spawns = []
+
+    def _n_grid_bins(self) -> int:
+        if self.is_nd:
+            return max(0, len(self.bins or {}))
+        return max(1, int(360 // max(1, int(self.delta))))
+
+    def _n_hard_bins(self) -> int:
+        if self.is_nd:
+            n = 0
+            for b in (self.min_bins or {}).values():
+                e = getattr(b, "energy", None)
+                if e is not None and np.isfinite(e):
+                    n += 1
+            return n
+        n = 0
+        for loc, e in (self.min_energies or {}).items():
+            if e is None or not np.isfinite(e):
+                continue
+            prev = (self.min_nodes or {}).get(loc)
+            if prev is not None and getattr(prev, "soft_opt", False):
+                continue
+            n += 1
+        return n
+
+    def _spawn_guard_key(self, loc):
+        if self.is_nd:
+            return self._loc_key(rcs=loc)
+        return self._loc_key(angle=loc)
+
+    def _spawn_guard(self, decision, loc, node, old):
+        """Demote BFS re-expansion after the 1-D profile is filled."""
+        from ffpopt.runtime.EnvDefaults import env_float, env_int
+
+        self._ensure_occupancy()
+        key = self._spawn_guard_key(loc)
+        improve = None
+        if old is not None:
+            try:
+                improve = float(old) - float(node.energy)
+            except (TypeError, ValueError):
+                improve = None
+        why = demote_redundant_spawn(
+            reason=str(decision.get("reason") or ""),
+            loc=key,
+            prior_expands=int(self._expand_count.get(key, 0)),
+            max_expand_per_loc=max(0, env_int("FFPOPT_WF_MAX_EXPAND", 3)),
+            n_hard_bins=self._n_hard_bins(),
+            n_grid=self._n_grid_bins(),
+            improve_ev=improve,
+            threshold_ev=kcal_threshold_to_ev(self.convergence_threshold),
+            coverage_spawn_factor=float(
+                env_float("FFPOPT_WF_COVERAGE_SPAWN_FACTOR", 4.0)
+            ),
+            recent_spawn_locs=self._recent_spawns,
+            pingpong_window=max(0, env_int("FFPOPT_WF_PINGPONG_WINDOW", 8)),
+        )
+        if why is None:
+            if decision.get("reason") == "hard_significant_improve":
+                self._expand_count[key] = int(self._expand_count.get(key, 0)) + 1
+                self._recent_spawns.append(key)
+                if len(self._recent_spawns) > 32:
+                    del self._recent_spawns[:-32]
+            return decision
+        out = dict(decision)
+        out["active"] = False
+        out["reason"] = why
+        return out
 
     @staticmethod
     def _seed_rank(energy) -> float:
@@ -1520,6 +1598,7 @@ class Wavefront:
             incumbent_soft=incumbent_soft,
             on_update=on_update,
             noun="angle",
+            spawn_guard=self._spawn_guard,
         )
 
     def determine_active_nodes(self, current_level: WavefrontLevel) -> None:
@@ -1980,6 +2059,7 @@ class Wavefront:
                 incumbent_soft=incumbent_soft,
                 on_update=on_update,
                 noun="node",
+                spawn_guard=self._spawn_guard,
             )
 
     def _init_calculation_nd(self) -> None:

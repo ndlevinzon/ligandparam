@@ -2454,6 +2454,56 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
                 self.assertEqual(d["update_min"], upd)
                 self.assertEqual(d["active"], act)
 
+    def test_demote_redundant_spawn_guards(self):
+        from ffpopt.scan.WavefrontMixins import demote_redundant_spawn
+
+        kw = dict(
+            loc=80.0,
+            prior_expands=0,
+            max_expand_per_loc=3,
+            n_hard_bins=36,
+            n_grid=36,
+            improve_ev=0.2,
+            threshold_ev=0.1,
+            coverage_spawn_factor=4.0,
+            recent_spawn_locs=[],
+            pingpong_window=8,
+        )
+        self.assertIsNone(
+            demote_redundant_spawn(reason="hard_first", **kw)
+        )
+        self.assertEqual(
+            demote_redundant_spawn(reason="hard_significant_improve", **kw),
+            "coverage_cauchy",
+        )
+        self.assertIsNone(
+            demote_redundant_spawn(
+                reason="hard_significant_improve",
+                **{**kw, "improve_ev": 0.5, "n_hard_bins": 10},
+            )
+        )
+        self.assertEqual(
+            demote_redundant_spawn(
+                reason="hard_significant_improve",
+                **{**kw, "prior_expands": 3, "n_hard_bins": 10, "improve_ev": 0.5},
+            ),
+            "expand_cap",
+        )
+        ping = [80.0, 90.0] * 4
+        self.assertEqual(
+            demote_redundant_spawn(
+                reason="hard_significant_improve",
+                **{
+                    **kw,
+                    "n_hard_bins": 10,
+                    "improve_ev": 0.5,
+                    "recent_spawn_locs": ping,
+                },
+            ),
+            "pingpong",
+        )
+
+
     def test_wavefront_apply_minimum_helper(self):
         """Shared evaluate-node tail updates the min store and node.active."""
         from types import SimpleNamespace
