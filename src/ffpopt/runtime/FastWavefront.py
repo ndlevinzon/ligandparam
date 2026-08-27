@@ -163,7 +163,8 @@ def split_nproc_for_items(
     ``flatten_nested=False`` with ``prefer_depth=True`` so a 2-bond batch on
     44 cores is ``2 x 22``, not a serial ``1 x 44`` wavefront that cannot fill.
     Depth splits pack leftover cores (44 cores / 8 jobs -> ``4 x 11``, not
-    ``8 x 5`` with 4 idle).
+    ``8 x 5`` with 4 idle). Nested bond callers pass a fatter ``min_inner``
+    so 60 cores / 8 jobs is ``4 x 15``, not ``6 x 10``.
     """
     nproc = max(1, int(nproc))
     n_items = max(1, int(n_items))

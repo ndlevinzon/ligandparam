@@ -209,7 +209,10 @@ Flattened vs nested ``nproc``
   axes ``> 1``) so a third spawn pool is not opened.
 * **Whole-ligand**, and fragments with more than two fit bonds, keep a
   2-D bond x wavefront split when each wavefront is fat (e.g. 4 x 11 on
-  44 cores). A tiny lease (8 bonds at ``nproc=4``) stays sequential
+  44 cores; 4 x 15 on 60 cores / 8 bonds, not 6 x 10). Jobs are
+  dispatched in waves of ``n_bond_workers``; leftover bonds re-split so
+  the last scan is not parked at a skinny ``wf_nproc`` with idle
+  siblings. A tiny lease (8 bonds at ``nproc=4``) stays sequential
   ``1 x nproc`` so leftover cores can widen remaining jobs instead of
   locking ``4 x wf=1`` for the whole HL+orig phase.
 * Override with ``FFPOPT_PREF_WF_DEPTH=1`` (one cheap fragment at a time) or

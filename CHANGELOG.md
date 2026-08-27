@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Nested bond leftover waves** - a phase-2 correlated fragment (no
+  shared CPU budget) dumped all 8 bonds into a 6-worker pool at
+  ``wf_nproc=10``. After 6 finished, the last two stayed at 10 workers
+  with idle siblings, so the Slurm log froze at ``finished 7/8``. Bond
+  scans now dispatch one wave of ``n_bond_workers``, then re-split
+  remaining jobs (60 cores / 8 bonds is ``4 x 15`` twice). Nested
+  ``min_inner`` keeps those wavefronts fat. Each bond logs
+  ``starting scan`` as it begins.
+
 - **Chemical-group dihedral caps** - fit keys are ``{res}_{types}``
   (``CHA_c3-c3-c3-h1``). The rotor classifier treated the residue as a
   fifth Amber type and marked every torsion unsaturated, so alkane /

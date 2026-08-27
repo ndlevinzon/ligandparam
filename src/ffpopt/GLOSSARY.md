@@ -229,7 +229,10 @@ queued and then each take the full ``-n`` pool one at a time (no shared
 lease). Concurrent 1-D jobs fair-share the budget
 (weight = n_bonds, cap 8). Correlated / AFFDO batches stay on
 sequential fat wavefronts until the lease can nest without ``wf=1``.
-Sequential leftover bonds re-lease to pick up free cores. With many
+Sequential leftover bonds re-lease to pick up free cores.
+Nested leftover waves re-split even without a shared budget (so an
+8-bond fragment on 60 cores is not stuck at ``wf_nproc=10`` after
+``finished 7/8``). With many
 fragments and a modest ``nproc``,
 pools prefer fragment/bond breadth over depth (see
 ``prefer_fragment_pool_depth`` / ``prefer_bond_pool_depth``;
