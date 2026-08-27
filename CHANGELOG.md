@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **VAST stale log handles** - geomeTRIC's ``RawFileHandler`` flush on
+  scratch raises ``OSError: [Errno 116] Stale file handle``; Python then
+  dumps a ``Logging error`` traceback per optimizer step in spawn
+  workers. ``Handler.handleError`` now swallows ESTALE and reopens
+  file-backed handlers. Fragment tees reopen ``frag-twist.log`` the same
+  way.
+
 - **Wavefront ping-pong** - after a 36-bin profile is filled, BFS can
   walk two neighboring angles for dozens of levels (DDM
   ``orig_10-11-19-16``: 177 nodes / 31 levels, last 12 levels were a

@@ -130,6 +130,9 @@ def patch_geometric_tmp_makedirs() -> None:
 
 def apply_geometric_compat_patches() -> None:
     """Install all ffpopt <-> geomeTRIC compatibility patches."""
+    from ffpopt.runtime.Console import install_stale_handle_logging_guard
+
+    install_stale_handle_logging_guard()
     patch_constrained_cartesian_fallback()
     patch_brent_not_bracketed()
     patch_geometric_tmp_makedirs()

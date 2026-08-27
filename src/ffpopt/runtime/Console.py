@@ -17,6 +17,7 @@ latin-1 Slurm ``.out`` files do not mojibake.
 
 from __future__ import annotations
 
+import errno
 import logging
 import re
 import sys
@@ -70,6 +71,69 @@ _ASCII_REPLACEMENTS = (
 )
 
 
+def is_stale_file_handle(exc: BaseException) -> bool:
+    """True for NFS/VAST ``ESTALE`` (Linux errno 116)."""
+    if not isinstance(exc, OSError):
+        return False
+    estale = getattr(errno, "ESTALE", 116)
+    if getattr(exc, "errno", None) in (estale, 116):
+        return True
+    msg = str(exc).lower()
+    return "stale file handle" in msg or "estale" in msg
+
+
+def _reopen_filehandler_stream(handler) -> bool:
+    """Reopen a ``FileHandler`` stream after ESTALE. Return True on success."""
+    opener = getattr(handler, "_open", None)
+    if not callable(opener):
+        return False
+    try:
+        stream = getattr(handler, "stream", None)
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+        handler.stream = opener()
+        return True
+    except OSError:
+        return False
+
+
+def install_stale_handle_logging_guard() -> None:
+    """Do not dump Python ``Logging error`` tracebacks on VAST stale fds.
+
+    geomeTRIC's ``RawFileHandler`` writes a log on scratch. When that fd goes
+    ESTALE, ``StreamHandler.flush`` raises and ``Handler.handleError`` prints
+    a full traceback per optimizer step, flooding Slurm ``.out``. Swallow the
+    error and reopen file-backed handlers so the opt can finish.
+    """
+    if getattr(logging.Handler.handleError, "_ffpopt_estale", False):
+        return
+
+    _orig_handleError = logging.Handler.handleError
+    _orig_flush = logging.StreamHandler.flush
+
+    def _handleError(self, record):
+        exc = sys.exc_info()[1]
+        if is_stale_file_handle(exc):
+            _reopen_filehandler_stream(self)
+            return
+        return _orig_handleError(self, record)
+
+    def _flush(self):
+        try:
+            _orig_flush(self)
+        except OSError as exc:
+            if not is_stale_file_handle(exc):
+                raise
+            _reopen_filehandler_stream(self)
+
+    _handleError._ffpopt_estale = True  # type: ignore[attr-defined]
+    logging.Handler.handleError = _handleError
+    logging.StreamHandler.flush = _flush
+
+
 def ascii_for_stdio(text: str) -> str:
     """Return ``text`` encoded as ASCII suitable for stdout / Slurm logs."""
     if not text or text.isascii():
@@ -93,7 +157,20 @@ class _AsciiStdio:
     def write(self, data: str) -> int:
         if not isinstance(data, str):
             data = str(data)
-        return self._inner.write(ascii_for_stdio(data))
+        try:
+            return self._inner.write(ascii_for_stdio(data))
+        except OSError as exc:
+            if is_stale_file_handle(exc):
+                return 0
+            raise
+
+    def flush(self):
+        try:
+            return self._inner.flush()
+        except OSError as exc:
+            if is_stale_file_handle(exc):
+                return None
+            raise
 
     def writelines(self, lines) -> None:
         for line in lines:
@@ -105,6 +182,7 @@ class _AsciiStdio:
 
 def ensure_ascii_stdio() -> None:
     """Wrap ``sys.stdout`` / ``sys.stderr`` so print() cannot emit non-ASCII."""
+    install_stale_handle_logging_guard()
     for attr in ("stdout", "stderr"):
         stream = getattr(sys, attr, None)
         if stream is None or getattr(stream, "_lp_ascii_stdio", False):
@@ -414,36 +492,71 @@ class TeeTextIO:
         console_stream: TextIO,
         *,
         tag: str | Sequence[str],
+        log_path: Path | None = None,
     ) -> None:
         self.file_stream = file_stream
         self.console_stream = console_stream
         self.tags = _normalize_tags(tag)
+        self.log_path = Path(log_path) if log_path is not None else None
         self.encoding = getattr(file_stream, "encoding", "utf-8") or "utf-8"
         self._buf = ""
+
+    def _reopen_log(self) -> bool:
+        if self.log_path is None:
+            return False
+        try:
+            try:
+                self.file_stream.close()
+            except OSError:
+                pass
+            self.file_stream = open(
+                self.log_path, "a", encoding="utf-8", buffering=1
+            )
+            return True
+        except OSError:
+            return False
 
     def write(self, data: str) -> int:
         if not data:
             return 0
         data = ascii_for_stdio(data)
-        self.file_stream.write(data)
+        try:
+            self.file_stream.write(data)
+        except OSError as exc:
+            if not is_stale_file_handle(exc):
+                raise
+            if self._reopen_log():
+                try:
+                    self.file_stream.write(data)
+                except OSError:
+                    pass
         self._buf += data
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
-            self.console_stream.write(
-                format_console_line(line + "\n", tags=self.tags)
-            )
+            try:
+                self.console_stream.write(
+                    format_console_line(line + "\n", tags=self.tags)
+                )
+            except OSError as exc:
+                if not is_stale_file_handle(exc):
+                    raise
         return len(data)
 
     def flush(self) -> None:
         if self._buf:
-            self.console_stream.write(
-                format_console_line(self._buf, tags=self.tags)
-            )
+            try:
+                self.console_stream.write(
+                    format_console_line(self._buf, tags=self.tags)
+                )
+            except OSError as exc:
+                if not is_stale_file_handle(exc):
+                    raise
             self._buf = ""
         try:
             self.file_stream.flush()
-        except OSError:
-            pass
+        except OSError as exc:
+            if is_stale_file_handle(exc):
+                self._reopen_log()
         try:
             self.console_stream.flush()
         except OSError:
@@ -565,8 +678,8 @@ def tee_stdio_to_file(
     # Mirror to the streams we are replacing (real console, or a test capture).
     # Logger console handlers use sys.__stdout__/__stderr__, so they are not
     # double-prefixed by this tee.
-    tee_out = TeeTextIO(fh, old_out, tag=tag)
-    tee_err = TeeTextIO(fh, old_err, tag=tag)
+    tee_out = TeeTextIO(fh, old_out, tag=tag, log_path=log_path)
+    tee_err = TeeTextIO(fh, old_err, tag=tag, log_path=log_path)
     try:
         sys.stdout = tee_out  # type: ignore[assignment]
         sys.stderr = tee_err  # type: ignore[assignment]

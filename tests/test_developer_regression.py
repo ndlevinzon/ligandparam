@@ -732,6 +732,26 @@ class TestLoggingContracts(unittest.TestCase):
         console_mod._BANNER_PRINTED = False
         os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
 
+    def test_stale_file_handle_logging_guard(self):
+        import io
+        import logging
+        from ffpopt.runtime.Console import (
+            install_stale_handle_logging_guard,
+            is_stale_file_handle,
+        )
+
+        self.assertTrue(is_stale_file_handle(OSError(116, "Stale file handle")))
+        self.assertFalse(is_stale_file_handle(OSError(2, "No such file")))
+        install_stale_handle_logging_guard()
+        handler = logging.StreamHandler(io.StringIO())
+        record = logging.LogRecord(
+            "geometric", logging.INFO, __file__, 1, "step", (), None
+        )
+        try:
+            raise OSError(116, "Stale file handle")
+        except OSError:
+            handler.handleError(record)
+
     def test_format_console_line_peels_scopes(self):
         from ffpopt.runtime.Console import format_console_line
 
