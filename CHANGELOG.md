@@ -25,9 +25,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now skip the unconstrained HL hard IC and do one restrained HL at the
   final k (bias ~0.02 kcal). Any node still running after
   ``FFPOPT_WF_NODE_WALL_SEC`` (default 300s) is SIGTERM'd so a deferred
-  neighbor seed can run.
+  neighbor seed can run. The timeout child uses ``os.fork`` (not
+  ``multiprocessing.Process``) because wavefront pool workers are
+  daemons.
 
 ### Fixed
+
+- **Sugar ``c6`` rotor caps** - parmchk2 analogizes maltoside carbons to
+  ``c3``, but the chemical-group table only listed ``c3``/``cx``/``cy``.
+  Every ``c3-c6`` / ``c6-os`` torsion was classified unsaturated, so DDM
+  fragment-2 terms such as ``h1-c3-c6-c6`` PK=-16 and ``oh-c3-c6-os``
+  PK=15 sat on the 30 kcal ceiling. ``c6`` is now tetrahedral carbon:
+  H-C-C-H/C alkane cap, C-O ether cap, generic sp3 reject.
 
 - **ASE ``ignore_bad_restart_file`` FutureWarning** - ``ase.calculators.amber.SANDER``
   still uses the deprecated Calculator constructor, so every spawn worker

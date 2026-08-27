@@ -90,9 +90,14 @@ def sulfate_barrier_cap() -> float:
 
 
 # GAFF / GAFF2 tetrahedral heavy atoms (central-bond test).
+# ``c6`` is not a stock GAFF type; parmchk2 analogizes sugar/detergent
+# carbons (DDM maltoside) to ``c3``. Leaving it out classified every
+# ``c3-c6`` / ``c6-os`` rotor as unsaturated, so 15-16 kcal H/OH 1-folds
+# never hit the alkane / ether caps.
 _SP3_HEAVY = frozenset(
     {
         "c3",
+        "c6",
         "cx",
         "cy",
         "n3",
@@ -109,7 +114,7 @@ _SP3_HEAVY = frozenset(
         "p5",
     }
 )
-_ALKANE_ATOM = frozenset({"c3", "cx", "cy", "hc", "h1", "h2", "h3", "hx"})
+_ALKANE_ATOM = frozenset({"c3", "c6", "cx", "cy", "hc", "h1", "h2", "h3", "hx"})
 _SULFATE_P = frozenset({"s4", "s6", "p4", "p5"})
 _ALCOHOL_ETHER = frozenset({"oh", "os"})
 _AMINE_AMMONIUM = frozenset({"n3", "n4"})

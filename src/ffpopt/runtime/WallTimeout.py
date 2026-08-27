@@ -3,11 +3,20 @@
 A Python ``signal`` / thread cannot interrupt an xTB SCF. Fork a child, join
 with a deadline, then SIGTERM/SIGKILL. Linux only (CHPC); Windows runs the
 callable in-process. ``FFPOPT_WF_NODE_WALL_SEC=0`` disables.
+
+Wavefront pool workers are **daemon** spawn processes, so
+``multiprocessing.Process.start()`` raises ``AssertionError: daemonic
+processes are not allowed to have children``. ``os.fork`` does not check
+that flag.
 """
 
 from __future__ import annotations
 
 import os
+import pickle
+import signal
+import tempfile
+import time
 from typing import Any, Callable
 
 WALL_CHILD_ENV = "FFPOPT_IN_WALL_CHILD"
@@ -45,6 +54,28 @@ def fork_wall_available() -> bool:
     return hasattr(os, "fork")
 
 
+def _wait_pid(pid: int, timeout_sec: float) -> int | None:
+    """Return wait status, or ``None`` if ``pid`` is still alive."""
+    deadline = time.monotonic() + max(0.0, float(timeout_sec))
+    while True:
+        wpid, status = os.waitpid(pid, os.WNOHANG)
+        if wpid == pid:
+            return status
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.05)
+
+
+def _kill_pid(pid: int, sig: int) -> None:
+    try:
+        os.killpg(pid, sig)
+    except OSError:
+        try:
+            os.kill(pid, sig)
+        except OSError:
+            pass
+
+
 def run_with_node_wall(
     fn: Callable[[], Any],
     *,
@@ -66,25 +97,42 @@ def run_with_node_wall(
     if not fork_wall_available():
         return fn()
 
-    import multiprocessing as mp
-
-    ctx = mp.get_context("fork")
-    queue = ctx.Queue()
-
-    def _target() -> None:
-        os.environ[WALL_CHILD_ENV] = "1"
+    fd, path = tempfile.mkstemp(prefix="ffpopt_nwall_", suffix=".pkl")
+    os.close(fd)
+    try:
+        pid = os.fork()
+    except OSError:
         try:
-            queue.put(("ok", fn()))
-        except Exception as exc:
-            queue.put(("err", f"{type(exc).__name__}: {exc}"))
+            os.unlink(path)
+        except OSError:
+            pass
+        return fn()
 
-    proc = ctx.Process(target=_target)
-    proc.start()
-    proc.join(wall_sec)
-    if proc.is_alive():
-        loc = "?"
-        if isinstance(job, dict):
-            loc = job.get("angle", job.get("rcs", "?"))
+    if pid == 0:
+        try:
+            os.environ[WALL_CHILD_ENV] = "1"
+            try:
+                os.setsid()
+            except OSError:
+                pass
+            try:
+                payload = ("ok", fn())
+            except Exception as exc:
+                payload = ("err", f"{type(exc).__name__}: {exc}")
+            with open(path, "wb") as fh:
+                pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                fh.flush()
+                os.fsync(fh.fileno())
+        except Exception:
+            pass
+        os._exit(0)
+
+    loc = "?"
+    if isinstance(job, dict):
+        loc = job.get("angle", job.get("rcs", "?"))
+
+    status = _wait_pid(pid, wall_sec)
+    if status is None:
         print(
             ascii_for_stdio(
                 f"[wavefront] node wall timeout ({wall_sec:g}s) at {loc}; "
@@ -92,27 +140,38 @@ def run_with_node_wall(
             ),
             flush=True,
         )
-        proc.terminate()
-        proc.join(10)
-        if proc.is_alive():
-            proc.kill()
-            proc.join(5)
+        _kill_pid(pid, signal.SIGTERM)
+        if _wait_pid(pid, 10) is None:
+            _kill_pid(pid, signal.SIGKILL)
+            try:
+                os.waitpid(pid, 0)
+            except OSError:
+                pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
         return timed_out_node_result(
             job,
-            message=(
-                f"wall_timeout: node exceeded {wall_sec:g}s "
-                f"(loc={loc})"
-            ),
+            message=f"wall_timeout: node exceeded {wall_sec:g}s (loc={loc})",
         )
-    if queue.empty():
+
+    try:
+        with open(path, "rb") as fh:
+            kind, payload = pickle.load(fh)
+    except Exception as exc:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
         return timed_out_node_result(
             job,
-            message=(
-                f"wall_timeout: child exited with no result "
-                f"(exit={proc.exitcode})"
-            ),
+            message=f"wall_timeout: child exited with no result ({exc})",
         )
-    kind, payload = queue.get()
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
     if kind == "ok":
         return payload
     print(

@@ -3066,6 +3066,15 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(classify_dihed_rotor("c3-c3-ss-c3"), "polar_sp3")
         self.assertEqual(classify_dihed_rotor("c3-c3-c3-oh"), "sp3_sp3")
         self.assertEqual(classify_dihed_rotor("o -c -ns-c3"), "unsaturated")
+        # parmchk2 sugar/detergent carbon (DDM): analog of c3, not unsaturated.
+        self.assertEqual(classify_dihed_rotor("h1-c3-c6-c6"), "alkane")
+        self.assertEqual(classify_dihed_rotor("h1-c6-c6-h1"), "alkane")
+        self.assertEqual(classify_dihed_rotor("oh-c3-c6-os"), "sp3_sp3")
+        self.assertEqual(classify_dihed_rotor("oh-c3-c6-h1"), "sp3_sp3")
+        self.assertEqual(classify_dihed_rotor("c6-c6-os-c3"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("os-c6-os-c3"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("h2-c6-os-c3"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("h1-c6-os-c6"), "alcohol_ether")
         # Fit-input keys are "{res}_{types}"; the residue must not be a 5th type.
         self.assertEqual(
             parse_dihed_type_key("CHA_c3-c3-c3-h1"), ("c3", "c3", "c3", "h1")
@@ -3128,6 +3137,44 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             )
         self.assertEqual(action, "keep")
         self.assertAlmostEqual(float(out.prims[0].fc), 6.0)
+
+        sugar_h = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_h.SetFCs([16.3])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, ptp = apply_sp3_rotor_policy(
+                sugar_h, "h1-c3-c6-c6", where="test"
+            )
+        self.assertEqual(action, "zero_alkane")
+        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
+        self.assertGreater(ptp, 20.0)
+
+        sugar_alk = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_alk.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                sugar_alk, "h1-c3-c6-c6", where="test"
+            )
+        self.assertEqual(action, "cap_alkane")
+        self.assertLessEqual(dense_torsion_ptp(out), 5.0 * 1.05)
+
+        sugar_cc = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_cc.SetFCs([15.3])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, ptp = apply_sp3_rotor_policy(
+                sugar_cc, "oh-c3-c6-os", where="test"
+            )
+        self.assertEqual(action, "zero_sp3_sp3")
+        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
+        self.assertGreater(ptp, 20.0)
+
+        sugar_os = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_os.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                sugar_os, "c6-c6-os-c3", where="test"
+            )
+        self.assertEqual(action, "cap_alcohol_ether")
+        self.assertLessEqual(dense_torsion_ptp(out), 8.0 * 1.05)
 
         amide = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
         amide.SetFCs([15.0])
