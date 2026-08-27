@@ -237,6 +237,30 @@ SOFT_DIHED_TOL_DEFAULT = 0.5
 # Skip the extra hard-IC opt when the restrained min is already this close
 # to phi0. At k=8000 kcal/mol/rad^2, 0.05 deg residual is ~0.003 kcal/mol.
 SOFT_DIHED_HARD_IC_SKIP_DEG = 0.05
+# Abort k-doubling when |dphi| is this far from the target (degrees). A
+# 10 deg wavefront seed should never need a 180 deg yank; that crushes
+# whole-ligand geometry (DDM 50 deg vs target 230 deg at k=500).
+SOFT_DIHED_LOST_WELL_DEG_DEFAULT = 30.0
+
+
+def lost_dihedral_well_delta(observed, target, *, limit_deg) -> float | None:
+    """Return ``|dphi|`` when the restrained dihedral has left the well.
+
+    ``None`` means stay on the k-ramp (limit disabled, angle unknown, or
+    still within ``limit_deg`` of ``target``).
+    """
+    if observed is None or limit_deg is None:
+        return None
+    try:
+        cap = float(limit_deg)
+    except (TypeError, ValueError):
+        return None
+    if cap <= 0.0:
+        return None
+    dphi = _wrapped_dihed_delta_deg(observed, target)
+    if dphi > cap:
+        return dphi
+    return None
 
 
 def skip_hard_ic_after_inband(*, two_stage: bool, dphi_deg: float | None) -> bool:
@@ -249,6 +273,10 @@ def skip_hard_ic_after_inband(*, two_stage: bool, dphi_deg: float | None) -> boo
     if dphi_deg is not None and float(dphi_deg) <= SOFT_DIHED_HARD_IC_SKIP_DEG:
         return True
     return not two_stage
+
+
+class LostDihedralWellError(RuntimeError):
+    """Soft k-ramp is many degrees off target; yanking k would crush the molecule."""
 
 
 def format_drain_wait_line(
@@ -602,12 +630,18 @@ def run_soft_dihed_opt(
     k0 = float(getattr(args, "soft_dihed_k", None) or SOFT_DIHED_K_DEFAULT)
     tol = float(getattr(args, "soft_dihed_tol", None) or SOFT_DIHED_TOL_DEFAULT)
     kmax_arg = getattr(args, "soft_dihed_kmax", None) if args is not None else None
-    if kmax_arg is None:
-        from ffpopt.runtime.EnvDefaults import env_float
+    from ffpopt.runtime.EnvDefaults import env_float
 
+    if kmax_arg is None:
         kmax = float(env_float("FFPOPT_SOFT_DIHED_KMAX", SOFT_DIHED_KMAX_DEFAULT))
     else:
         kmax = float(kmax_arg)
+    lost_well_deg = float(
+        env_float(
+            "FFPOPT_SOFT_DIHED_LOST_WELL_DEG",
+            SOFT_DIHED_LOST_WELL_DEG_DEFAULT,
+        )
+    )
 
     if cheap_los is None:
         cheap_los = get_cheap_preopt_los(los, struct)
@@ -663,6 +697,23 @@ def run_soft_dihed_opt(
         except Exception:
             ok = True
             last_z = None
+        if not ok:
+            lost = lost_dihedral_well_delta(
+                last_z, angle, limit_deg=lost_well_deg
+            )
+            if lost is not None:
+                ztxt = f"{last_z:.2f}" if last_z is not None else "?"
+                print(
+                    f"[affdo] {tag}: lost well: {ztxt} deg vs target "
+                    f"{float(angle):.1f} (|dphi|={lost:.1f} deg > "
+                    f"{lost_well_deg:g} deg); skip k-yank, wait for "
+                    "neighbor rescue",
+                    flush=True,
+                )
+                raise LostDihedralWellError(
+                    f"{ztxt} deg vs target {float(angle):.1f} "
+                    f"(|dphi|={lost:.1f} deg)"
+                )
         if ok:
             if i > 0:
                 print(
@@ -985,6 +1036,163 @@ def demote_redundant_spawn(
             if len(uniq) <= int(pingpong_unique_max) and loc in uniq:
                 return "pingpong"
     return None
+
+
+def finite_profile_energy(store, loc) -> float | None:
+    """Finite energy from a ``{angle: energy}`` map, or ``None``."""
+    if not store:
+        return None
+    getter = getattr(store, "get", None)
+    e = getter(loc) if callable(getter) else None
+    if e is None:
+        return None
+    try:
+        val = float(e)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(val):
+        return None
+    return val
+
+
+def discrete_energy_spike(energy, left_energy, right_energy) -> float:
+    """Positive height (eV) of ``energy`` above the linear interpolant.
+
+    Both neighbors: discrete Laplacian ``E - 0.5 (E_L + E_R)`` on the
+    scan cycle. One neighbor: one-sided ``E - E_nb``. Missing ``energy``
+    or no neighbors: ``0``.
+    """
+    if energy is None:
+        return 0.0
+    try:
+        e = float(energy)
+    except (TypeError, ValueError):
+        return 0.0
+    if not np.isfinite(e):
+        return 0.0
+    sides = []
+    for nb in (left_energy, right_energy):
+        if nb is None:
+            continue
+        try:
+            val = float(nb)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(val):
+            sides.append(val)
+    if not sides:
+        return 0.0
+    if len(sides) == 2:
+        return e - 0.5 * (sides[0] + sides[1])
+    return e - sides[0]
+
+
+def bin_needs_rescue(
+    energy,
+    left_energy,
+    right_energy,
+    *,
+    threshold_ev: float,
+    completed: bool = True,
+) -> bool:
+    """True when this bin is empty-after-failure or a Laplacian spike."""
+    thr = max(0.0, float(threshold_ev))
+    if energy is None:
+        if not completed:
+            return False
+        return left_energy is not None or right_energy is not None
+    return discrete_energy_spike(energy, left_energy, right_energy) >= thr
+
+
+def _struct_positions(struct):
+    if struct is None:
+        return None
+    data = getattr(struct, "data", None)
+    if isinstance(data, dict) and data.get("positions") is not None:
+        return np.asarray(data["positions"], dtype=float)
+    pos = getattr(struct, "positions", None)
+    if pos is not None:
+        return np.asarray(pos, dtype=float)
+    return None
+
+
+def kabsch_lerp_coords(crd_a, crd_b, weight_b: float):
+    """Kabsch-align ``crd_b`` onto ``crd_a``, then lerp (weight 0 = A)."""
+    a = np.asarray(crd_a, dtype=float)
+    b = np.asarray(crd_b, dtype=float)
+    if a.shape != b.shape or a.ndim != 2 or a.shape[1] != 3:
+        return None
+    w = float(np.clip(weight_b, 0.0, 1.0))
+    com_a = a.mean(axis=0)
+    ac = a - com_a
+    bc = b - b.mean(axis=0)
+    h = bc.T @ ac
+    try:
+        v, _s, wt = np.linalg.svd(h)
+    except np.linalg.LinAlgError:
+        return (1.0 - w) * a + w * b
+    r = v @ wt
+    if np.linalg.det(r) < 0.0:
+        v = np.array(v, copy=True)
+        v[:, -1] *= -1.0
+        r = v @ wt
+    aligned = bc @ r
+    return (1.0 - w) * ac + w * aligned + com_a
+
+
+def lerp_weight_on_cycle(ang_a, ang_b, target) -> float:
+    """Weight of ``ang_b`` so the mix sits at ``target`` on the circle."""
+    da = abs(signed_wrapped_dihed_delta_deg(ang_a, target))
+    db = abs(signed_wrapped_dihed_delta_deg(ang_b, target))
+    if da + db <= 1e-12:
+        return 0.0
+    return da / (da + db)
+
+
+def select_rescue_seed(
+    target,
+    left,
+    right,
+    *,
+    energies,
+    structures,
+    lerp_ev: float,
+):
+    """Pick a neighbor (or Kabsch lerp of both) to reseed ``target``.
+
+    Returns ``(struct, seed_energy, source_label)`` or ``None``. Both
+    neighbors are interpolated only when their energies agree within
+    ``lerp_ev``; otherwise the lower-energy neighbor is used alone.
+    """
+    cands = []
+    for ang in (left, right):
+        e = finite_profile_energy(energies, ang)
+        struct = None
+        if structures is not None:
+            getter = getattr(structures, "get", None)
+            struct = getter(ang) if callable(getter) else None
+        if e is None or struct is None:
+            continue
+        cands.append((e, float(ang), struct))
+    if not cands:
+        return None
+    cands.sort(key=lambda item: item[0])
+    best_e, best_ang, best_s = cands[0]
+    if len(cands) == 2:
+        other_e, other_ang, other_s = cands[1]
+        if float(other_e) - float(best_e) <= max(0.0, float(lerp_ev)):
+            crd_a = _struct_positions(best_s)
+            crd_b = _struct_positions(other_s)
+            w = lerp_weight_on_cycle(best_ang, other_ang, target)
+            mixed = kabsch_lerp_coords(crd_a, crd_b, w) if (
+                crd_a is not None and crd_b is not None
+            ) else None
+            if mixed is not None:
+                out = clone_struct_geometry(best_s, mixed)
+                lo = min(best_ang, other_ang)
+                hi = max(best_ang, other_ang)
+                return out, best_e, f"{lo:g}+{hi:g} lerp"
+    return best_s, best_e, f"{best_ang:g}"
 
 
 def stamp_node_soft_flag(node: Any, *, incumbent_geom=None) -> tuple[bool, bool]:

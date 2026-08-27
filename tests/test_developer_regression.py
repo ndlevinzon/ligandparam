@@ -2543,6 +2543,145 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             "pingpong",
         )
 
+    def test_discrete_energy_spike_and_rescue_seed(self):
+        import numpy as np
+        from ffpopt.scan.WavefrontMixins import (
+            bin_needs_rescue,
+            discrete_energy_spike,
+            kabsch_lerp_coords,
+            lerp_weight_on_cycle,
+            lost_dihedral_well_delta,
+            select_rescue_seed,
+        )
+        from ffpopt.scan.WavefrontMixins import kcal_threshold_to_ev
+
+        e230 = -2016.354702
+        e240 = -2016.099153
+        e250 = -2016.370228
+        spike = discrete_energy_spike(e240, e230, e250)
+        self.assertGreater(spike, 0.25)
+        thr = kcal_threshold_to_ev(2.0)
+        self.assertTrue(
+            bin_needs_rescue(e240, e230, e250, threshold_ev=thr, completed=True)
+        )
+        self.assertFalse(
+            bin_needs_rescue(e250, e240, e230, threshold_ev=thr, completed=True)
+        )
+        self.assertTrue(
+            bin_needs_rescue(
+                None, e250, None, threshold_ev=thr, completed=True
+            )
+        )
+        self.assertFalse(
+            bin_needs_rescue(
+                None, e250, None, threshold_ev=thr, completed=False
+            )
+        )
+        self.assertIsNone(
+            lost_dihedral_well_delta(229.8, 230.0, limit_deg=30.0)
+        )
+        lost = lost_dihedral_well_delta(50.62, 230.0, limit_deg=30.0)
+        self.assertIsNotNone(lost)
+        self.assertGreater(lost, 170.0)
+        self.assertIsNone(lost_dihedral_well_delta(50.62, 230.0, limit_deg=0))
+
+        crd_a = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]])
+        crd_b = crd_a + np.array([0.5, 0.0, 0.0])
+        mixed = kabsch_lerp_coords(crd_a, crd_a, 0.5)
+        np.testing.assert_allclose(mixed, crd_a, atol=1e-9)
+        ident = kabsch_lerp_coords(crd_a, crd_b, 0.0)
+        np.testing.assert_allclose(ident, crd_a, atol=1e-9)
+        self.assertAlmostEqual(lerp_weight_on_cycle(230.0, 250.0, 240.0), 0.5)
+
+        class _S:
+            def __init__(self, coords, tag):
+                self.data = {"positions": np.asarray(coords, dtype=float)}
+                self.tag = tag
+
+            def clone_geometry(self, coords, ene=0.0, frcs=None):
+                out = _S(coords, self.tag + "+lerp")
+                return out
+
+        energies = {230.0: e230, 240.0: e240, 250.0: e250}
+        structs = {
+            230.0: _S(crd_a, "230"),
+            250.0: _S(crd_b, "250"),
+        }
+        struct, seed_e, src = select_rescue_seed(
+            240.0,
+            230.0,
+            250.0,
+            energies=energies,
+            structures=structs,
+            lerp_ev=thr,
+        )
+        self.assertIn("lerp", src)
+        self.assertEqual(seed_e, e250)
+        self.assertIn("lerp", struct.tag)
+
+        only = {250.0: e250}
+        struct2, seed2, src2 = select_rescue_seed(
+            240.0,
+            230.0,
+            250.0,
+            energies=only,
+            structures={250.0: structs[250.0]},
+            lerp_ev=thr,
+        )
+        self.assertEqual(src2, "250")
+        self.assertIs(struct2, structs[250.0])
+        self.assertEqual(seed2, e250)
+
+    def test_rescue_outlier_bins_enqueues_spike(self):
+        import numpy as np
+        from types import SimpleNamespace
+        from ffpopt.scan.WavefrontEngine import Wavefront
+        from ffpopt.scan.WavefrontMixins import kcal_threshold_to_ev
+
+        class _S:
+            def __init__(self, tag):
+                self.data = {
+                    "positions": np.array(
+                        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]
+                    )
+                }
+                self.tag = tag
+
+            def clone_geometry(self, coords, ene=0.0, frcs=None):
+                out = _S(self.tag + "+lerp")
+                out.data = {"positions": np.asarray(coords, dtype=float)}
+                return out
+
+        wf = Wavefront.__new__(Wavefront)
+        wf.grid = None
+        wf.delta = 10
+        wf.min_energies = {
+            230.0: -2016.354702,
+            240.0: -2016.099153,
+            250.0: -2016.370228,
+        }
+        wf.min_structures = {230.0: _S("230"), 250.0: _S("250")}
+        wf._rescue_count = {}
+        wf._completed_locs = {230.0, 240.0, 250.0}
+        wf._pending_by_loc = {}
+        wf._inflight_locs = set()
+        wf._deferred_seeds = {}
+        wf._expand_count = {}
+        wf._recent_spawns = []
+        enqueued = []
+
+        def _enqueue(loc, **kwargs):
+            enqueued.append((loc, kwargs.get("seed_energy"), kwargs.get("angle")))
+            return SimpleNamespace(angle=kwargs.get("angle"), loc=loc)
+
+        wf._enqueue_visit = _enqueue
+        node = SimpleNamespace(angle=250.0, level=3)
+        spawned = wf._rescue_outlier_bins(node)
+        locs = [item[0] for item in enqueued]
+        self.assertIn(240.0, locs)
+        self.assertTrue(any(getattr(n, "angle", None) == 240.0 for n in spawned))
+        self.assertGreater(wf._rescue_count[240.0], 0)
+        self.assertGreater(kcal_threshold_to_ev(2.0), 0.0)
 
     def test_wavefront_apply_minimum_helper(self):
         """Shared evaluate-node tail updates the min store and node.active."""

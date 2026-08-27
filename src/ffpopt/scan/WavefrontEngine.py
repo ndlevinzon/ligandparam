@@ -18,12 +18,15 @@ from .WavefrontMixins import (
     apply_slim_node_result,
     apply_wavefront_minimum_to_node,
     atomic_pickle_dump,
+    bin_needs_rescue,
     clear_los_calc,
     clone_struct_geometry,
     demote_redundant_spawn,
     dihed_seed_targets,
+    discrete_energy_spike,
     ensure_soft_opt_attrs,
     finalize_successful_node_opt,
+    finite_profile_energy,
     format_wavefront_progress,
     geomopt_mm_then_hl,
     kcal_threshold_to_ev,
@@ -39,6 +42,7 @@ from .WavefrontMixins import (
     run_mp_spawn_drain_loop,
     run_mpi_spawn_drain_loop,
     seed_struct_rigid_dihed_rotates,
+    select_rescue_seed,
     slim_completed_nodes_for_checkpoint,
     slim_node_result,
     write_node_pickle,
@@ -690,6 +694,8 @@ class Wavefront:
         self._deferred_seeds = {}
         self._expand_count = {}
         self._recent_spawns = []
+        self._rescue_count = {}
+        self._completed_locs = set()
         self.grid = copy.deepcopy(grid) if grid is not None else None
         self.conlist = copy.deepcopy(conlist) if conlist is not None else None
         self.reslist = copy.deepcopy(reslist) if reslist is not None else None
@@ -1281,9 +1287,9 @@ class Wavefront:
                     f"{getattr(node, 'angle', getattr(node, 'rcs', '?'))}"
                 )
                 node.active = False
-                extra = self._finish_loc(node)
-                return [extra] if extra is not None else []
-            spawned.extend(self.spawn_neighbors(node))
+            else:
+                spawned.extend(self.spawn_neighbors(node))
+        spawned.extend(self._rescue_outlier_bins(node))
         extra = self._finish_loc(node)
         if extra is not None:
             spawned.append(extra)
@@ -1300,6 +1306,10 @@ class Wavefront:
             self._expand_count = {}
         if getattr(self, "_recent_spawns", None) is None:
             self._recent_spawns = []
+        if getattr(self, "_rescue_count", None) is None:
+            self._rescue_count = {}
+        if getattr(self, "_completed_locs", None) is None:
+            self._completed_locs = set()
 
     def _n_grid_bins(self) -> int:
         if self.is_nd:
@@ -1368,6 +1378,96 @@ class Wavefront:
         out["reason"] = why
         return out
 
+    def _rescue_outlier_bins(self, node) -> list:
+        """Reseed Laplacian spikes / failed bins from a better neighbor.
+
+        Inactive BFS nodes never spawn, so a 6 kcal hole (DDM 240 deg vs
+        230/250) stays forever. After each completion, inspect this angle
+        and its two cycle neighbors. If a stored min sits above the
+        discrete interpolant (or the bin failed), enqueue a visit seeded
+        from the lower neighbor, Kabsch-lerping both when they agree.
+        """
+        if self.is_nd:
+            return []
+        from ffpopt.runtime.EnvDefaults import env_float, env_int
+
+        max_rescue = int(env_int("FFPOPT_WF_RESCUE_MAX", 2))
+        if max_rescue <= 0:
+            return []
+        rescue_kcal = float(env_float("FFPOPT_WF_RESCUE_KCAL", 2.0))
+        if rescue_kcal <= 0.0:
+            return []
+        threshold_ev = kcal_threshold_to_ev(rescue_kcal)
+        self._ensure_occupancy()
+        delta = float(self.delta)
+        center = float(self.nearest_angle(node.angle, self.delta) % 360)
+        spawned = []
+        kcal_per_ev = 1.0 / kcal_threshold_to_ev(1.0) if threshold_ev else 0.0
+        here = self._loc_key(node)
+        for ang in (
+            center,
+            float(self.nearest_angle(center - delta, self.delta) % 360),
+            float(self.nearest_angle(center + delta, self.delta) % 360),
+        ):
+            loc = self._loc_key(angle=ang)
+            if int(self._rescue_count.get(loc, 0)) >= max_rescue:
+                continue
+            left = float(self.nearest_angle(ang - delta, self.delta) % 360)
+            right = float(self.nearest_angle(ang + delta, self.delta) % 360)
+            energy = finite_profile_energy(self.min_energies, ang)
+            left_e = finite_profile_energy(self.min_energies, left)
+            right_e = finite_profile_energy(self.min_energies, right)
+            completed = (
+                loc in self._completed_locs
+                or loc in self._inflight_locs
+                or loc == here
+            )
+            if not bin_needs_rescue(
+                energy,
+                left_e,
+                right_e,
+                threshold_ev=threshold_ev,
+                completed=completed,
+            ):
+                continue
+            picked = select_rescue_seed(
+                ang,
+                left,
+                right,
+                energies=self.min_energies,
+                structures=self.min_structures,
+                lerp_ev=threshold_ev,
+            )
+            if picked is None:
+                continue
+            struct, seed_e, src = picked
+            if energy is not None and self._seed_rank(seed_e) >= self._seed_rank(energy) - 1e-9:
+                continue
+            spike = discrete_energy_spike(energy, left_e, right_e)
+            spike_kcal = spike * kcal_per_ev if energy is not None else float("inf")
+            self._rescue_count[loc] = int(self._rescue_count.get(loc, 0)) + 1
+            if energy is None:
+                print_wavefront(
+                    f"rescue angle {ang:g} from {src} "
+                    f"(failed bin; retry {self._rescue_count[loc]}/{max_rescue})"
+                )
+            else:
+                print_wavefront(
+                    f"rescue angle {ang:g} from {src} "
+                    f"(spike {spike_kcal:.2f} kcal; "
+                    f"retry {self._rescue_count[loc]}/{max_rescue})"
+                )
+            child = self._enqueue_visit(
+                loc,
+                struct=struct,
+                seed_energy=seed_e,
+                level_id=(node.level or 0) + 1,
+                angle=ang,
+            )
+            if child is not None:
+                spawned.append(child)
+        return spawned
+
     @staticmethod
     def _seed_rank(energy) -> float:
         if energy is None:
@@ -1407,6 +1507,10 @@ class Wavefront:
             kept.append(node)
         pending.clear()
         pending.extend(kept)
+        for level in getattr(self, "levels", None) or []:
+            for node in getattr(level, "nodes", None) or []:
+                if getattr(node, "complete", False):
+                    self._completed_locs.add(self._loc_key(node))
 
     def _mark_dispatch(self, node: WavefrontNode) -> None:
         self._ensure_occupancy()
@@ -1420,6 +1524,7 @@ class Wavefront:
         loc = self._loc_key(node)
         self._pending_by_loc.pop(loc, None)
         self._inflight_locs.discard(loc)
+        self._completed_locs.add(loc)
         deferred = self._deferred_seeds.pop(loc, None)
         if deferred is None:
             return None

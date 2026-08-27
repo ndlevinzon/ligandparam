@@ -58,6 +58,14 @@
   // If the last N spawns used at most 2 bins, freeze that 2-cycle (0 = off).
   "FFPOPT_WF_PINGPONG_WINDOW": 8,
 
+  // Revisit a 1-D bin whose stored min is this many kcal above the
+  // discrete interpolant of its cycle neighbors (Laplacian spike), or
+  // that failed. Seed from the lower neighbor; Kabsch-lerp both when
+  // they agree. 0 kcal disables. DDM 240 deg was ~6 kcal above 230/250.
+  "FFPOPT_WF_RESCUE_KCAL": 2.0,
+  // Max rescue visits per bin (0 = off).
+  "FFPOPT_WF_RESCUE_MAX": 2,
+
   // Write per-node pickles after successful opts. Failures always write.
   // null = off under --fast, on otherwise.
   "FFPOPT_WF_NODE_PICKLE": null,
@@ -113,6 +121,10 @@
   // Soft-dihedral k-doubling cap (kcal/mol/rad^2). After this, one hard-IC
   // opt starts from the last soft coordinates instead of the original seed.
   "FFPOPT_SOFT_DIHED_KMAX": 8000.0,
+  // Abort k-doubling when |dphi| exceeds this (deg). Whole-ligand seeds
+  // that lose the well (50 deg vs target 230) must not yank k to 1000.
+  // 0 disables. Neighbor rescue reseeds from a 10 deg neighbor instead.
+  "FFPOPT_SOFT_DIHED_LOST_WELL_DEG": 30.0,
 
   // --- Dihedral fit -------------------------------------------------------
   // Legacy GeomOpt-per-iteration fit (slow). Default is fixed-geometry lsq.

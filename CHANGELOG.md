@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Whole-ligand wavefront rescue** - a bin whose stored min is a discrete
+  Laplacian spike vs its cycle neighbors (DDM 240 deg was ~6 kcal above
+  230/250) is reseeded from the lower neighbor, Kabsch-lerping both when
+  they agree. Failed / lost-well bins retry the same way. Caps:
+  ``FFPOPT_WF_RESCUE_KCAL`` (default 2), ``FFPOPT_WF_RESCUE_MAX`` (2).
+  Soft k-ramps abort when ``|dphi|`` exceeds
+  ``FFPOPT_SOFT_DIHED_LOST_WELL_DEG`` (30 deg) instead of yanking k
+  across a 180 deg miss.
+
 ### Fixed
 
 - **ASE ``ignore_bad_restart_file`` FutureWarning** - ``ase.calculators.amber.SANDER``
