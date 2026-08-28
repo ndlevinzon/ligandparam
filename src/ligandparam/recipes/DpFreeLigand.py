@@ -7,12 +7,12 @@ from ligandparam.Parametrization import Recipe, configure_gaussian_recipe
 from ligandparam.recipes.Common import (
     charge_update_parmchk_leap_stages,
     dp_high_resp_rotation_stages,
+    dp_minimize_stage,
     init_normalize_center_stages,
     multi_resp_update_stages,
     rotation_label_for_recipe,
 )
 from ligandparam.recipes.DihedOptions import append_dihed_twist_stage
-from ligandparam.stages import DPMinimize
 
 
 class DPFreeLigand(Recipe):
@@ -95,16 +95,12 @@ class DPFreeLigand(Recipe):
                 initial_mol2=initial_mol2,
                 centered_out=centered_mol2,
             ),
-            DPMinimize(
-                "DPMinimize",
+            dp_minimize_stage(
+                recipe=self,
                 main_input=centered_mol2,
-                cwd=self.cwd,
                 out_xyz=centered_mol2.with_suffix(".xyz"),
-                model=self.kwargs.get("model", "deepmd_model.pb"),
-                ftol=self.kwargs.get("ftol", 0.01),
-                steps=self.kwargs.get("steps", 1000),
                 out_mol2=resp_mol2_low,
-                logger=self.logger,
+                steps=1000,
             ),
             *dp_high_resp_rotation_stages(
                 recipe=self,

@@ -18,6 +18,7 @@ from ligandparam.stages import (
     StageUpdate,
     StageLeap,
     StageParmChk,
+    DPMinimize,
 )
 
 
@@ -44,6 +45,29 @@ def rotation_stage_kwargs(recipe: Any) -> dict:
     if recipe.orientation_protocol == "legacy_euler":
         rotation_kwargs.update(legacy_euler_kwargs())
     return rotation_kwargs
+
+
+def dp_minimize_stage(
+    *,
+    recipe: Any,
+    main_input,
+    out_xyz,
+    out_mol2,
+    steps: int,
+    stage_name: str = "DPMinimize",
+):
+    """DeepMD / MACE minimize stage; ``steps`` is the default if kwargs omit it."""
+    return DPMinimize(
+        stage_name,
+        main_input=main_input,
+        cwd=recipe.cwd,
+        out_xyz=out_xyz,
+        out_mol2=out_mol2,
+        model=recipe.kwargs.get("model", "deepmd_model.pb"),
+        ftol=recipe.kwargs.get("ftol", 0.01),
+        steps=recipe.kwargs.get("steps", steps),
+        logger=recipe.logger,
+    )
 
 
 def init_normalize_center_stages(

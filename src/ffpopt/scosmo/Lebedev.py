@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 def GetLebedevValidDegrees():
-   degrees= [   6,   14,   26,   38,   50,
+    degrees= [   6,   14,   26,   38,   50,
                 86,  110,  146,  170,  194,
                302,  350,  434,  590,  770,
                974, 1202, 1454, 1730, 2030,
@@ -13,7 +13,7 @@ def GetLebedevValidDegrees():
 def GetLebedevDegreeMatchingDensity(radius_in_ang,pts_per_ang):
     import numpy as np
     sa = 4 * np.pi * radius_in_ang**2
-   degrees = GetLebedevValidDegrees()
+    degrees = GetLebedevValidDegrees()
     densities = [ deg/sa for deg in degrees ]
     d = degrees[-1]
     for i in range(len(densities)-1):
@@ -38,7 +38,7 @@ def LebedevGaussianZetaScaleFactor(npt):
     #
     # Result is au (1/Bohr**2)
     #
-   degrees= GetLebedevValidDegrees()
+    degrees= GetLebedevValidDegrees()
 
     sclfs= [ 4.84566077868, 4.86458714334, 4.85478226219, 4.90105812685, 4.89250673295,
              4.89741372580, 4.90101060987, 4.89825187392, 4.90685517725, 4.90337644248,
@@ -659,7 +659,7 @@ def GetLebedevRule(npt):
     #           83,  89,  95, 101, 107,
     #          113, 119, 125, 131]
     
-   degrees= [   6,   14,   26,   38,   50,
+    degrees= [   6,   14,   26,   38,   50,
                 86,  110,  146,  170,  194,
                302,  350,  434,  590,  770,
                974, 1202, 1454, 1730, 2030,

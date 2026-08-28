@@ -51,6 +51,45 @@ def _guard_covalent_geometry(positions, bonds, numbers=None, *, where="geometry"
     assert_sane_covalent_geometry(positions, bonds, numbers, where=where)
 
 
+def merge_struct_constraints_restraints(struct, constraints=None, restraints=None):
+    """Overlay call-site lists onto copies of ``struct`` constraints/restraints.
+
+    Matching items (``is_same``) take the incoming ``value``; others append.
+    Returns ``(conslist, reslist)``; either may be ``None``.
+    """
+    import copy
+    from ffpopt.geom.Constraints import ConstraintList
+    from ffpopt.geom.Restraints import RestraintList
+
+    def _overlay(existing, incoming):
+        if incoming is None:
+            return
+        for item in incoming:
+            found = False
+            for old in existing:
+                if old.is_same(item):
+                    old.value = item.value
+                    found = True
+                    break
+            if not found:
+                existing.append(item)
+
+    reslist = None
+    if struct.restraints is not None and len(struct.restraints.rests) > 0:
+        reslist = copy.deepcopy(struct.restraints)
+        _overlay(reslist.rests, restraints)
+    if reslist is None and restraints is not None:
+        reslist = RestraintList(copy.deepcopy(restraints))
+
+    conslist = None
+    if struct.constraints is not None and len(struct.constraints) > 0:
+        conslist = copy.deepcopy(struct.constraints)
+        _overlay(conslist.cons, constraints)
+    if conslist is None and constraints is not None:
+        conslist = ConstraintList(copy.deepcopy(constraints))
+    return conslist, reslist
+
+
 def _attach_ase_geometry_guard(optimizer, atoms, bonds, numbers=None):
     """Abort an ASE optimizer as soon as a covalent bond explodes."""
     from ffpopt.geom.Constraints import BrokenGeometryError, covalent_geometry_error
@@ -118,22 +157,9 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
     from ffpopt.geom.Restraints import RestraintList
     from ffpopt.geom.Constraints import ApplyConstraints, to_ase
 
-    reslist = None
-    if struct.restraints is not None:
-        if len(struct.restraints.rests) > 0:
-            reslist = copy.deepcopy(struct.restraints)
-            if restraints is not None:
-                for b in restraints:
-                    found=False
-                    for a in reslist.rests:
-                        if a.is_same(b):
-                            a.value=b.value
-                            found=True
-                    if not found:
-                        reslist.rests.append(b)
-
-    if reslist is None and restraints is not None:
-        reslist = RestraintList( copy.deepcopy(restraints) )
+    conslist, reslist = merge_struct_constraints_restraints(
+        struct, constraints, restraints
+    )
 
     origatoms = struct.GetASEAtoms()
     myatoms = struct.GetASEAtoms()
@@ -146,23 +172,6 @@ def GeomOpt_ASE(los,struct,constraints=None,restraints=None):
         calc = myatoms.calc
     else:
         myatoms.calc = calc
-
-    conslist = None
-    if struct.constraints is not None:
-        if len(struct.constraints) > 0:
-            conslist = copy.deepcopy(struct.constraints)
-            if constraints is not None:
-                for b in constraints:
-                    found=False
-                    for a in conslist.cons:
-                        if a.is_same(b):
-                            a.value = b.value
-                            found=True
-                    if not found:
-                        conslist.cons.append(b)
-
-    if conslist is None and constraints is not None:
-        conslist = ConstraintList( copy.deepcopy(constraints) )
 
     asecons = None
     cons = None

@@ -74,7 +74,7 @@ def FixCharges(inpcharges,digits,target=None):
         qmap[charges[i]].append(i)
 
     uniqueqs = [ q for q in qmap ]
-   degens = [ len(qmap[q]) for q in qmap ]
+    degens = [ len(qmap[q]) for q in qmap ]
 
     q = sum([ u*g for u,g in zip(uniqueqs,degens)])
     

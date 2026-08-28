@@ -72,27 +72,11 @@ class DPMinimize(AbstractStage):
         self.steps = kwargs.get("steps", 1000)
         self.charge = kwargs.get("charge", 0)
 
-    def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
-        """
-        Execute the DeepMD minimization.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, the stage will not be executed, but the function will print the commands that would be run.
-        nproc : int, optional
-            Number of processors to use.
-        mem : int, optional
-            Amount of memory to use (in GB).
-
-        Returns
-        -------
-        None
-        """
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Minimize with DeepMD / MACE and write ``out_xyz`` / ``out_mol2``."""
         if dry_run:
-            print(f"Dry run: would execute with model {self.model}")
+            self.logger.info("Dry run: would execute with model %s", self.model)
             return
-        print("Starting execute")
         if not getattr(self, "coord_object", None):
             self.coord_object = Coordinates(self.in_mol2, filetype="mol2")
         elements = self.coord_object.u.atoms.elements
@@ -104,16 +88,18 @@ class DPMinimize(AbstractStage):
         try:
             atoms = read("temp.xyz", format='xyz')
         except Exception as e:
-            print(f"Error reading input XYZ file: {e}")
+            self.logger.error("Error reading input XYZ file: %s", e)
             return
         atoms.calc = calculator
         optimizer = BFGS(atoms, maxstep=0.1)
         optimizer.run(fmax=0.005, steps=self.steps)
         atoms.write(self.out_xyz, format='xyz')
         self.replace_mol2_coords(self.in_mol2, self.out_xyz, self.out_mol2)
-        print(f"Minimized coordinates written to {self.out_xyz} and {self.out_mol2}")
-
-        return
+        self.logger.info(
+            "Minimized coordinates written to %s and %s",
+            self.out_xyz,
+            self.out_mol2,
+        )
     
     def _choose_calculator(self):
         """

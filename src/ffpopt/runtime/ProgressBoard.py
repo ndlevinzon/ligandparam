@@ -295,7 +295,7 @@ class JobBoardWatcher:
 
 
 # ---------------------------------------------------------------------------
-# Fragment-oriented aliases (formerly fragment_progress.py)
+# Fragment / whole-ligand boards: one profile table, named aliases
 # ---------------------------------------------------------------------------
 
 from contextlib import contextmanager
@@ -303,34 +303,153 @@ from typing import Iterator
 
 from .Console import attach_console_handlers, console_formatter, tee_stdio_to_file
 
-# Ordered stages used for display hints (unknown stages still render).
-KNOWN_FRAGMENT_STAGES = (
-    "queued",
-    "prepare",
-    "hl_scan",
-    "orig_scan",
-    "compare",
-    "fit",
-    "apply",
-    "rescan",
-    "finished",
-    "failed",
-)
-# Back-compat alias
+_BOARD_PROFILES: dict[str, dict[str, Any]] = {
+    "fragment": {
+        "collection_key": "fragments",
+        "id_header": "Fragment",
+        "title": "Fragment dihedral twist - live status",
+        "empty_hint": "no fragments registered yet",
+        "detail_hint_label": "Per-fragment detail logs",
+        "logger_ns": "ffpopt.workflows.frag",
+        "watcher_thread": "frag-progress-board",
+        "known_stages": (
+            "queued",
+            "prepare",
+            "hl_scan",
+            "orig_scan",
+            "compare",
+            "fit",
+            "apply",
+            "rescan",
+            "finished",
+            "failed",
+        ),
+    },
+    "whole": {
+        "collection_key": "batches",
+        "id_header": "Batch",
+        "title": "Whole-ligand dihedral twist - live status",
+        "empty_hint": "no torsion batches registered yet",
+        "detail_hint_label": "Per-batch detail logs",
+        "logger_ns": "ffpopt.workflows.whole",
+        "watcher_thread": "whole-progress-board",
+        "known_stages": (
+            "queued",
+            "prepare",
+            "twist",
+            "finished",
+            "failed",
+        ),
+    },
+}
+
+
+def _board_profile(kind: str) -> dict[str, Any]:
+    try:
+        return _BOARD_PROFILES[kind]
+    except KeyError as exc:
+        raise ValueError(f"unknown progress-board kind {kind!r}") from exc
+
+
+def make_progress_store(kind: str, path: PathLike) -> JobProgressStore:
+    """Build a :class:`JobProgressStore` from a named fragment/whole profile."""
+    cfg = _board_profile(kind)
+    return JobProgressStore(
+        path,
+        collection_key=cfg["collection_key"],
+        id_header=cfg["id_header"],
+        title=cfg["title"],
+        empty_hint=cfg["empty_hint"],
+        detail_hint_label=cfg["detail_hint_label"],
+    )
+
+
+def make_board_watcher(
+    kind: str,
+    store: JobProgressStore,
+    *,
+    board_path: Path,
+    logger,
+    interval_sec: float = 5.0,
+    log_root_hint: str | None = None,
+) -> JobBoardWatcher:
+    """Build a :class:`JobBoardWatcher` from a named fragment/whole profile."""
+    cfg = _board_profile(kind)
+    return JobBoardWatcher(
+        store,
+        board_path=board_path,
+        logger=logger,
+        interval_sec=interval_sec,
+        log_root_hint=log_root_hint,
+        thread_name=cfg["watcher_thread"],
+    )
+
+
+def format_kind_board(
+    kind: str,
+    jobs: Mapping[str, Mapping[str, Any]],
+    *,
+    title: str | None = None,
+    log_root_hint: str | None = None,
+) -> str:
+    cfg = _board_profile(kind)
+    return format_job_board(
+        jobs,
+        title=title if title is not None else cfg["title"],
+        id_header=cfg["id_header"],
+        empty_hint=cfg["empty_hint"],
+        detail_hint_label=cfg["detail_hint_label"],
+        log_root_hint=log_root_hint,
+    )
+
+
+def make_kind_file_logger(kind: str, job_id: str, log_path: Path):
+    """Logger that writes to ``log_path`` and mirrors to the console."""
+    import logging
+
+    cfg = _board_profile(kind)
+    name = f"{cfg['logger_ns']}.{job_id}"
+    tag = f"ffpopt:{job_id}"
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    handler.setFormatter(console_formatter(tag))
+    logger.addHandler(handler)
+    attach_console_handlers(logger, tag=tag)
+    return logger
+
+
+@contextmanager
+def kind_stdio_to_file(
+    log_path: Path,
+    *,
+    job_id: str | None = None,
+) -> Iterator[None]:
+    """Tee stdout/stderr to ``log_path`` and the parent console."""
+    tag = f"ffpopt:{job_id}" if job_id else "ffpopt"
+    with tee_stdio_to_file(log_path, tag=tag):
+        yield
+
+
+KNOWN_FRAGMENT_STAGES = _BOARD_PROFILES["fragment"]["known_stages"]
 KNOWN_STAGES = KNOWN_FRAGMENT_STAGES
+KNOWN_WHOLE_STAGES = _BOARD_PROFILES["whole"]["known_stages"]
 
 
 class FragmentProgressStore(JobProgressStore):
     """Process-shared fragment status table backed by a JSON file."""
 
     def __init__(self, path: PathLike) -> None:
+        cfg = _board_profile("fragment")
         super().__init__(
             path,
-            collection_key="fragments",
-            id_header="Fragment",
-            title="Fragment dihedral twist - live status",
-            empty_hint="no fragments registered yet",
-            detail_hint_label="Per-fragment detail logs",
+            collection_key=cfg["collection_key"],
+            id_header=cfg["id_header"],
+            title=cfg["title"],
+            empty_hint=cfg["empty_hint"],
+            detail_hint_label=cfg["detail_hint_label"],
         )
 
     def register(
@@ -354,28 +473,6 @@ class FragmentProgressStore(JobProgressStore):
             log_path=log_path,
         )
 
-    def update(
-        self,
-        fragment_id: str,
-        *,
-        status: Optional[str] = None,
-        stage: Optional[str] = None,
-        detail: Optional[str] = None,
-        error: Optional[str] = None,
-        bonds: Optional[int] = None,
-        log_path: Optional[str] = None,
-    ) -> None:
-        """Merge fields for one fragment and rewrite the JSON store."""
-        super().update(
-            fragment_id,
-            status=status,
-            stage=stage,
-            detail=detail,
-            error=error,
-            bonds=bonds,
-            log_path=log_path,
-        )
-
 
 def format_fragment_board(
     fragments: Mapping[str, Mapping[str, Any]],
@@ -384,13 +481,8 @@ def format_fragment_board(
     log_root_hint: str | None = None,
 ) -> str:
     """Format ``{id: {status, stage, detail, ...}}`` as a fixed-width board."""
-    return format_job_board(
-        fragments,
-        title=title,
-        id_header="Fragment",
-        empty_hint="no fragments registered yet",
-        detail_hint_label="Per-fragment detail logs",
-        log_root_hint=log_root_hint,
+    return format_kind_board(
+        "fragment", fragments, title=title, log_root_hint=log_root_hint
     )
 
 
@@ -401,31 +493,13 @@ def fragment_stdio_to_file(
     fragment_id: str | None = None,
 ) -> Iterator[None]:
     """Tee stdout/stderr to ``log_path`` and the parent console."""
-    tag = f"ffpopt:{fragment_id}" if fragment_id else "ffpopt"
-    with tee_stdio_to_file(log_path, tag=tag):
+    with kind_stdio_to_file(log_path, job_id=fragment_id):
         yield
 
 
 def make_fragment_file_logger(fragment_id: str, log_path: Path):
-    """Logger that writes to the fragment log and mirrors to the console.
-
-    Console lines look like::
-
-        TIMESTAMP [ffpopt:fragment_N] [frag-twist] INFO: message
-    """
-    import logging
-
-    name = f"ffpopt.workflows.frag.{fragment_id}"
-    tag = f"ffpopt:{fragment_id}"
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    logger.propagate = False
-    logger.setLevel(logging.INFO)
-    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-    handler.setFormatter(console_formatter(tag))
-    logger.addHandler(handler)
-    attach_console_handlers(logger, tag=tag)
-    return logger
+    """Logger that writes to the fragment log and mirrors to the console."""
+    return make_kind_file_logger("fragment", fragment_id, log_path)
 
 
 class FragmentBoardWatcher(JobBoardWatcher):
@@ -446,30 +520,22 @@ class FragmentBoardWatcher(JobBoardWatcher):
             logger=logger,
             interval_sec=interval_sec,
             log_root_hint=log_root_hint,
-            thread_name="frag-progress-board",
+            thread_name=_board_profile("fragment")["watcher_thread"],
         )
-
-
-KNOWN_WHOLE_STAGES = (
-    "queued",
-    "prepare",
-    "twist",
-    "finished",
-    "failed",
-)
 
 
 class WholeProgressStore(JobProgressStore):
     """Process-shared whole-ligand torsion-batch status table."""
 
     def __init__(self, path: PathLike) -> None:
+        cfg = _board_profile("whole")
         super().__init__(
             path,
-            collection_key="batches",
-            id_header="Batch",
-            title="Whole-ligand dihedral twist - live status",
-            empty_hint="no torsion batches registered yet",
-            detail_hint_label="Per-batch detail logs",
+            collection_key=cfg["collection_key"],
+            id_header=cfg["id_header"],
+            title=cfg["title"],
+            empty_hint=cfg["empty_hint"],
+            detail_hint_label=cfg["detail_hint_label"],
         )
 
     def register(
@@ -497,13 +563,8 @@ def format_whole_board(
     log_root_hint: str | None = None,
 ) -> str:
     """Format ``{id: {status, stage, detail, ...}}`` as a fixed-width board."""
-    return format_job_board(
-        batches,
-        title=title,
-        id_header="Batch",
-        empty_hint="no torsion batches registered yet",
-        detail_hint_label="Per-batch detail logs",
-        log_root_hint=log_root_hint,
+    return format_kind_board(
+        "whole", batches, title=title, log_root_hint=log_root_hint
     )
 
 
@@ -514,31 +575,13 @@ def whole_stdio_to_file(
     batch_id: str | None = None,
 ) -> Iterator[None]:
     """Tee stdout/stderr to ``log_path`` and the parent console."""
-    tag = f"ffpopt:{batch_id}" if batch_id else "ffpopt"
-    with tee_stdio_to_file(log_path, tag=tag):
+    with kind_stdio_to_file(log_path, job_id=batch_id):
         yield
 
 
 def make_whole_file_logger(batch_id: str, log_path: Path):
-    """Logger that writes to the batch log and mirrors to the console.
-
-    Console lines look like::
-
-        TIMESTAMP [ffpopt:torsion_batch_00] [whole-twist] INFO: message
-    """
-    import logging
-
-    name = f"ffpopt.workflows.whole.{batch_id}"
-    tag = f"ffpopt:{batch_id}"
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    logger.propagate = False
-    logger.setLevel(logging.INFO)
-    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-    handler.setFormatter(console_formatter(tag))
-    logger.addHandler(handler)
-    attach_console_handlers(logger, tag=tag)
-    return logger
+    """Logger that writes to the batch log and mirrors to the console."""
+    return make_kind_file_logger("whole", batch_id, log_path)
 
 
 class WholeBoardWatcher(JobBoardWatcher):
@@ -559,6 +602,6 @@ class WholeBoardWatcher(JobBoardWatcher):
             logger=logger,
             interval_sec=interval_sec,
             log_root_hint=log_root_hint,
-            thread_name="whole-progress-board",
+            thread_name=_board_profile("whole")["watcher_thread"],
         )
 

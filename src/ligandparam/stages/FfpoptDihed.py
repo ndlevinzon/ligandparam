@@ -117,14 +117,13 @@ class StageDihedTwistCorrection(AbstractStage):
         self.add_required(self.in_lib)
         self.add_required(self.in_frcmod)
 
-    def execute(
+    def _run(
         self,
         dry_run: bool = False,
         nproc: Optional[int] = None,
         mem: Optional[int] = None,
     ) -> Any:
-        """Run the fragmented dihed-twist workflow and write ``out_frcmod``."""
-        self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
+        """Run the fragmented or whole-ligand dihed-twist workflow."""
         nproc_eff = self.nproc if nproc is None else nproc
 
         self.logger.info(

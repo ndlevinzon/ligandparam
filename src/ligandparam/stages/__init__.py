@@ -18,7 +18,6 @@ _EXPORTS = {
     "StageUpdateCharge": ".Charge",
     "StageNormalizeCharge": ".Charge",
     "StageUpdate": ".TypeMatching",
-    "StageMatchAtomNames": ".TypeMatching",
     "SDFToPDB": ".SdfConverters",
     "SDFToPDBBatch": ".SdfConverters",
     "StageSmilesToPDB": ".SmilesToPdb",

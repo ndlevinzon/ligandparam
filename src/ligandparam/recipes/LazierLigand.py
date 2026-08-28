@@ -5,7 +5,7 @@ from typing_extensions import override
 
 from ligandparam.Parametrization import Recipe
 from ligandparam.recipes.Common import charge_update_parmchk_leap_stages
-from ligandparam.stages import StageInitialize, StageParmChk, StageUpdate, StageNormalizeCharge
+from ligandparam.stages import StageInitialize, StageUpdate, StageNormalizeCharge
 
 
 class LazierLigand(Recipe):
@@ -67,14 +67,6 @@ class LazierLigand(Recipe):
                 logger=self.logger,
                 **self.kwargs,
             ),
-            StageParmChk(
-                "ParmChk",
-                main_input=nonminimized_mol2,
-                cwd=self.cwd,
-                out_frcmod=frcmod,
-                logger=self.logger,
-                **self.kwargs,
-            ),
             StageNormalizeCharge(
                 "Normalize2",
                 main_input=nonminimized_mol2,
@@ -97,7 +89,6 @@ class LazierLigand(Recipe):
                 logger=self.logger,
                 **self.kwargs,
             ),
-            # Keep nonminimized coordinates; replace charges from fixed_charge_mol2
             *charge_update_parmchk_leap_stages(
                 recipe=self,
                 initial_mol2=nonminimized_mol2,

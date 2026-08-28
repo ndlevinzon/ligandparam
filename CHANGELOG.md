@@ -21,6 +21,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and stderr. ``ParmHelper`` slurm ``sed`` no longer uses an invalid
   ``\!`` escape (SyntaxWarning on Python 3.12+).
 
+- **LazierLigand double ParmChk** - the recipe built ``StageParmChk`` and
+  also unpacked ``charge_update_parmchk_leap_stages``, so parmchk ran
+  twice. It now composes Common only.
+
+### Changed
+
+- **Maintainability pass** - product stages implement ``_run`` (template
+  ``execute`` always logs start and tracks ``new_files``). Gaussian
+  MinimizeRESP / RESP share Link0 + run helpers; ``GaussianRESP`` is a
+  subclass that keeps ``GEOM(AllCheck) Guess(Read)``. Unused
+  ``StageMatchAtomNames`` is gone. Wavefront 1-D/N-D drain, progress, and
+  level-energy twins collapse in ``WavefrontEngine`` (public names stay).
+  GeomOpt constraint ladders share one merge helper; backend fallback is
+  an ordered attempt list. Progress boards are one profile table plus
+  fragment/whole aliases. Dead FindFuncGrps SMARTS ``else`` table
+  removed. Developer regression splits ``TestFfpoptCoreFunctions`` into
+  sibling classes in the same file.
+
 ## [1.6.1] - 2026-08-27
 
 ### Added

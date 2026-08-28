@@ -1063,6 +1063,91 @@ class Wavefront:
         """
         return round(number / delta) * delta
 
+    def _acquire_nd_pool(self):
+        """Spawn an N-D worker pool; returns ``(pool, owns_pool)``."""
+        from ffpopt.runtime.NondaemonPool import make_wavefront_spawn_pool
+
+        template = self.los.structs[0] if getattr(self.los, "structs", None) else None
+        if template is None:
+            for level in self.levels:
+                for node in level.nodes:
+                    template = node.struct
+                    break
+                if template is not None:
+                    break
+        pool = make_wavefront_spawn_pool(
+            self.nproc,
+            initializer=_init_worker,
+            initargs=(self.los, self.conlist, template, self.reslist),
+        )
+        return pool, True
+
+    def _run_mp_queue(self, acquire_pool) -> None:
+        """Shared 1-D / N-D multiprocessing drain (checkpoint + spawn pool)."""
+        from collections import deque
+        from ffpopt.runtime.Console import ensure_ascii_stdio
+        from ffpopt.runtime.FastWavefront import wf_checkpoint_every
+
+        ensure_ascii_stdio()
+        if not self.levels:
+            self.init_calculation()
+            pending = deque(self.levels[0].nodes)
+        elif self._resume_queue:
+            pending = deque(self._resume_queue)
+        else:
+            pending = deque(
+                node
+                for level in self.levels
+                for node in level.nodes
+                if node.active and not node.complete
+            )
+
+        self._rebuild_occupancy(pending)
+        self._resume_queue = list(pending)
+        self.save_checkpoint()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
+
+        pool = None
+        owns_pool = False
+        if self.nproc > 1:
+            external = getattr(self, "_external_mp_pool", None)
+            if external is not None:
+                pool = external
+            else:
+                pool, owns_pool = acquire_pool()
+
+        run_mp_spawn_drain_loop(
+            pending=pending,
+            nproc=self.nproc,
+            pool=pool,
+            run_node_job=_run_node_job,
+            on_complete=self._on_complete,
+            on_dispatch=self._mark_dispatch,
+            on_skip=self._finish_loc,
+            set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
+            save_checkpoint=self.save_checkpoint,
+            cleanup_completed=self._cleanup_completed,
+            print_progress=self._print_progress,
+            checkpoint_every=wf_checkpoint_every(self.nproc),
+            terminate_pool=owns_pool,
+        )
+
+        self._resume_queue = []
+        self.save_checkpoint()
+        self._cleanup_completed()
+        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
+        self._print_progress(0, 0)
+        results = self.sort_results()
+        nmin = len(
+            getattr(self, "min_energies", None)
+            or getattr(self, "min_bins", {})
+            or {}
+        )
+        print_wavefront(
+            f"finished this scan (angles={nmin}, checkpoint={self.checkpoint})"
+        )
+        return results
+
     def calculate(self) -> None:
         """Apply the wavefront algorithm (1-D queue or N-D threads/MPI)."""
         from ffpopt.ase.Aimnet import aimnet_gpu_plan_message, cap_aimnet_nproc
@@ -1077,129 +1162,20 @@ class Wavefront:
             if getattr(self, "use_mpi", False):
                 return self.calculate_mpi()
             return self.calculate_threads()
-        """Apply the wavefront algorithm to optimize a dihedral scan.
-
-        This runs the wavefront as a single calculation queue: a persistent pool
-        of ``nproc`` workers pulls nodes off the queue, and each finished node
-        immediately enqueues its active neighbors. Levels are kept only as a
-        post-processing label (every node keeps its ``level``), not as a
-        synchronization barrier, so a slow node no longer stalls the rest of its
-        level. The scan stops when the queue drains with no work in flight.
-
-        Worker results return in completion order, so which redundant neighbor
-        nodes get spawned (and therefore the exact per-angle minima) can vary
-        between runs at ``nproc > 1``. Also note that ``nproc`` workers each may
-        launch a geomeTRIC/psi4 subprocess, so the effective core usage is
-        ``nproc`` times the per-worker thread count.
-
-        1 - - - - - - - - o - - -
-        2 - - - - - - - o x o - -
-        3 - - - - - - o x o x o - 
-        4 - - - - - o x o x x x o 
-        5 o - - - o x o x x x x x
-        6 x o - o x x x x x x x x 
-        7 x x o x x x x x x x x x
-        0          180        360
-
-        The wavefront algorithm looks something like the above, where each o represents and activate node in the wavefront, and each x 
-        represents an inactive node that has been calculated. Once there are no more active nodes, the algorithm stops.
-        
-        Returns
-        -------
-        tuple
-            A tuple containing the angles, energies, and structures of the optimized nodes.
-            
-        """
-        import multiprocessing
-        from collections import deque
-        from ffpopt.runtime.Console import ensure_ascii_stdio
-
-        ensure_ascii_stdio()
-
-        # Seed the queue: a fresh run initializes level 1; a restart re-enqueues
-        # the work the checkpoint recorded as pending/in-flight (falling back to
-        # any active, incomplete node for checkpoints predating _resume_queue).
-        if not self.levels:
-            self.init_calculation()
-            pending = deque(self.levels[0].nodes)
-        elif self._resume_queue:
-            pending = deque(self._resume_queue)
-        else:
-            pending = deque(node for level in self.levels
-                            for node in level.nodes
-                            if node.active and not node.complete)
-
-        self._rebuild_occupancy(pending)
-        self._resume_queue = list(pending)
-        self.save_checkpoint()
-        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
-
-        pool = None
-        owns_pool = False
-        external = getattr(self, "_external_mp_pool", None)
-        if self.nproc > 1:
-            if external is not None:
-                pool = external
-            else:
-                pool, owns_pool = _acquire_wavefront_pool(
-                    self.nproc, self.los, self.con, self.struct
-                )
-
-        from ffpopt.runtime.FastWavefront import wf_checkpoint_every
-        checkpoint_every = wf_checkpoint_every(self.nproc)
-        run_mp_spawn_drain_loop(
-            pending=pending,
-            nproc=self.nproc,
-            pool=pool,
-            run_node_job=_run_node_job,
-            on_complete=self._on_complete,
-            on_dispatch=self._mark_dispatch,
-            on_skip=self._finish_loc,
-            set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
-            save_checkpoint=self.save_checkpoint,
-            cleanup_completed=self._cleanup_completed,
-            print_progress=self._print_progress,
-            checkpoint_every=checkpoint_every,
-            terminate_pool=owns_pool,
+        return self._run_mp_queue(
+            lambda: _acquire_wavefront_pool(
+                self.nproc, self.los, self.con, self.struct
+            )
         )
-
-        self._resume_queue = []
-        self.save_checkpoint()
-        self._cleanup_completed()
-        cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
-        self._print_progress(0, 0)
-        results = self.sort_results()
-        print_wavefront(
-            f"finished this scan (angles={len(self.min_energies)}, "
-            f"checkpoint={self.checkpoint})"
-        )
-        return results
 
     def _print_progress(self, pending: int, in_flight: int) -> None:
         if self.is_nd:
-            return self._print_progress_nd(pending, in_flight)
-        """ Print a one-line live progress summary for the calculation queue.
-
-        Replaces the old per-level banner: since several levels are in flight at
-        once there is no clean level boundary to print at, so this is emitted at
-        each checkpoint and at the end instead.
-
-        Parameters
-        ----------
-        pending : int
-            Number of nodes queued but not yet started.
-        in_flight : int
-            Number of nodes currently being optimized by workers.
-
-        """
-        total_angles = 360 // self.delta if self.delta else 0
+            extra = f"rcs={len(self.min_bins)}/{len(self.bins)}"
+        else:
+            total_angles = 360 // self.delta if self.delta else 0
+            extra = f"angles={len(self.min_energies)}/{total_angles}"
         print_wavefront(
-            format_wavefront_progress(
-                self,
-                pending,
-                in_flight,
-                extra=f"angles={len(self.min_energies)}/{total_angles}",
-            )
+            format_wavefront_progress(self, pending, in_flight, extra=extra)
         )
 
     def _cleanup_completed(self) -> None:
@@ -1602,23 +1578,26 @@ class Wavefront:
         return node
 
     def _rebuild_level_energies(self) -> None:
-        if self.is_nd:
-            return self._rebuild_level_energies_nd()
-        """ Rebuild ``self.level_energies`` as a per-level convergence history.
-
-        Produces one ``{angle: energy}`` snapshot per level, where level ``k``
-        holds every angle whose final minimum was reached at level ``k`` or
-        earlier. This is derived deterministically from the recorded minima
-        (independent of worker completion order); the final snapshot equals
-        ``self.min_energies``. ``ffpopt-WavefrontAnimate.py`` consumes it.
-
-        """
+        """Per-level snapshots of minima for ``ffpopt-WavefrontAnimate.py``."""
         max_level = max((level.level_id for level in self.levels), default=0)
         snapshots = []
         for k in range(1, max_level + 1):
-            snapshots.append({angle: energy
-                              for angle, energy in self.min_energies.items()
-                              if self.min_nodes[angle].level <= k})
+            if self.is_nd:
+                snapshots.append(
+                    {
+                        gidx: sbin.energy
+                        for gidx, sbin in self.min_bins.items()
+                        if self.min_nodes[gidx].level <= k
+                    }
+                )
+            else:
+                snapshots.append(
+                    {
+                        angle: energy
+                        for angle, energy in self.min_energies.items()
+                        if self.min_nodes[angle].level <= k
+                    }
+                )
         self.level_energies = snapshots
 
     def save_checkpoint(self) -> None:
@@ -1638,10 +1617,6 @@ class Wavefront:
         slim_completed_nodes_for_checkpoint(self)
         pickle_checkpoint_keep_calc_cache(self, self.checkpoint, self.los)
         print_wavefront(f"checkpoint saved to {self.checkpoint}")
-
-    def _slim_nodes_for_checkpoint(self) -> None:
-        """Drop bulky redundant arrays from completed nodes before pickling."""
-        slim_completed_nodes_for_checkpoint(self)
 
     def init_min(self) -> None:
         """Initial geometry optimization and angle calculation.
@@ -1711,21 +1686,6 @@ class Wavefront:
             spawn_guard=self._spawn_guard,
         )
 
-    def determine_active_nodes(self, current_level: WavefrontLevel) -> None:
-        """ Evaluate every node in a level via :meth:`_evaluate_node`.
-
-        Retained for backward compatibility; the queue scheduler calls
-        :meth:`_evaluate_node` per node as results arrive rather than per level.
-
-        Parameters
-        ----------
-        current_level : WavefrontLevel
-            The level whose nodes to evaluate.
-
-        """
-        for node in current_level.nodes:
-            self._evaluate_node(node)
-
     def spawn_neighbors(self, node: WavefrontNode) -> list:
         if self.is_nd:
             return self._spawn_neighbors_nd(node)
@@ -1771,117 +1731,9 @@ class Wavefront:
         return spawned
 
     def calculate_threads(self) -> None:
-            """Apply the wavefront algorithm to optimize a dihedral scan.
-            
-            This runs the wavefront as a single calculation queue: a persistent pool
-            of ``nproc`` workers pulls nodes off the queue, and each finished node
-            immediately enqueues its active neighbors. Levels are kept only as a
-            post-processing label (every node keeps its ``level``), not as a
-            synchronization barrier, so a slow node no longer stalls the rest of its
-            level. The scan stops when the queue drains with no work in flight.
-
-            Worker results return in completion order, so which redundant neighbor
-            nodes get spawned (and therefore the exact per-angle minima) can vary
-            between runs at ``nproc > 1``. Also note that ``nproc`` workers each may
-            launch a geomeTRIC/psi4 subprocess, so the effective core usage is
-            ``nproc`` times the per-worker thread count.
-
-            1 - - - - - - - - o - - -
-            2 - - - - - - - o x o - -
-            3 - - - - - - o x o x o - 
-            4 - - - - - o x o x x x o 
-            5 o - - - o x o x x x x x
-            6 x o - o x x x x x x x x 
-            7 x x o x x x x x x x x x
-            0          180        360
-
-            The wavefront algorithm looks something like the above, where each o represents and activate node in the wavefront, and each x 
-            represents an inactive node that has been calculated. Once there are no more active nodes, the algorithm stops.
-            
-            Returns
-            -------
-            tuple
-                A tuple containing the angles, energies, and structures of the optimized nodes.
-                
-            """
-            import multiprocessing
-            from collections import deque
-
-            # Seed the queue: a fresh run initializes level 1; a restart re-enqueues
-            # the work the checkpoint recorded as pending/in-flight (falling back to
-            # any active, incomplete node for checkpoints predating _resume_queue).
-
-            print_wavefront("entered calculate_threads")
-            
-            if not self.levels:
-                self.init_calculation()
-                pending = deque(self.levels[0].nodes)
-            elif self._resume_queue:
-                pending = deque(self._resume_queue)
-            else:
-                pending = deque(node for level in self.levels
-                                for node in level.nodes
-                                if node.active and not node.complete)
-
-            self._rebuild_occupancy(pending)
-            self._resume_queue = list(pending)
-            self.save_checkpoint()
-            cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=True)
-
-            pool = None
-            owns_pool = False
-            external = getattr(self, "_external_mp_pool", None)
-            if self.nproc > 1:
-                if external is not None:
-                    pool = external
-                else:
-                    from ffpopt.runtime.NondaemonPool import make_wavefront_spawn_pool
-
-                    template = self.los.structs[0] if getattr(self.los, "structs", None) else None
-                    if template is None:
-                        for level in self.levels:
-                            for n in level.nodes:
-                                template = n.struct
-                                break
-                            if template is not None:
-                                break
-                    pool = make_wavefront_spawn_pool(
-                        self.nproc,
-                        initializer=_init_worker,
-                        initargs=(self.los, self.conlist, template, self.reslist),
-                    )
-                    owns_pool = True
-
-            from ffpopt.runtime.FastWavefront import wf_checkpoint_every
-            checkpoint_every = wf_checkpoint_every(self.nproc)
-            run_mp_spawn_drain_loop(
-                pending=pending,
-                nproc=self.nproc,
-                pool=pool,
-                run_node_job=_run_node_job,
-                on_complete=self._on_complete,
-                on_dispatch=self._mark_dispatch,
-                on_skip=self._finish_loc,
-                set_resume_queue=lambda q: setattr(self, "_resume_queue", q),
-                save_checkpoint=self.save_checkpoint,
-                cleanup_completed=self._cleanup_completed,
-                print_progress=self._print_progress,
-                checkpoint_every=checkpoint_every,
-                terminate_pool=owns_pool,
-            )
-
-            self._resume_queue = []
-            self.save_checkpoint()
-            self._cleanup_completed()
-            cleanup_wavefront_geometric_scratch(self, keep_incomplete_optim=False)
-            self._print_progress(0, 0)
-            results = self.sort_results()
-            print_wavefront(
-                "finished this scan "
-                f"(angles={len(getattr(self, 'min_energies', {}) or getattr(self, 'min_bins', {}))}, "
-                f"checkpoint={getattr(self, 'checkpoint', None)})"
-            )
-            return results
+        """N-D multiprocessing wavefront (same drain as 1-D)."""
+        print_wavefront("entered calculate_threads")
+        return self._run_mp_queue(self._acquire_nd_pool)
 
     def calculate_mpi(self) -> None:
             """Apply the wavefront algorithm to optimize a dihedral scan using MPI."""
@@ -2281,49 +2133,6 @@ class Wavefront:
             #self.min_nodes = {}
             self.levels.append(new_starting_level)
             print_wavefront("theory changed and new starting level added")
-
-    def _print_progress_nd(self, pending: int, in_flight: int) -> None:
-            """ Print a one-line live progress summary for the calculation queue.
-
-            Replaces the old per-level banner: since several levels are in flight at
-            once there is no clean level boundary to print at, so this is emitted at
-            each checkpoint and at the end instead.
-
-            Parameters
-            ----------
-            pending : int
-                Number of nodes queued but not yet started.
-            in_flight : int
-                Number of nodes currently being optimized by workers.
-
-            """
-            total_num_rcs = len(self.bins)
-            print_wavefront(
-                format_wavefront_progress(
-                    self,
-                    pending,
-                    in_flight,
-                    extra=f"rcs={len(self.min_bins)}/{total_num_rcs}",
-                )
-            )
-
-    def _rebuild_level_energies_nd(self) -> None:
-            """ Rebuild ``self.level_energies`` as a per-level convergence history.
-
-            Produces one ``{angle: energy}`` snapshot per level, where level ``k``
-            holds every angle whose final minimum was reached at level ``k`` or
-            earlier. This is derived deterministically from the recorded minima
-            (independent of worker completion order); the final snapshot equals
-            ``self.min_energies``. ``ffpopt-WavefrontAnimate.py`` consumes it.
-
-            """
-            max_level = max((level.level_id for level in self.levels), default=0)
-            snapshots = []
-            for k in range(1, max_level + 1):
-                snapshots.append({gidx: sbin.energy
-                                  for gidx, sbin in self.min_bins.items()
-                                  if self.min_nodes[gidx].level <= k})
-            self.level_energies = snapshots
 
     def _sort_results_nd(self) -> tuple[list[float], list[float], list[ase.Atoms]]:
             """Sort the results by angle."""

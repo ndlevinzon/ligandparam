@@ -120,11 +120,12 @@ class AbstractStage(metaclass=ABCMeta):
     def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """Stage body for the template-method :meth:`execute`.
 
-        Subclasses that use the base :meth:`execute` must implement ``_run``.
-        Stages with a custom end-to-end ``execute`` may leave this unused.
+        Subclasses must implement ``_run``. Do not override :meth:`execute`
+        unless the template (start log, setup, ``new_files``) cannot express
+        the control flow.
         """
         raise NotImplementedError(
-            f"{type(self).__name__} must implement _run or override execute"
+            f"{type(self).__name__} must implement _run"
         )
 
     def execute(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
@@ -132,8 +133,7 @@ class AbstractStage(metaclass=ABCMeta):
         Execute the stage (template method).
 
         Logs start, sets up execution, calls :meth:`_run`, then records new
-        files created in ``cwd``. Subclasses with custom control flow may
-        override this method entirely instead of implementing ``_run``.
+        files created in ``cwd``.
 
         Parameters
         ----------

@@ -9,8 +9,9 @@ unmaintainable pile of one-off scripts.
 Maintainability score
 ---------------------
 
-**Overall: 9 / 10** (research monorepo after specialty CLI quarantine,
-thin public facades, merged 1-D/N-D wavefront, and shared helpers).
+**Overall: 9 / 10** (research monorepo after stages on ``_run``, collapsed
+wavefront / GeomOpt twins in place, and dead SMARTS / unused stage
+surface removed).
 
 This is a judgment call, not a CI metric. It reflects how hard it is for a
 new developer (or future-you) to change behavior safely.
@@ -66,11 +67,9 @@ What pulls the score **down**
 
 * **God modules** still dominate a few files by line count:
   :mod:`ffpopt.geom.GeomOpt` and :mod:`ligandparam.multiresp.ParmHelper`
-  keep large public surfaces even after ASE / parallel / job-script
-  helpers were extracted. Wavefront and dihedral public filenames are
-  now thin re-export facades.
-* **Control-flow-heavy stages** still override ``execute`` end-to-end
-  (Gaussian rotation, DeepMD, dihed twist). Thin stages use ``_run``.
+  stay one scientific domain each (helpers live in-file). Splitting them
+  would fight KISS. Wavefront and dihedral public filenames remain thin
+  re-export facades.
 * **Scientific coupling:** many stages need RDKit / ParmEd / Gaussian /
   AmberTools at import or runtime, so "unit test everything" is
   unrealistic without heavy mocking. Tests therefore target contracts
@@ -78,6 +77,8 @@ What pulls the score **down**
 * **Checkpoint / pickle compatibility:** wavefront loaders register
   historical ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` names onto the
   ``scan`` facades, and new dumps live on ``WavefrontEngine``.
+* **Secondary stacks** (``cpefit/``, RespFit, scosmo, pucker, specialty
+  CLIs) are quarantined rather than unified with the product path.
 
 Toward 10/10
 ~~~~~~~~~~~

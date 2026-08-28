@@ -7,6 +7,7 @@ from ffpopt.geom.GeomOptAse import (  # noqa: F401
     _struct_bonds_numbers,
     _guard_covalent_geometry,
     _explode_fmax_limit,
+    merge_struct_constraints_restraints,
 )
 from ffpopt.geom.Geometric import (  # noqa: F401
     _linux_process_tree_cputime,
@@ -115,40 +116,9 @@ def GeomOpt_GEOMETRIC(
 
     # Build constrained geometry first so we can divert to the linear-torsion
     # rescue *before* allocating geomeTRIC temp files.
-    reslist = None
-    if struct.restraints is not None:
-        if len(struct.restraints.rests) > 0:
-            reslist = copy.deepcopy(struct.restraints)
-            if restraints is not None:
-                for b in restraints:
-                    found=False
-                    for a in reslist.rests:
-                        if a.is_same(b):
-                            a.value=b.value
-                            found=True
-                    if not found:
-                        reslist.rests.append(b)
-
-    if reslist is None and restraints is not None:
-        reslist = RestraintList( copy.deepcopy(restraints) )
-
-    conslist = None
-    if struct.constraints is not None:
-        if len(struct.constraints) > 0:
-            conslist = copy.deepcopy(struct.constraints)
-
-            if constraints is not None:
-                for b in constraints:
-                    found=False
-                    for a in conslist.cons:
-                        if a.is_same(b):
-                            a.value = b.value
-                            found=True
-                    if not found:
-                        conslist.cons.append(b)
-
-    if conslist is None and constraints is not None:
-        conslist = ConstraintList( copy.deepcopy(constraints) )
+    conslist, reslist = merge_struct_constraints_restraints(
+        struct, constraints, restraints
+    )
 
     origatoms = struct.GetASEAtoms()
     myatoms = copy.deepcopy(origatoms)
@@ -394,43 +364,13 @@ def GeomOpt_SinglePoint(los,struct,constraints=None,restraints=None):
 
 
 
-        reslist = None
-        if struct.restraints is not None:
-            if len(struct.restraints.rests) > 0:
-                reslist = copy.deepcopy(struct.restraints)
-                if restraints is not None:
-                    for b in restraints:
-                        found=False
-                        for a in reslist.rests:
-                            if a.is_same(b):
-                                a.value=b.value
-                                found=True
-                        if not found:
-                            reslist.rests.append(b)
-        
-        if reslist is None and restraints is not None:
-            reslist = RestraintList( copy.deepcopy(restraints) )
-        
-        
+        conslist, reslist = merge_struct_constraints_restraints(
+            struct, constraints, restraints
+        )
+
         myatoms = struct.GetASEAtoms()
         myatoms.calc=los.BuildRestrainedCalc(struct,reslist=reslist)
         calc = myatoms.calc
-
-        conslist = None
-        if struct.constraints is not None:
-            if len(struct.constraints) > 0:
-                conslist = copy.deepcopy(struct.constraints)
-                if constraints is not None:
-                    for b in constraints:
-                        found=False
-                        for a in conslist.cons:
-                            if a.is_same(b):
-                                a.value = b.value
-                                found=True
-                        if not found:
-                            conslist.cons.append(b)
-        if conslist is None and constraints is not None:
-            conslist = ConstraintList( copy.deepcopy(constraints) )
 
         asecons = None
         cons = None
@@ -496,8 +436,7 @@ def GeomOpt_LINEAR_TORSION(los, struct, constraints=None, restraints=None):
     """
     import copy
 
-    from ffpopt.geom.Constraints import ApplyConstraints, ConstraintList
-    from ffpopt.geom.Restraints import RestraintList
+    from ffpopt.geom.Constraints import ApplyConstraints
     from ffpopt.geom.LinearTorsion import (
         find_near_linear_bends,
         log_linear_torsion,
@@ -506,35 +445,9 @@ def GeomOpt_LINEAR_TORSION(los, struct, constraints=None, restraints=None):
     )
     from ffpopt.geom.Geometric import get_persistent_calc
 
-    reslist = None
-    if struct.restraints is not None and len(struct.restraints.rests) > 0:
-        reslist = copy.deepcopy(struct.restraints)
-        if restraints is not None:
-            for b in restraints:
-                found = False
-                for a in reslist.rests:
-                    if a.is_same(b):
-                        a.value = b.value
-                        found = True
-                if not found:
-                    reslist.rests.append(b)
-    if reslist is None and restraints is not None:
-        reslist = RestraintList(copy.deepcopy(restraints))
-
-    conslist = None
-    if struct.constraints is not None and len(struct.constraints) > 0:
-        conslist = copy.deepcopy(struct.constraints)
-        if constraints is not None:
-            for b in constraints:
-                found = False
-                for a in conslist.cons:
-                    if a.is_same(b):
-                        a.value = b.value
-                        found = True
-                if not found:
-                    conslist.cons.append(b)
-    if conslist is None and constraints is not None:
-        conslist = ConstraintList(copy.deepcopy(constraints))
+    conslist, reslist = merge_struct_constraints_restraints(
+        struct, constraints, restraints
+    )
 
     myatoms = struct.GetASEAtoms()
     cons = None
@@ -625,9 +538,6 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
     ffpopt.Struct.Struct
         The optimized geometry with updated positions, forces, and energy
     """
-    from ffpopt.geom.Constraints import BrokenGeometryError
-    from ffpopt.geom.LinearTorsion import is_linear_torsion_error
-
     bonds, numbers, atoms0 = _struct_bonds_numbers(struct)
     if not los.args.no_opt:
         pos0 = atoms0.get_positions() if atoms0 is not None else None
@@ -636,63 +546,33 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
 
     if los.args.no_opt:
         out = GeomOpt_SinglePoint(los,struct,constraints,restraints)
-    elif not los.args.geometric_opt:
-        try:
-            out = GeomOpt_ASE(los,struct,constraints,restraints)
-        except BrokenGeometryError:
-            raise
-        except Exception as e:
-            if is_linear_torsion_error(e):
-                _geomopt_fallback_note("ASE", e, "linear-torsion")
-                out = GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
-            else:
-                from ffpopt.runtime.FastWavefront import fast_wavefront_enabled
-
-                # Under --fast, skip the expensive geomeTRIC ladder after ASE
-                # failure; try linear-torsion rescue then re-raise.
-                if fast_wavefront_enabled(None):
-                    try:
-                        _geomopt_fallback_note("ASE", e, "linear-torsion")
-                        out = GeomOpt_LINEAR_TORSION(
-                            los, struct, constraints, restraints
-                        )
-                    except BrokenGeometryError:
-                        raise
-                    except Exception:
-                        raise e from e
-                else:
-                    _geomopt_fallback_note("ASE", e, "geomeTRIC")
-                    out = GeomOpt_GEOMETRIC(
-                        los, struct, constraints, restraints, geom_prefix=geom_prefix
-                    )
     else:
-        try:
-            out = GeomOpt_GEOMETRIC(
-                los, struct, constraints, restraints, geom_prefix=geom_prefix
+        linear = lambda: GeomOpt_LINEAR_TORSION(
+            los, struct, constraints, restraints
+        )
+        ase = lambda: GeomOpt_ASE(los, struct, constraints, restraints)
+        geometric = lambda: GeomOpt_GEOMETRIC(
+            los, struct, constraints, restraints, geom_prefix=geom_prefix
+        )
+        if los.args.geometric_opt:
+            out = _geomopt_run_with_fallbacks(
+                "geomeTRIC",
+                geometric,
+                secondary_name="ASE",
+                secondary_fn=ase,
+                linear_fn=linear,
             )
-        except BrokenGeometryError:
-            raise
-        except Exception as e:
-            if is_linear_torsion_error(e):
-                _geomopt_fallback_note("geomeTRIC", e, "linear-torsion")
-                out = GeomOpt_LINEAR_TORSION(los, struct, constraints, restraints)
-            else:
-                # geomeTRIC sometimes cannot recover its IC system under frozen
-                # dihedrals (Cartesian fallback, Brent "Not bracketed", stall
-                # watchdog, NotConverged, ...). Fall back to ASE BFGS/LBFGS/FIRE.
-                _geomopt_fallback_note("geomeTRIC", e, "ASE")
-                try:
-                    out = GeomOpt_ASE(los,struct,constraints,restraints)
-                except BrokenGeometryError:
-                    raise
-                except Exception as e2:
-                    if is_linear_torsion_error(e2):
-                        _geomopt_fallback_note("ASE", e2, "linear-torsion")
-                        out = GeomOpt_LINEAR_TORSION(
-                            los, struct, constraints, restraints
-                        )
-                    else:
-                        raise
+        else:
+            from ffpopt.runtime.FastWavefront import fast_wavefront_enabled
+
+            out = _geomopt_run_with_fallbacks(
+                "ASE",
+                ase,
+                secondary_name="geomeTRIC",
+                secondary_fn=geometric,
+                linear_fn=linear,
+                fast_skip_secondary=fast_wavefront_enabled(None),
+            )
     if not los.args.no_opt:
         getter = getattr(out, "GetASEAtoms", None)
         atoms1 = getter() if callable(getter) else None
@@ -701,6 +581,55 @@ def GeomOpt(los, struct, constraints=None, restraints=None, *, geom_prefix=None)
                 atoms1.get_positions(), bonds, numbers, where="post-opt"
             )
     return out
+
+
+def _geomopt_run_with_fallbacks(
+    primary_name,
+    primary_fn,
+    *,
+    linear_fn,
+    secondary_name=None,
+    secondary_fn=None,
+    fast_skip_secondary=False,
+):
+    """Try primary geomopt, then linear-torsion and/or a secondary backend.
+
+    ``BrokenGeometryError`` always propagates. A linear-torsion shaped error
+    skips the secondary backend. Under ``fast_skip_secondary``, a generic
+    primary failure tries linear-torsion only and re-raises the original
+    exception if that rescue also fails.
+    """
+    from ffpopt.geom.Constraints import BrokenGeometryError
+    from ffpopt.geom.LinearTorsion import is_linear_torsion_error
+
+    try:
+        return primary_fn()
+    except BrokenGeometryError:
+        raise
+    except Exception as exc:
+        if is_linear_torsion_error(exc):
+            _geomopt_fallback_note(primary_name, exc, "linear-torsion")
+            return linear_fn()
+        if fast_skip_secondary:
+            try:
+                _geomopt_fallback_note(primary_name, exc, "linear-torsion")
+                return linear_fn()
+            except BrokenGeometryError:
+                raise
+            except Exception:
+                raise exc from exc
+        if secondary_fn is None:
+            raise
+        _geomopt_fallback_note(primary_name, exc, secondary_name)
+        try:
+            return secondary_fn()
+        except BrokenGeometryError:
+            raise
+        except Exception as exc2:
+            if is_linear_torsion_error(exc2):
+                _geomopt_fallback_note(secondary_name, exc2, "linear-torsion")
+                return linear_fn()
+            raise
 
 
 def _geomopt_fallback_note(failed: str, exc: Exception, fallback: str) -> None:

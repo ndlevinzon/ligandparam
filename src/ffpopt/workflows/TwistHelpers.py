@@ -433,8 +433,9 @@ def gendihedfit_outputs_complete(py_path: PathLike, frcmod_path: PathLike | None
 
 
 def _is_sander_ll_model(model: str | None) -> bool:
-    m = (model or "").strip().lower()
-    return m in {"sander", "amber", "mm"} or m.startswith("sander")
+    from ffpopt.runtime.FastWavefront import is_sander_like_model
+
+    return is_sander_like_model(model)
 
 
 def _wf_kwargs_for_scan_model(model: str, wf_kwargs: dict) -> dict:

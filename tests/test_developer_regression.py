@@ -147,6 +147,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             types = [type(s) for s in recipe.stages]
             self.assertEqual(types[0], StageInitialize)
             self.assertIn(StageNormalizeCharge, types)
+            self.assertEqual(sum(1 for t in types if t.__name__ == "StageParmChk"), 1)
             self._assert_tail_parmchk_leap(recipe.stages)
 
     def test_dpligand_setup_includes_dpminimize(self):
@@ -1272,7 +1273,7 @@ class TestAffdoLogging(unittest.TestCase):
             lambda self, crds: False,
         ), patch(
             "ffpopt.geom.Restraints.HarmonicDihedRestraint.GetCrdValue",
-            lambda self, crds: 90.0,
+            lambda self, crds: 10.0,
         ):
             out = run_soft_dihed_opt(
                 los,
@@ -1314,7 +1315,7 @@ class TestAffdoLogging(unittest.TestCase):
                 "x",
                 opt_fn=fake_opt_hold,
             )
-        self.assertEqual(calls, [500.0, 1000.0, None])
+        self.assertEqual(calls, [500.0, 1000.0])
 
         calls.clear()
         with patch(
@@ -2164,7 +2165,11 @@ class TestScissionFunctions(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestFfpoptCoreFunctions(unittest.TestCase):
+# ---
+# Dihedral Fourier / ParmEd / scan alignment
+# ---
+
+class TestDihedFitHelpers(unittest.TestCase):
     def test_merge_duplicate_period_prims(self):
         from ffpopt.dihed.Dihedrals import (
             PrimDihedFcn,
@@ -2231,6 +2236,409 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIn("0.5", text)
         self.assertIn("p.save(", text)
 
+    def test_gendihedfit_outputs_complete_rejects_truncated_py(self):
+        from ffpopt.workflows.TwistHelpers import gendihedfit_outputs_complete
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            py_path = td / "it01.py"
+            frcmod = td / "it01.frcmod"
+            py_path.write_text("#!/usr/bin/env python3\nprint('truncated')\n", encoding="utf-8")
+            frcmod.write_text("FORCE_FIELD_TYPE PARM99\n", encoding="utf-8")
+            self.assertFalse(gendihedfit_outputs_complete(py_path, frcmod))
+            py_path.write_text(
+                "p = load_file(args.iparm)\np.save(args.oparm,overwrite=True)\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(gendihedfit_outputs_complete(py_path, frcmod))
+            frcmod.unlink()
+            self.assertFalse(gendihedfit_outputs_complete(py_path, frcmod))
+
+    def test_run_fit_script_inprocess_raises_if_parm7_missing(self):
+        from ffpopt.workflows.TwistHelpers import _run_fit_script_inprocess
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            script = td / "it01.py"
+            iparm = td / "orig.parm7"
+            oparm = td / "it01.parm7"
+            script.write_text("print('no p.save')\n", encoding="utf-8")
+            iparm.write_text("placeholder\n", encoding="utf-8")
+            with self.assertRaises(FileNotFoundError) as ctx:
+                _run_fit_script_inprocess(script, iparm, oparm)
+            self.assertIn("without writing", str(ctx.exception))
+            self.assertFalse(oparm.exists())
+
+    def test_dihed_facade_exports(self):
+        from ffpopt.dihed import DihedFitSolve, DihedFourier, DihedParmEd
+        from ffpopt.dihed.Dihedrals import (
+            ChangeDihedrals,
+            DeleteDihedrals,
+            FindPuckers,
+            FitInputType,
+            IsolatedLinearSolve,
+            MultiDihedFcn,
+            NonlinearSolve,
+            PrimDihedFcn,
+            WriteParmedScript,
+        )
+
+        self.assertIs(PrimDihedFcn, DihedFourier.PrimDihedFcn)
+        self.assertIs(MultiDihedFcn, DihedFourier.MultiDihedFcn)
+        self.assertIs(DeleteDihedrals, DihedParmEd.DeleteDihedrals)
+        self.assertIs(ChangeDihedrals, DihedParmEd.ChangeDihedrals)
+        self.assertIs(WriteParmedScript, DihedParmEd.WriteParmedScript)
+        self.assertIs(IsolatedLinearSolve, DihedFitSolve.IsolatedLinearSolve)
+        self.assertIs(NonlinearSolve, DihedFitSolve.NonlinearSolve)
+        self.assertTrue(isinstance(FitInputType, type))
+        self.assertTrue(callable(FindPuckers))
+
+        from ffpopt.dihed import DihedFitTypes, DihedMath
+        self.assertIs(DihedFitTypes.WriteParmedScript, DihedParmEd.WriteParmedScript)
+        self.assertIs(DihedFitTypes.ChangeDihedrals, DihedParmEd.ChangeDihedrals)
+        self.assertIs(DihedFitSolve.shape_match_delta, DihedMath.shape_match_delta)
+
+    def test_system_write_output_calls_parmed_script(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from ffpopt.dihed.DihedFitTypes import SystemType
+
+        dfcn = SimpleNamespace(idxs=None)
+        pinst = SimpleNamespace(
+            ptype=SimpleNamespace(dfcns=dfcn),
+            dihedidxs=[[0, 1, 2, 3]],
+        )
+        system = SystemType.__new__(SystemType)
+        system.output = "it01.py"
+        system.mol = object()
+        system._fit_owner = SimpleNamespace(scee=1.2, scnb=2.0)
+        system.pinstances = [pinst]
+        with patch("ffpopt.dihed.DihedFitTypes.WriteParmedScript") as writer:
+            system.write_output()
+        writer.assert_called_once()
+        self.assertEqual(writer.call_args.args[0], "it01.py")
+
+    def test_clip_dihed_fcs_caps_unbounded_lstsq(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitSolve import clip_dihed_fcs, dihed_fc_abs_max
+
+        cap = dihed_fc_abs_max()
+        self.assertEqual(cap, 25.0)
+        out = clip_dihed_fcs([6439.0, -1278.0, 1.4], where="test")
+        np.testing.assert_allclose(out, [cap, -cap, 1.4])
+
+    def test_fourier_ridge_beats_cancelling_harmonics(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitRegularize import tikhonov_svd_solve
+
+        # Clustered scan + tiny singular modes: naive pinv (rcond=0) explodes.
+        phi = np.deg2rad(np.array([0.0, 2.0, 4.0, 6.0, 8.0]))
+        A = np.column_stack([np.cos(n * phi) for n in (1, 2, 3)])
+        A = A - np.mean(A, axis=0, keepdims=True)
+        y = 0.3 * A[:, 0] + 0.02 * np.array([0.0, 1.0, -1.0, 0.4, -0.3])
+        y = y - np.mean(y)
+        x_raw = np.linalg.pinv(A, rcond=0.0) @ y
+        x_r, info = tikhonov_svd_solve(A, y, lam=0.0, rel_cutoff=1.0e-4)
+        self.assertGreater(
+            float(np.linalg.norm(x_raw)),
+            10.0 * float(np.linalg.norm(x_r)) + 1.0,
+        )
+        self.assertGreaterEqual(info["n_kept"], 1)
+
+    def test_fourier_nprim_aic_picks_single_harmonic(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitRegularize import fit_fourier_nprim
+
+        angs = np.linspace(0.0, 350.0, 36)
+        y = 1.5 * np.cos(np.deg2rad(angs))
+        y = y - np.mean(y)
+        with patch.dict(os.environ, {"FFPOPT_DIHED_NPRIM_SELECT": "1"}, clear=False):
+            dfcn, x, info = fit_fourier_nprim(
+                angs, y, 3, [0, 1, 2, 3], pname="test-n1"
+            )
+        self.assertEqual(info["nprim"], 1)
+        self.assertEqual(len(dfcn.prims), 1)
+        self.assertGreater(float(x[0]), 0.5)
+
+    def test_fourier_energy_domain_barrier_scales_vphi(self):
+        import numpy as np
+        from ffpopt.dihed.DihedFitRegularize import (
+            dense_torsion_ptp,
+            solve_regularized_fcs,
+        )
+        from ffpopt.dihed.DihedFourier import GetDihedClasses
+
+        dfcn = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        A = np.array([[1.0], [-1.0], [0.5], [-0.5]])
+        y = np.array([80.0, -80.0, 40.0, -40.0])
+        with patch.dict(
+            os.environ,
+            {
+                "FFPOPT_DIHED_BARRIER_ABS": "30",
+                "FFPOPT_DIHED_BARRIER_ALPHA": "1",
+                "FFPOPT_DIHED_RIDGE_LAMBDA": "0",
+            },
+            clear=False,
+        ):
+            x, info = solve_regularized_fcs(A, y, dfcn=dfcn, where="test-barrier")
+        self.assertLessEqual(dense_torsion_ptp(dfcn), 30.0 * 1.05)
+        self.assertLessEqual(float(np.max(np.abs(x))), 25.0)
+        self.assertIsNotNone(info.get("dense_ptp"))
+
+    def test_sp3_rotor_policy_zero_and_alkane_cap(self):
+        from ffpopt.dihed.DihedFitRegularize import (
+            apply_chemical_rotor_policy,
+            apply_sp3_rotor_policy,
+            classify_dihed_rotor,
+            dense_torsion_ptp,
+            parse_dihed_type_key,
+        )
+        from ffpopt.dihed.DihedFourier import GetDihedClasses
+
+        self.assertIs(apply_chemical_rotor_policy, apply_sp3_rotor_policy)
+        self.assertEqual(
+            parse_dihed_type_key("c -ns-c3-c3"), ("c", "ns", "c3", "c3")
+        )
+        self.assertEqual(classify_dihed_rotor("c3-c3-c3-c3"), "alkane")
+        self.assertEqual(classify_dihed_rotor("hc-c3-c3-hc"), "alkane")
+        self.assertEqual(classify_dihed_rotor("c3-c3-s6-o"), "sulfate_phosphate")
+        self.assertEqual(classify_dihed_rotor("h1-c3-s6-o"), "sulfate_phosphate")
+        self.assertEqual(classify_dihed_rotor("c3-c3-n4-c3"), "amine_ammonium")
+        self.assertEqual(classify_dihed_rotor("h1-c3-oh-ho"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("c3-c3-ss-c3"), "polar_sp3")
+        self.assertEqual(classify_dihed_rotor("c3-c3-c3-oh"), "sp3_sp3")
+        self.assertEqual(classify_dihed_rotor("o -c -ns-c3"), "unsaturated")
+        # parmchk2 sugar/detergent carbon (DDM): analog of c3, not unsaturated.
+        self.assertEqual(classify_dihed_rotor("h1-c3-c6-c6"), "alkane")
+        self.assertEqual(classify_dihed_rotor("h1-c6-c6-h1"), "alkane")
+        self.assertEqual(classify_dihed_rotor("oh-c3-c6-os"), "sp3_sp3")
+        self.assertEqual(classify_dihed_rotor("oh-c3-c6-h1"), "sp3_sp3")
+        self.assertEqual(classify_dihed_rotor("c6-c6-os-c3"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("os-c6-os-c3"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("h2-c6-os-c3"), "alcohol_ether")
+        self.assertEqual(classify_dihed_rotor("h1-c6-os-c6"), "alcohol_ether")
+        # Fit-input keys are "{res}_{types}"; the residue must not be a 5th type.
+        self.assertEqual(
+            parse_dihed_type_key("CHA_c3-c3-c3-h1"), ("c3", "c3", "c3", "h1")
+        )
+        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-c3-c3"), "alkane")
+        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-s6-o"), "sulfate_phosphate")
+        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-n4-c3"), "amine_ammonium")
+        self.assertEqual(classify_dihed_rotor("CHA_o-c-ns-c3"), "unsaturated")
+
+        policy_env = {
+            "FFPOPT_DIHED_SP3_BARRIER_MAX": "20",
+            "FFPOPT_DIHED_ALKANE_BARRIER_MAX": "5",
+            "FFPOPT_DIHED_POLAR_SP3_BARRIER_MAX": "8",
+            "FFPOPT_DIHED_SULFATE_BARRIER_MAX": "10",
+            "FFPOPT_DIHED_SULFATE_BARRIER_CAP": "4",
+        }
+
+        stiff = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        stiff.SetFCs([15.4])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, ptp = apply_sp3_rotor_policy(
+                stiff, "CHA_c3-c3-s6-o", where="test"
+            )
+        self.assertEqual(action, "zero_sulfate_phosphate")
+        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
+        self.assertGreater(ptp, 10.0)
+
+        alk = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        alk.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                alk, "c3-c3-c3-c3", where="test"
+            )
+        self.assertEqual(action, "cap_alkane")
+        self.assertLessEqual(dense_torsion_ptp(out), 5.0 * 1.05)
+
+        amine = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        amine.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                amine, "c3-c3-n4-c3", where="test"
+            )
+        self.assertEqual(action, "cap_amine_ammonium")
+        self.assertLessEqual(dense_torsion_ptp(out), 8.0 * 1.05)
+
+        sul_cap = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sul_cap.SetFCs([3.5])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                sul_cap, "c3-c3-s6-o", where="test"
+            )
+        self.assertEqual(action, "cap_sulfate_phosphate")
+        self.assertLessEqual(dense_torsion_ptp(out), 4.0 * 1.05)
+
+        generic = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        generic.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                generic, "c3-c3-c3-oh", where="test"
+            )
+        self.assertEqual(action, "keep")
+        self.assertAlmostEqual(float(out.prims[0].fc), 6.0)
+
+        sugar_h = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_h.SetFCs([16.3])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, ptp = apply_sp3_rotor_policy(
+                sugar_h, "h1-c3-c6-c6", where="test"
+            )
+        self.assertEqual(action, "zero_alkane")
+        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
+        self.assertGreater(ptp, 20.0)
+
+        sugar_alk = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_alk.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                sugar_alk, "h1-c3-c6-c6", where="test"
+            )
+        self.assertEqual(action, "cap_alkane")
+        self.assertLessEqual(dense_torsion_ptp(out), 5.0 * 1.05)
+
+        sugar_cc = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_cc.SetFCs([15.3])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, ptp = apply_sp3_rotor_policy(
+                sugar_cc, "oh-c3-c6-os", where="test"
+            )
+        self.assertEqual(action, "zero_sp3_sp3")
+        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
+        self.assertGreater(ptp, 20.0)
+
+        sugar_os = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        sugar_os.SetFCs([6.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                sugar_os, "c6-c6-os-c3", where="test"
+            )
+        self.assertEqual(action, "cap_alcohol_ether")
+        self.assertLessEqual(dense_torsion_ptp(out), 8.0 * 1.05)
+
+        amide = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
+        amide.SetFCs([15.0])
+        with patch.dict(os.environ, policy_env, clear=False):
+            out, action, _ptp = apply_sp3_rotor_policy(
+                amide, "o-c-ns-c3", where="test"
+            )
+        self.assertEqual(action, "keep")
+        self.assertAlmostEqual(float(out.prims[0].fc), 15.0)
+
+    def test_dihed_math_reexported_and_ipc_slim(self):
+        from ffpopt.dihed import DihedMath as dihed_math
+        from ffpopt.dihed.Dihedrals import shape_match_delta
+        from ffpopt.runtime.SlimIpc import slim_scan_result, slim_twist_result
+
+        self.assertIs(shape_match_delta, dihed_math.shape_match_delta)
+        self.assertIsNone(slim_scan_result(None))
+        self.assertEqual(slim_scan_result({"a": 1, "wf_run": object()})["a"], 1)
+        slim_one = slim_scan_result(
+            {"a": 1, "wf_run": object(), "structures": object()}
+        )
+        self.assertEqual(slim_one["a"], 1)
+        self.assertNotIn("wf_run", slim_one)
+        self.assertNotIn("structures", slim_one)
+        slim = slim_twist_result(
+            {
+                "ok": True,
+                "scans": [
+                    (
+                        "p",
+                        (0, 1, 2, 3),
+                        {"e": 1.0, "wf_run": object(), "structures": object()},
+                    )
+                ],
+            }
+        )
+        self.assertNotIn("wf_run", slim["scans"][0][2])
+        self.assertNotIn("structures", slim["scans"][0][2])
+
+    def test_shape_match_and_joint_ls_symbols(self):
+        import numpy as np
+        from ffpopt.dihed.Dihedrals import shape_match_delta
+
+        hl = np.array([1.0, 2.0, 3.0])
+        ll = np.array([0.0, 1.0, 2.0])
+        d = shape_match_delta(hl, ll)
+        np.testing.assert_allclose(d, shape_match_delta(hl, ll + 9.0))
+
+    def test_align_scan_profiles(self):
+        from ffpopt.dihed.Dihedrals import align_scan_profiles
+        from ffpopt.Struct import ListOfStruct
+
+        def _frame(name, e=0.0):
+            return SimpleNamespace(
+                data={
+                    "name": name,
+                    "energy": e,
+                    "positions": [[0.0, 0.0, 0.0]],
+                    "constraints": [],
+                },
+                constraints=None,
+            )
+
+        hl = ListOfStruct.from_structs_shared(
+            [_frame("d000"), _frame("d010"), _frame("d020"), _frame("d030")]
+        )
+        ll = ListOfStruct.from_structs_shared(
+            [_frame("d010"), _frame("d020"), _frame("d030"), _frame("d040")]
+        )
+        ahl, all_, info = align_scan_profiles(hl, ll)
+        self.assertEqual(info["n_common"], 3)
+        self.assertEqual(len(ahl.structs), len(all_.structs))
+        self.assertFalse(info.get("interpolated"))
+
+    def test_align_scan_profiles_interpolates_mismatched_full_grids(self):
+        from ffpopt.dihed.Dihedrals import align_scan_profiles
+        from ffpopt.Struct import ListOfStruct
+
+        def _frame(ang, e):
+            return SimpleNamespace(
+                data={
+                    "name": f"d{int(ang):03d}",
+                    "energy": e,
+                    "positions": [[0.0, 0.0, 0.0]],
+                    "constraints": [],
+                },
+                constraints=None,
+            )
+
+        hl_angs = list(range(0, 360, 15))
+        ll_angs = list(range(0, 360, 10))
+        hl = ListOfStruct.from_structs_shared(
+            [_frame(a, float(a)) for a in hl_angs]
+        )
+        ll = ListOfStruct.from_structs_shared(
+            [_frame(a, 0.0) for a in ll_angs]
+        )
+        ahl, all_, info = align_scan_profiles(hl, ll)
+        self.assertTrue(info.get("interpolated"))
+        self.assertEqual(info["n_common"], 36)
+        self.assertEqual(len(ahl.structs), 36)
+        self.assertEqual(len(all_.structs), 36)
+        e10 = next(
+            float(s.data["energy"])
+            for s in ahl.structs
+            if s.data["name"] == "d010"
+        )
+        self.assertAlmostEqual(e10, 10.0, places=5)
+
+    def test_prim_dihed_energy_term(self):
+        from ffpopt.dihed.Dihedrals import PrimDihedFcn
+
+        prim = PrimDihedFcn(2.0, 0.0, 1)
+        # CptEne(0 deg) = 2*(1+cos0) = 4
+        self.assertAlmostEqual(float(prim.CptEne(0.0)), 4.0)
+
+
+# ---
+# AIMNet aliases, GPU worker cap, and fast model policy
+# ---
+
+class TestAimnetPolicy(unittest.TestCase):
     def test_aimnet_model_aliases_and_fast_policy(self):
         from ffpopt.ase.Aimnet import (
             is_aimnet_model,
@@ -2314,39 +2722,12 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         os.environ.pop("FFPOPT_AIMNET_DEVICE", None)
         clear_defaults_cache()
 
-    def test_gendihedfit_outputs_complete_rejects_truncated_py(self):
-        from ffpopt.workflows.TwistHelpers import gendihedfit_outputs_complete
 
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            py_path = td / "it01.py"
-            frcmod = td / "it01.frcmod"
-            py_path.write_text("#!/usr/bin/env python3\nprint('truncated')\n", encoding="utf-8")
-            frcmod.write_text("FORCE_FIELD_TYPE PARM99\n", encoding="utf-8")
-            self.assertFalse(gendihedfit_outputs_complete(py_path, frcmod))
-            py_path.write_text(
-                "p = load_file(args.iparm)\np.save(args.oparm,overwrite=True)\n",
-                encoding="utf-8",
-            )
-            self.assertTrue(gendihedfit_outputs_complete(py_path, frcmod))
-            frcmod.unlink()
-            self.assertFalse(gendihedfit_outputs_complete(py_path, frcmod))
+# ---
+# GeomOpt facades, geomeTRIC scratch, linear-torsion
+# ---
 
-    def test_run_fit_script_inprocess_raises_if_parm7_missing(self):
-        from ffpopt.workflows.TwistHelpers import _run_fit_script_inprocess
-
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            script = td / "it01.py"
-            iparm = td / "orig.parm7"
-            oparm = td / "it01.parm7"
-            script.write_text("print('no p.save')\n", encoding="utf-8")
-            iparm.write_text("placeholder\n", encoding="utf-8")
-            with self.assertRaises(FileNotFoundError) as ctx:
-                _run_fit_script_inprocess(script, iparm, oparm)
-            self.assertIn("without writing", str(ctx.exception))
-            self.assertFalse(oparm.exists())
-
+class TestGeomOptHelpers(unittest.TestCase):
     def test_constraints_to_geometric(self):
         from ffpopt.geom.Constraints import Constraint, to_geometric
 
@@ -2421,24 +2802,6 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertFalse(Path(prefix + ".tmp").exists())
             self.assertFalse(leftover.exists())
 
-    def test_is_soft_opt_and_evaluate_policy(self):
-        from ffpopt.geom.GeomOpt import is_soft_opt_recovery
-        from ffpopt.scan.WavefrontMixins import evaluate_wavefront_minimum
-
-        self.assertTrue(is_soft_opt_recovery("loose"))
-        self.assertFalse(is_soft_opt_recovery("primary"))
-        self.assertTrue(is_soft_opt_recovery("linear-torsion"))
-        self.assertTrue(is_soft_opt_recovery("linear-torsion-soft"))
-        d = evaluate_wavefront_minimum(
-            energy=1.0,
-            soft=True,
-            has_incumbent=False,
-            incumbent_energy=None,
-            incumbent_soft=False,
-            threshold_ev=0.1,
-        )
-        self.assertEqual(d["reason"], "soft_first_seed")
-
     def test_linear_torsion_bend_detection_and_unkink(self):
         """Near-180 deg bend in a constrained dihedral is detected and unkinked."""
         try:
@@ -2497,6 +2860,60 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             )
         )
         self.assertFalse(is_linear_torsion_error(ValueError("other")))
+
+    def test_geomopt_facade_exports(self):
+        from ffpopt.geom import GeomOptAse, GeomOptParallel
+        from ffpopt.geom.GeomOpt import CalcNode, GeomOpt, GeomOpt_ASE
+
+        self.assertIs(GeomOpt_ASE, GeomOptAse.GeomOpt_ASE)
+        self.assertIs(CalcNode, GeomOptParallel.CalcNode)
+        self.assertTrue(callable(GeomOpt))
+
+    def test_read_last_optim_xyz_warm_start_helper(self):
+        """Interrupted geomopt leaves ``_optim.xyz``; helper reads last frame."""
+        import numpy as np
+        from ffpopt.geom.Geometric import read_last_optim_xyz, write_plain_xyz
+
+        try:
+            import ase
+            from ase import Atoms
+        except ImportError:
+            self.skipTest("ase required")
+
+        with tempfile.TemporaryDirectory() as td:
+            prefix = Path(td) / "node_geom"
+            atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]])
+            write_plain_xyz(str(prefix) + ".xyz", atoms)
+            atoms2 = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.90]])
+            # geomeTRIC-style trajectory name
+            write_plain_xyz(str(prefix) + "_optim.xyz", atoms2)
+            last = read_last_optim_xyz(prefix)
+            self.assertIsNotNone(last)
+            np.testing.assert_allclose(last[1, 2], 0.90)
+
+
+# ---
+# Wavefront spawn, rescue, checkpoint, and pickle facades
+# ---
+
+class TestWavefrontPolicy(unittest.TestCase):
+    def test_is_soft_opt_and_evaluate_policy(self):
+        from ffpopt.geom.GeomOpt import is_soft_opt_recovery
+        from ffpopt.scan.WavefrontMixins import evaluate_wavefront_minimum
+
+        self.assertTrue(is_soft_opt_recovery("loose"))
+        self.assertFalse(is_soft_opt_recovery("primary"))
+        self.assertTrue(is_soft_opt_recovery("linear-torsion"))
+        self.assertTrue(is_soft_opt_recovery("linear-torsion-soft"))
+        d = evaluate_wavefront_minimum(
+            energy=1.0,
+            soft=True,
+            has_incumbent=False,
+            incumbent_energy=None,
+            incumbent_soft=False,
+            threshold_ev=0.1,
+        )
+        self.assertEqual(d["reason"], "soft_first_seed")
 
     def test_wavefront_policy_matrix(self):
         """Lock spawn / update decisions for soft and hard incumbents."""
@@ -2927,387 +3344,25 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertIsInstance(los.calc, Boom)
         self.assertEqual(los._ffpopt_calc_cache[0], "k")
 
-    def test_dihed_facade_exports(self):
-        from ffpopt.dihed import DihedFitSolve, DihedFourier, DihedParmEd
-        from ffpopt.dihed.Dihedrals import (
-            ChangeDihedrals,
-            DeleteDihedrals,
-            FindPuckers,
-            FitInputType,
-            IsolatedLinearSolve,
-            MultiDihedFcn,
-            NonlinearSolve,
-            PrimDihedFcn,
-            WriteParmedScript,
-        )
+    def test_pickle_compat_alias(self):
+        from ffpopt.scan.WavefrontMixins import register_wavefront_pickle_aliases
+        from ffpopt.scan.WaveFront import Wavefront
+        from ffpopt.scan.WaveFrontND import Wavefront as NDWavefront
 
-        self.assertIs(PrimDihedFcn, DihedFourier.PrimDihedFcn)
-        self.assertIs(MultiDihedFcn, DihedFourier.MultiDihedFcn)
-        self.assertIs(DeleteDihedrals, DihedParmEd.DeleteDihedrals)
-        self.assertIs(ChangeDihedrals, DihedParmEd.ChangeDihedrals)
-        self.assertIs(WriteParmedScript, DihedParmEd.WriteParmedScript)
-        self.assertIs(IsolatedLinearSolve, DihedFitSolve.IsolatedLinearSolve)
-        self.assertIs(NonlinearSolve, DihedFitSolve.NonlinearSolve)
-        self.assertTrue(isinstance(FitInputType, type))
-        self.assertTrue(callable(FindPuckers))
+        register_wavefront_pickle_aliases()
+        import ffpopt.WaveFront as legacy
+        import ffpopt.WaveFrontND as legacy_nd
 
-        from ffpopt.dihed import DihedFitTypes, DihedMath
-        self.assertIs(DihedFitTypes.WriteParmedScript, DihedParmEd.WriteParmedScript)
-        self.assertIs(DihedFitTypes.ChangeDihedrals, DihedParmEd.ChangeDihedrals)
-        self.assertIs(DihedFitSolve.shape_match_delta, DihedMath.shape_match_delta)
+        self.assertIs(legacy.Wavefront, Wavefront)
+        self.assertIs(legacy_nd.Wavefront, NDWavefront)
+        self.assertIs(legacy.Wavefront, legacy_nd.Wavefront)
 
-    def test_system_write_output_calls_parmed_script(self):
-        from types import SimpleNamespace
-        from unittest.mock import patch
-        from ffpopt.dihed.DihedFitTypes import SystemType
 
-        dfcn = SimpleNamespace(idxs=None)
-        pinst = SimpleNamespace(
-            ptype=SimpleNamespace(dfcns=dfcn),
-            dihedidxs=[[0, 1, 2, 3]],
-        )
-        system = SystemType.__new__(SystemType)
-        system.output = "it01.py"
-        system.mol = object()
-        system._fit_owner = SimpleNamespace(scee=1.2, scnb=2.0)
-        system.pinstances = [pinst]
-        with patch("ffpopt.dihed.DihedFitTypes.WriteParmedScript") as writer:
-            system.write_output()
-        writer.assert_called_once()
-        self.assertEqual(writer.call_args.args[0], "it01.py")
+# ---
+# Fast presets and sander-like low-level scans
+# ---
 
-    def test_clip_dihed_fcs_caps_unbounded_lstsq(self):
-        import numpy as np
-        from ffpopt.dihed.DihedFitSolve import clip_dihed_fcs, dihed_fc_abs_max
-
-        cap = dihed_fc_abs_max()
-        self.assertEqual(cap, 25.0)
-        out = clip_dihed_fcs([6439.0, -1278.0, 1.4], where="test")
-        np.testing.assert_allclose(out, [cap, -cap, 1.4])
-
-    def test_fourier_ridge_beats_cancelling_harmonics(self):
-        import numpy as np
-        from ffpopt.dihed.DihedFitRegularize import tikhonov_svd_solve
-
-        # Clustered scan + tiny singular modes: naive pinv (rcond=0) explodes.
-        phi = np.deg2rad(np.array([0.0, 2.0, 4.0, 6.0, 8.0]))
-        A = np.column_stack([np.cos(n * phi) for n in (1, 2, 3)])
-        A = A - np.mean(A, axis=0, keepdims=True)
-        y = 0.3 * A[:, 0] + 0.02 * np.array([0.0, 1.0, -1.0, 0.4, -0.3])
-        y = y - np.mean(y)
-        x_raw = np.linalg.pinv(A, rcond=0.0) @ y
-        x_r, info = tikhonov_svd_solve(A, y, lam=0.0, rel_cutoff=1.0e-4)
-        self.assertGreater(
-            float(np.linalg.norm(x_raw)),
-            10.0 * float(np.linalg.norm(x_r)) + 1.0,
-        )
-        self.assertGreaterEqual(info["n_kept"], 1)
-
-    def test_fourier_nprim_aic_picks_single_harmonic(self):
-        import numpy as np
-        from ffpopt.dihed.DihedFitRegularize import fit_fourier_nprim
-
-        angs = np.linspace(0.0, 350.0, 36)
-        y = 1.5 * np.cos(np.deg2rad(angs))
-        y = y - np.mean(y)
-        with patch.dict(os.environ, {"FFPOPT_DIHED_NPRIM_SELECT": "1"}, clear=False):
-            dfcn, x, info = fit_fourier_nprim(
-                angs, y, 3, [0, 1, 2, 3], pname="test-n1"
-            )
-        self.assertEqual(info["nprim"], 1)
-        self.assertEqual(len(dfcn.prims), 1)
-        self.assertGreater(float(x[0]), 0.5)
-
-    def test_fourier_energy_domain_barrier_scales_vphi(self):
-        import numpy as np
-        from ffpopt.dihed.DihedFitRegularize import (
-            dense_torsion_ptp,
-            solve_regularized_fcs,
-        )
-        from ffpopt.dihed.DihedFourier import GetDihedClasses
-
-        dfcn = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        A = np.array([[1.0], [-1.0], [0.5], [-0.5]])
-        y = np.array([80.0, -80.0, 40.0, -40.0])
-        with patch.dict(
-            os.environ,
-            {
-                "FFPOPT_DIHED_BARRIER_ABS": "30",
-                "FFPOPT_DIHED_BARRIER_ALPHA": "1",
-                "FFPOPT_DIHED_RIDGE_LAMBDA": "0",
-            },
-            clear=False,
-        ):
-            x, info = solve_regularized_fcs(A, y, dfcn=dfcn, where="test-barrier")
-        self.assertLessEqual(dense_torsion_ptp(dfcn), 30.0 * 1.05)
-        self.assertLessEqual(float(np.max(np.abs(x))), 25.0)
-        self.assertIsNotNone(info.get("dense_ptp"))
-
-    def test_sp3_rotor_policy_zero_and_alkane_cap(self):
-        from ffpopt.dihed.DihedFitRegularize import (
-            apply_chemical_rotor_policy,
-            apply_sp3_rotor_policy,
-            classify_dihed_rotor,
-            dense_torsion_ptp,
-            parse_dihed_type_key,
-        )
-        from ffpopt.dihed.DihedFourier import GetDihedClasses
-
-        self.assertIs(apply_chemical_rotor_policy, apply_sp3_rotor_policy)
-        self.assertEqual(
-            parse_dihed_type_key("c -ns-c3-c3"), ("c", "ns", "c3", "c3")
-        )
-        self.assertEqual(classify_dihed_rotor("c3-c3-c3-c3"), "alkane")
-        self.assertEqual(classify_dihed_rotor("hc-c3-c3-hc"), "alkane")
-        self.assertEqual(classify_dihed_rotor("c3-c3-s6-o"), "sulfate_phosphate")
-        self.assertEqual(classify_dihed_rotor("h1-c3-s6-o"), "sulfate_phosphate")
-        self.assertEqual(classify_dihed_rotor("c3-c3-n4-c3"), "amine_ammonium")
-        self.assertEqual(classify_dihed_rotor("h1-c3-oh-ho"), "alcohol_ether")
-        self.assertEqual(classify_dihed_rotor("c3-c3-ss-c3"), "polar_sp3")
-        self.assertEqual(classify_dihed_rotor("c3-c3-c3-oh"), "sp3_sp3")
-        self.assertEqual(classify_dihed_rotor("o -c -ns-c3"), "unsaturated")
-        # parmchk2 sugar/detergent carbon (DDM): analog of c3, not unsaturated.
-        self.assertEqual(classify_dihed_rotor("h1-c3-c6-c6"), "alkane")
-        self.assertEqual(classify_dihed_rotor("h1-c6-c6-h1"), "alkane")
-        self.assertEqual(classify_dihed_rotor("oh-c3-c6-os"), "sp3_sp3")
-        self.assertEqual(classify_dihed_rotor("oh-c3-c6-h1"), "sp3_sp3")
-        self.assertEqual(classify_dihed_rotor("c6-c6-os-c3"), "alcohol_ether")
-        self.assertEqual(classify_dihed_rotor("os-c6-os-c3"), "alcohol_ether")
-        self.assertEqual(classify_dihed_rotor("h2-c6-os-c3"), "alcohol_ether")
-        self.assertEqual(classify_dihed_rotor("h1-c6-os-c6"), "alcohol_ether")
-        # Fit-input keys are "{res}_{types}"; the residue must not be a 5th type.
-        self.assertEqual(
-            parse_dihed_type_key("CHA_c3-c3-c3-h1"), ("c3", "c3", "c3", "h1")
-        )
-        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-c3-c3"), "alkane")
-        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-s6-o"), "sulfate_phosphate")
-        self.assertEqual(classify_dihed_rotor("CHA_c3-c3-n4-c3"), "amine_ammonium")
-        self.assertEqual(classify_dihed_rotor("CHA_o-c-ns-c3"), "unsaturated")
-
-        policy_env = {
-            "FFPOPT_DIHED_SP3_BARRIER_MAX": "20",
-            "FFPOPT_DIHED_ALKANE_BARRIER_MAX": "5",
-            "FFPOPT_DIHED_POLAR_SP3_BARRIER_MAX": "8",
-            "FFPOPT_DIHED_SULFATE_BARRIER_MAX": "10",
-            "FFPOPT_DIHED_SULFATE_BARRIER_CAP": "4",
-        }
-
-        stiff = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        stiff.SetFCs([15.4])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, ptp = apply_sp3_rotor_policy(
-                stiff, "CHA_c3-c3-s6-o", where="test"
-            )
-        self.assertEqual(action, "zero_sulfate_phosphate")
-        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
-        self.assertGreater(ptp, 10.0)
-
-        alk = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        alk.SetFCs([6.0])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                alk, "c3-c3-c3-c3", where="test"
-            )
-        self.assertEqual(action, "cap_alkane")
-        self.assertLessEqual(dense_torsion_ptp(out), 5.0 * 1.05)
-
-        amine = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        amine.SetFCs([6.0])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                amine, "c3-c3-n4-c3", where="test"
-            )
-        self.assertEqual(action, "cap_amine_ammonium")
-        self.assertLessEqual(dense_torsion_ptp(out), 8.0 * 1.05)
-
-        sul_cap = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        sul_cap.SetFCs([3.5])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                sul_cap, "c3-c3-s6-o", where="test"
-            )
-        self.assertEqual(action, "cap_sulfate_phosphate")
-        self.assertLessEqual(dense_torsion_ptp(out), 4.0 * 1.05)
-
-        generic = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        generic.SetFCs([6.0])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                generic, "c3-c3-c3-oh", where="test"
-            )
-        self.assertEqual(action, "keep")
-        self.assertAlmostEqual(float(out.prims[0].fc), 6.0)
-
-        sugar_h = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        sugar_h.SetFCs([16.3])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, ptp = apply_sp3_rotor_policy(
-                sugar_h, "h1-c3-c6-c6", where="test"
-            )
-        self.assertEqual(action, "zero_alkane")
-        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
-        self.assertGreater(ptp, 20.0)
-
-        sugar_alk = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        sugar_alk.SetFCs([6.0])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                sugar_alk, "h1-c3-c6-c6", where="test"
-            )
-        self.assertEqual(action, "cap_alkane")
-        self.assertLessEqual(dense_torsion_ptp(out), 5.0 * 1.05)
-
-        sugar_cc = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        sugar_cc.SetFCs([15.3])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, ptp = apply_sp3_rotor_policy(
-                sugar_cc, "oh-c3-c6-os", where="test"
-            )
-        self.assertEqual(action, "zero_sp3_sp3")
-        self.assertAlmostEqual(float(out.prims[0].fc), 0.0)
-        self.assertGreater(ptp, 20.0)
-
-        sugar_os = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        sugar_os.SetFCs([6.0])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                sugar_os, "c6-c6-os-c3", where="test"
-            )
-        self.assertEqual(action, "cap_alcohol_ether")
-        self.assertLessEqual(dense_torsion_ptp(out), 8.0 * 1.05)
-
-        amide = GetDihedClasses(idxs=[0, 1, 2, 3])[1][0]
-        amide.SetFCs([15.0])
-        with patch.dict(os.environ, policy_env, clear=False):
-            out, action, _ptp = apply_sp3_rotor_policy(
-                amide, "o-c-ns-c3", where="test"
-            )
-        self.assertEqual(action, "keep")
-        self.assertAlmostEqual(float(out.prims[0].fc), 15.0)
-
-    def test_geomopt_facade_exports(self):
-        from ffpopt.geom import GeomOptAse, GeomOptParallel
-        from ffpopt.geom.GeomOpt import CalcNode, GeomOpt, GeomOpt_ASE
-
-        self.assertIs(GeomOpt_ASE, GeomOptAse.GeomOpt_ASE)
-        self.assertIs(CalcNode, GeomOptParallel.CalcNode)
-        self.assertTrue(callable(GeomOpt))
-
-    def test_parmhelper_saveparm_exported(self):
-        import ast
-        from pathlib import Path
-
-        utils = Path(__file__).resolve().parents[1] / "src" / "ligandparam" / "multiresp" / "ParmEdUtils.py"
-        helper = Path(__file__).resolve().parents[1] / "src" / "ligandparam" / "multiresp" / "ParmHelper.py"
-        util_names = {
-            n.name
-            for n in ast.parse(utils.read_text(encoding="utf-8")).body
-            if isinstance(n, ast.FunctionDef)
-        }
-        self.assertIn("SaveParm", util_names)
-        text = helper.read_text(encoding="utf-8")
-        self.assertIn("SaveParm", text)
-        self.assertIn("from ligandparam.multiresp.ParmEdUtils import", text)
-
-    def test_dihed_math_reexported_and_ipc_slim(self):
-        from ffpopt.dihed import DihedMath as dihed_math
-        from ffpopt.dihed.Dihedrals import shape_match_delta
-        from ffpopt.runtime.SlimIpc import slim_scan_result, slim_twist_result
-
-        self.assertIs(shape_match_delta, dihed_math.shape_match_delta)
-        self.assertIsNone(slim_scan_result(None))
-        self.assertEqual(slim_scan_result({"a": 1, "wf_run": object()})["a"], 1)
-        slim_one = slim_scan_result(
-            {"a": 1, "wf_run": object(), "structures": object()}
-        )
-        self.assertEqual(slim_one["a"], 1)
-        self.assertNotIn("wf_run", slim_one)
-        self.assertNotIn("structures", slim_one)
-        slim = slim_twist_result(
-            {
-                "ok": True,
-                "scans": [
-                    (
-                        "p",
-                        (0, 1, 2, 3),
-                        {"e": 1.0, "wf_run": object(), "structures": object()},
-                    )
-                ],
-            }
-        )
-        self.assertNotIn("wf_run", slim["scans"][0][2])
-        self.assertNotIn("structures", slim["scans"][0][2])
-
-    def test_shape_match_and_joint_ls_symbols(self):
-        import numpy as np
-        from ffpopt.dihed.Dihedrals import shape_match_delta
-
-        hl = np.array([1.0, 2.0, 3.0])
-        ll = np.array([0.0, 1.0, 2.0])
-        d = shape_match_delta(hl, ll)
-        np.testing.assert_allclose(d, shape_match_delta(hl, ll + 9.0))
-
-    def test_align_scan_profiles(self):
-        from ffpopt.dihed.Dihedrals import align_scan_profiles
-        from ffpopt.Struct import ListOfStruct
-
-        def _frame(name, e=0.0):
-            return SimpleNamespace(
-                data={
-                    "name": name,
-                    "energy": e,
-                    "positions": [[0.0, 0.0, 0.0]],
-                    "constraints": [],
-                },
-                constraints=None,
-            )
-
-        hl = ListOfStruct.from_structs_shared(
-            [_frame("d000"), _frame("d010"), _frame("d020"), _frame("d030")]
-        )
-        ll = ListOfStruct.from_structs_shared(
-            [_frame("d010"), _frame("d020"), _frame("d030"), _frame("d040")]
-        )
-        ahl, all_, info = align_scan_profiles(hl, ll)
-        self.assertEqual(info["n_common"], 3)
-        self.assertEqual(len(ahl.structs), len(all_.structs))
-        self.assertFalse(info.get("interpolated"))
-
-    def test_align_scan_profiles_interpolates_mismatched_full_grids(self):
-        from ffpopt.dihed.Dihedrals import align_scan_profiles
-        from ffpopt.Struct import ListOfStruct
-
-        def _frame(ang, e):
-            return SimpleNamespace(
-                data={
-                    "name": f"d{int(ang):03d}",
-                    "energy": e,
-                    "positions": [[0.0, 0.0, 0.0]],
-                    "constraints": [],
-                },
-                constraints=None,
-            )
-
-        hl_angs = list(range(0, 360, 15))
-        ll_angs = list(range(0, 360, 10))
-        hl = ListOfStruct.from_structs_shared(
-            [_frame(a, float(a)) for a in hl_angs]
-        )
-        ll = ListOfStruct.from_structs_shared(
-            [_frame(a, 0.0) for a in ll_angs]
-        )
-        ahl, all_, info = align_scan_profiles(hl, ll)
-        self.assertTrue(info.get("interpolated"))
-        self.assertEqual(info["n_common"], 36)
-        self.assertEqual(len(ahl.structs), 36)
-        self.assertEqual(len(all_.structs), 36)
-        e10 = next(
-            float(s.data["energy"])
-            for s in ahl.structs
-            if s.data["name"] == "d010"
-        )
-        self.assertAlmostEqual(e10, 10.0, places=5)
-
+class TestFastWavefront(unittest.TestCase):
     def test_fast_presets_keep_delta(self):
         from ffpopt.runtime.FastWavefront import (
             LIBRARY_DEFAULTS,
@@ -3329,39 +3384,6 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("FFPOPT_FAST_WAVEFRONT", None)
             self.assertFalse(fast_wavefront_enabled())
-
-    def test_cpu_budget_fair_share(self):
-        from ffpopt.runtime.CpuBudget import cpu_lease_weight, fair_share_leases
-
-        leases = fair_share_leases(8, ["a", "b", "c"])
-        self.assertEqual(sum(leases.values()), 8)
-        self.assertEqual(len(leases), 3)
-
-        self.assertEqual(cpu_lease_weight(2, correlated=False), 1)
-        self.assertEqual(cpu_lease_weight(8, correlated=True), 8)
-        with patch.dict(os.environ, {"FFPOPT_WHOLE_MAX_BONDS_PER_TWIST": "8"}):
-            self.assertEqual(cpu_lease_weight(12, correlated=True), 8)
-
-        owners = ["tail", "a", "b", "c", "d", "e"]
-        weights = {oid: (8 if oid == "tail" else 1) for oid in owners}
-        weighted = fair_share_leases(44, owners, weights=weights)
-        self.assertEqual(sum(weighted.values()), 44)
-        self.assertEqual(weighted["tail"], 27)
-        for oid in "abcde":
-            self.assertGreaterEqual(weighted[oid], 3)
-            self.assertLessEqual(weighted[oid], 4)
-
-        packed = fair_share_leases(
-            11, [f"f{i}" for i in range(11)], min_each=2
-        )
-        self.assertLessEqual(len(packed), 5)
-        self.assertTrue(all(v >= 2 for v in packed.values()))
-        self.assertEqual(sum(packed.values()), 11)
-
-        reserved = fair_share_leases(
-            44, ["first"], min_each=2, virtual_units=10
-        )
-        self.assertEqual(reserved["first"], 4)
 
     def test_sander_ll_scan_uses_ase_first_and_prefers_depth(self):
         from ffpopt.workflows.TwistHelpers import _is_sander_ll_model, _wf_kwargs_for_scan_model
@@ -3455,6 +3477,45 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertEqual(qdpi2_opt_components(), "xtb")
         with patch.dict(os.environ, {"FFPOPT_QDPI2_OPT": "both"}):
             self.assertEqual(qdpi2_opt_components(), "both")
+
+
+# ---
+# CPU lease, resplit, and never-starve
+# ---
+
+class TestCpuBudget(unittest.TestCase):
+    def test_cpu_budget_fair_share(self):
+        from ffpopt.runtime.CpuBudget import cpu_lease_weight, fair_share_leases
+
+        leases = fair_share_leases(8, ["a", "b", "c"])
+        self.assertEqual(sum(leases.values()), 8)
+        self.assertEqual(len(leases), 3)
+
+        self.assertEqual(cpu_lease_weight(2, correlated=False), 1)
+        self.assertEqual(cpu_lease_weight(8, correlated=True), 8)
+        with patch.dict(os.environ, {"FFPOPT_WHOLE_MAX_BONDS_PER_TWIST": "8"}):
+            self.assertEqual(cpu_lease_weight(12, correlated=True), 8)
+
+        owners = ["tail", "a", "b", "c", "d", "e"]
+        weights = {oid: (8 if oid == "tail" else 1) for oid in owners}
+        weighted = fair_share_leases(44, owners, weights=weights)
+        self.assertEqual(sum(weighted.values()), 44)
+        self.assertEqual(weighted["tail"], 27)
+        for oid in "abcde":
+            self.assertGreaterEqual(weighted[oid], 3)
+            self.assertLessEqual(weighted[oid], 4)
+
+        packed = fair_share_leases(
+            11, [f"f{i}" for i in range(11)], min_each=2
+        )
+        self.assertLessEqual(len(packed), 5)
+        self.assertTrue(all(v >= 2 for v in packed.values()))
+        self.assertEqual(sum(packed.values()), 11)
+
+        reserved = fair_share_leases(
+            44, ["first"], min_each=2, virtual_units=10
+        )
+        self.assertEqual(reserved["first"], 4)
 
     def test_cpu_budget_clear_leases_on_init(self):
         from ffpopt.runtime.CpuBudget import CpuBudget
@@ -3771,6 +3832,38 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
         self.assertEqual(pool_sizes, [4, 4])
         self.assertEqual(seen_nproc, [15] * 8)
 
+    def test_split_nproc_for_items(self):
+        from ffpopt.runtime.FastWavefront import split_nproc_for_items
+        from ffpopt.workflows.TwistHelpers import _split_fragment_nproc
+
+        self.assertEqual(_split_fragment_nproc(8, 4), split_nproc_for_items(8, 4))
+        n_outer, n_inner = split_nproc_for_items(8, 4)
+        # Flattened: never nest both axes; product may be < nproc.
+        self.assertTrue(n_outer == 1 or n_inner == 1)
+        self.assertLessEqual(n_outer * n_inner, 8)
+        n_outer2, n_inner2 = split_nproc_for_items(
+            8, 4, flatten_nested=False
+        )
+        self.assertEqual(n_outer2 * n_inner2, 8)
+        n_o, n_i = split_nproc_for_items(
+            8, 4, prefer_depth=True, flatten_nested=False
+        )
+        self.assertGreater(n_o, 1)
+        self.assertGreater(n_i, 1)
+        self.assertEqual(n_o * n_i, 8)
+        self.assertEqual(
+            _split_fragment_nproc(
+                44, 2, prefer_depth=True, flatten_nested=False
+            ),
+            (2, 22),
+        )
+
+
+# ---
+# Fragment / whole-ligand twist batches
+# ---
+
+class TestTwistBatching(unittest.TestCase):
     def test_fragment_twist_done_sentinel(self):
         from ffpopt.workflows import (
             clear_fragment_twist_done,
@@ -3786,28 +3879,6 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             self.assertTrue(is_fragment_twist_done(frag))
             clear_fragment_twist_done(frag)
             self.assertFalse(is_fragment_twist_done(frag))
-
-    def test_read_last_optim_xyz_warm_start_helper(self):
-        """Interrupted geomopt leaves ``_optim.xyz``; helper reads last frame."""
-        import numpy as np
-        from ffpopt.geom.Geometric import read_last_optim_xyz, write_plain_xyz
-
-        try:
-            import ase
-            from ase import Atoms
-        except ImportError:
-            self.skipTest("ase required")
-
-        with tempfile.TemporaryDirectory() as td:
-            prefix = Path(td) / "node_geom"
-            atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]])
-            write_plain_xyz(str(prefix) + ".xyz", atoms)
-            atoms2 = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.90]])
-            # geomeTRIC-style trajectory name
-            write_plain_xyz(str(prefix) + "_optim.xyz", atoms2)
-            last = read_last_optim_xyz(prefix)
-            self.assertIsNotNone(last)
-            np.testing.assert_allclose(last[1, 2], 0.90)
 
     def test_pack_rotatable_bond_batches_conservative(self):
         from ffpopt.workflows.BondBatches import (
@@ -3905,51 +3976,27 @@ class TestFfpoptCoreFunctions(unittest.TestCase):
             finally:
                 clear_defaults_cache()
 
-    def test_split_nproc_for_items(self):
-        from ffpopt.runtime.FastWavefront import split_nproc_for_items
-        from ffpopt.workflows.TwistHelpers import _split_fragment_nproc
 
-        self.assertEqual(_split_fragment_nproc(8, 4), split_nproc_for_items(8, 4))
-        n_outer, n_inner = split_nproc_for_items(8, 4)
-        # Flattened: never nest both axes; product may be < nproc.
-        self.assertTrue(n_outer == 1 or n_inner == 1)
-        self.assertLessEqual(n_outer * n_inner, 8)
-        n_outer2, n_inner2 = split_nproc_for_items(
-            8, 4, flatten_nested=False
-        )
-        self.assertEqual(n_outer2 * n_inner2, 8)
-        n_o, n_i = split_nproc_for_items(
-            8, 4, prefer_depth=True, flatten_nested=False
-        )
-        self.assertGreater(n_o, 1)
-        self.assertGreater(n_i, 1)
-        self.assertEqual(n_o * n_i, 8)
-        self.assertEqual(
-            _split_fragment_nproc(
-                44, 2, prefer_depth=True, flatten_nested=False
-            ),
-            (2, 22),
-        )
+# ---
+# ParmHelper public names
+# ---
 
-    def test_pickle_compat_alias(self):
-        from ffpopt.scan.WavefrontMixins import register_wavefront_pickle_aliases
-        from ffpopt.scan.WaveFront import Wavefront
-        from ffpopt.scan.WaveFrontND import Wavefront as NDWavefront
+class TestParmHelperExports(unittest.TestCase):
+    def test_parmhelper_saveparm_exported(self):
+        import ast
+        from pathlib import Path
 
-        register_wavefront_pickle_aliases()
-        import ffpopt.WaveFront as legacy
-        import ffpopt.WaveFrontND as legacy_nd
-
-        self.assertIs(legacy.Wavefront, Wavefront)
-        self.assertIs(legacy_nd.Wavefront, NDWavefront)
-        self.assertIs(legacy.Wavefront, legacy_nd.Wavefront)
-
-    def test_prim_dihed_energy_term(self):
-        from ffpopt.dihed.Dihedrals import PrimDihedFcn
-
-        prim = PrimDihedFcn(2.0, 0.0, 1)
-        # CptEne(0 deg) = 2*(1+cos0) = 4
-        self.assertAlmostEqual(float(prim.CptEne(0.0)), 4.0)
+        utils = Path(__file__).resolve().parents[1] / "src" / "ligandparam" / "multiresp" / "ParmEdUtils.py"
+        helper = Path(__file__).resolve().parents[1] / "src" / "ligandparam" / "multiresp" / "ParmHelper.py"
+        util_names = {
+            n.name
+            for n in ast.parse(utils.read_text(encoding="utf-8")).body
+            if isinstance(n, ast.FunctionDef)
+        }
+        self.assertIn("SaveParm", util_names)
+        text = helper.read_text(encoding="utf-8")
+        self.assertIn("SaveParm", text)
+        self.assertIn("from ligandparam.multiresp.ParmEdUtils import", text)
 
 
 # ---------------------------------------------------------------------------

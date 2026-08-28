@@ -109,6 +109,32 @@ def _should_skip_gaussian_job(
     return False
 
 
+def _gaussian_link0_header(nproc, mem, chk=None) -> list[str]:
+    """``%NPROC`` / ``%MEM`` Link0 lines, optional ``%chk``."""
+    header = [f"%NPROC={nproc}", f"%MEM={mem}GB"]
+    if chk:
+        header.append(f"%chk={chk}")
+    return header
+
+
+def _run_gaussian_com_and_promote(stage, *, dry_run: bool) -> None:
+    """Run ``stage.in_com`` under ``gaussian_cwd`` and move the log out."""
+    Gaussian(
+        cwd=stage.gaussian_cwd,
+        logger=stage.logger,
+        gaussian_root=stage.gaussian_root,
+        gauss_exedir=stage.gauss_exedir,
+        gaussian_binary=stage.gaussian_binary,
+        gaussian_scratch=stage.gaussian_scratch,
+    ).call(
+        inp_pipe=stage.in_com.name,
+        out_pipe=stage.out_log.name,
+        dry_run=dry_run,
+    )
+    if not dry_run:
+        sh.move(stage.out_log, stage.out_gaussian_log)
+
+
 def _orientation_id_from_paths(in_com: str | Path, out_log: str | Path) -> str:
     """Stable board id: ``q012`` or ``0.00_30.00_0.00`` from ``*_rot_<id>.*``."""
     stem = Path(in_com).stem
@@ -310,11 +336,9 @@ class GaussianMinimizeRESP(AbstractStage):
             self.coord_object = Coordinates(self.in_mol2, filetype="pdb")
         self.gaussian_cwd.mkdir(exist_ok=True)
 
-        stageheader = [f"%NPROC={self.nproc}"]
-        
-        stageheader.append(f"%MEM={self.mem}GB")
-
-        stageheader.append(f"%chk={self.in_mol2.stem}.antechamber.chk")
+        stageheader = _gaussian_link0_header(
+            self.nproc, self.mem, chk=f"{self.in_mol2.stem}.antechamber.chk"
+        )
 
         # Set up the Gaussian Block - it does not yet write anything,
         # so this part can be set up before the Gaussian calculations are run.
@@ -343,9 +367,17 @@ class GaussianMinimizeRESP(AbstractStage):
                 )
             )
         else:
+            extra = (
+                "GEOM(AllCheck) Guess(Read) "
+                if getattr(self, "_esp_from_chk", False)
+                else ""
+            )
             gau.add_block(
                 GaussianInput(
-                    command=f"#P {self.resp_theory} NoSymm Pop=mk IOp(6/33=2) GFInput GFPrint",
+                    command=(
+                        f"#P {self.resp_theory} {extra}"
+                        "NoSymm Pop=mk IOp(6/33=2) GFInput GFPrint"
+                    ),
                     initial_coordinates=self.coord_object.get_coordinates(),
                     elements=self.coord_object.get_elements(),
                     charge=self.net_charge,
@@ -365,194 +397,30 @@ class GaussianMinimizeRESP(AbstractStage):
 
         return gau_complete
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the Gaussian minimization and RESP calculations.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, log the commands that would be run without executing them.
-        nproc : int, optional
-            Number of processors to use.
-        mem : int, optional
-            Amount of memory to use (in GB).
-        """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
-        gau_complete = self.setup(self.label)
-
-        # Run the Gaussian calculations in the gaussianCalcs directory
-        if not gau_complete:
-            gau_run = Gaussian(
-                cwd=self.gaussian_cwd,
-                logger=self.logger,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-            )
-            gau_run.call(inp_pipe=self.in_com.name, out_pipe=self.out_log.name, dry_run=dry_run)
-
-            # Move the Gaussian log file to the output location
-            sh.move(self.out_log, self.out_gaussian_log)
-        else:
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Write the Gaussian input (unless skipped) and run the job."""
+        if self.setup(self.label):
             self.logger.info(
                 "Gaussian minimize/RESP already complete; skipping execution"
             )
+            return
+        _run_gaussian_com_and_promote(self, dry_run=dry_run)
 
-        return
 
-class GaussianRESP(AbstractStage):
+class GaussianRESP(GaussianMinimizeRESP):
+    """RESP-only Gaussian job that reads geometry and guess from the chk file.
+
+    Same public constructor as historically: ``out_gaussian_log``,
+    ``resp_theory``, ``net_charge``. Internally this is
+    ``GaussianMinimizeRESP(minimize=False)`` with ``GEOM(AllCheck) Guess(Read)``.
     """
-    Run a basic Gaussian calculation on the ligand (RESP calculation only).
 
-    Parameters
-    ----------
-    stage_name : str
-        The name of the stage.
-    main_input : Union[Path, str]
-        Path to the input mol2 file.
-    cwd : Union[Path, str]
-        Current working directory.
-    out_gaussian_log : str
-        Path to the output Gaussian log file.
-    resp_theory : str, optional
-        Theory for RESP calculation (default: 'HF/6-31G*').
-    net_charge : float, optional
-        Net charge for the molecule (default: 0.0).
-    force_gaussian_rerun : bool, optional
-        Whether to force rerun of Gaussian (default: False).
-
-    Attributes
-    ----------
-    in_mol2 : Path
-        Path to the input mol2 file.
-    out_gaussian_log : Path
-        Path to the output Gaussian log file.
-    resp_theory : str
-        Theory for RESP calculation.
-    net_charge : float
-        Net charge for the molecule.
-    force_gaussian_rerun : bool
-        Whether to force rerun of Gaussian.
-    gaussian_cwd : Path
-        Directory for Gaussian calculations.
-    label : str
-        Label for the calculation.
-    """
+    _esp_from_chk = True
 
     def __init__(self, stage_name: str, main_input: Union[Path, str], cwd: Union[Path, str], *args, **kwargs) -> None:
+        kwargs.setdefault("minimize", False)
         super().__init__(stage_name, main_input, cwd, *args, **kwargs)
-        self.in_mol2 = Path(main_input)
-        self.out_gaussian_log = Path(kwargs["out_gaussian_log"])
 
-        self._validate_input_paths(**kwargs)
-        self.resp_theory = kwargs.get("resp_theory", "HF/6-31G*")
-        self.net_charge = kwargs.get("net_charge", 0.0)
-        self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
-        self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
-
-        self.label = self.out_gaussian_log.stem
-
-        return
-
-    def _validate_input_paths(self, **kwargs):
-        apply_gaussian_env_paths(self, kwargs)
-
-    def setup(self, name_template: str) -> bool:
-        """
-        Set up Gaussian input and output files for the RESP calculation.
-
-        Parameters
-        ----------
-        name_template : str
-            Template name for input/output files.
-
-        Returns
-        -------
-        bool
-            True if Gaussian calculation is already complete, False otherwise.
-        """
-        self.in_com = self.gaussian_cwd / f"{name_template}.com"
-        self.out_log = self.gaussian_cwd / f"{name_template}.log"
-        self._add_outputs(self.out_log)
-        print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
-        self.logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
-        self.logger.info(f"Writing Gaussian input file: {self.in_com}")
-
-        # __init__ tries to set up the coordinates object, but it may not have been available at init time.
-        if not getattr(self, "coord_object", None):
-            self.coord_object = Coordinates(self.in_mol2, filetype="pdb")
-        self.gaussian_cwd.mkdir(exist_ok=True)
-
-        stageheader = [f"%NPROC={self.nproc}"]
-        
-        stageheader.append(f"%MEM={self.mem}GB")
-
-        stageheader.append(f"%chk={self.in_mol2.stem}.antechamber.chk")
-
-        # Set up the Gaussian Block - it does not yet write anything,
-        # so this part can be set up before the Gaussian calculations are run.
-        gau = GaussianWriter(self.in_com)
-
-        gau.add_block(
-            GaussianInput(
-                command=f"#P {self.resp_theory} GEOM(AllCheck) Guess(Read) NoSymm Pop=mk IOp(6/33=2) GFInput GFPrint",
-                initial_coordinates=self.coord_object.get_coordinates(),
-                elements=self.coord_object.get_elements(),
-                charge=self.net_charge,
-                header=stageheader,
-            )
-        )
-
-        gau_complete = _should_skip_gaussian_job(
-            force_rerun=bool(self.force_gaussian_rerun),
-            final_log=self.out_gaussian_log,
-            cwd_log=self.out_log,
-            logger=self.logger,
-        )
-
-        if not gau_complete:
-            gau.write(dry_run=False)
-
-        return gau_complete
-
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the Gaussian RESP calculation.
-
-        Skips when an existing log already shows ``Normal termination``, unless
-        ``force_gaussian_rerun`` / CLI ``-O`` is set. Incomplete logs are
-        re-run.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, log the commands that would be run without executing them.
-        nproc : int, optional
-            Number of processors to use.
-        mem : int, optional
-            Amount of memory to use (in GB).
-        """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
-        gau_complete = self.setup(self.label)
-
-        # Run the Gaussian calculations in the gaussianCalcs directory
-        if not gau_complete:
-            gau_run = Gaussian(
-                cwd=self.gaussian_cwd,
-                logger=self.logger,
-                gaussian_root=self.gaussian_root,
-                gauss_exedir=self.gauss_exedir,
-                gaussian_binary=self.gaussian_binary,
-                gaussian_scratch=self.gaussian_scratch,
-            )
-            gau_run.call(inp_pipe=self.in_com.name, out_pipe=self.out_log.name, dry_run=dry_run)
-
-            # Move the Gaussian log file to the output location
-            sh.move(self.out_log, self.out_gaussian_log)
-        else:
-            self.logger.info("Gaussian RESP already complete; skipping execution")
-
-        return
 
 class StageGaussianRotation(AbstractStage):
     """Rotate the ligand and run a Gaussian ESP job at each orientation.
@@ -677,8 +545,7 @@ class StageGaussianRotation(AbstractStage):
         """
         job_nproc = getattr(self, "_job_nproc", None) or self.nproc
         job_mem = getattr(self, "_job_mem", None) or self.mem
-        self.header = [f"%NPROC={job_nproc}",
-                       f"%MEM={job_mem}GB"]
+        self.header = _gaussian_link0_header(job_nproc, job_mem)
 
         # __init__ tries to set up the coordinates object, but it may not have been available at init time.
         if not getattr(self, "coord_object", None):
@@ -723,30 +590,12 @@ class StageGaussianRotation(AbstractStage):
 
         return False
 
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute Gaussian RESP calculations for each rotated ligand.
-
-        Pools over ``.com`` jobs. ``nproc`` and ``mem`` are the **node**
-        budgets: workers, per-job ``%NProc``, and per-job ``%MEM`` satisfy
-        ``n_workers * %NProc <= nproc`` and ``n_workers * %MEM <= mem``.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, log the commands that would be run without executing them.
-        nproc : int, optional
-            Total processor budget for concurrent orientation jobs.
-        mem : int, optional
-            Total memory budget (GB) split across concurrent ``%MEM`` headers.
-            Do not treat this as per-job memory: writing the full allocation
-            into every orientation ``.com`` OOM-kills the node.
-        """
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Pool orientation ESP jobs. ``nproc`` / ``mem`` are node budgets."""
         import multiprocessing as mp
 
         from ffpopt.runtime.ProgressBoard import JobBoardWatcher, JobProgressStore
 
-        # Prefer self. so subclasses / tests can override or patch setup.
-        self._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
         n_orients = self._n_orientation_count()
         n_workers, job_nproc, job_mem = split_gaussian_orientation_budget(
             self.nproc, n_orients, self.mem
@@ -940,40 +789,14 @@ class StageGaussianToMol2(AbstractStage):
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
 
         self._add_outputs(self.out_mol2)
+        self.add_required(self.in_log)
 
     def _validate_input_paths(self, **kwargs) -> None:
         apply_gaussian_env_paths(self, kwargs)
 
-    def setup(self, name_template: str) -> bool:
-        """
-        Set up required files and headers for Gaussian to mol2 conversion.
-
-        Parameters
-        ----------
-        name_template : str
-            Template name for input/output files.
-        """
-        self.add_required(self.in_log)
-
-        self.header = [f"%NPROC={self.nproc}",
-                       f"%MEM={self.mem}GB"]
-
-    def execute(self, dry_run=False, nproc: Optional[int]=None, mem: Optional[int]=None) -> Any:
-        """Execute the Gaussian to mol2 conversion.
-
-        Parameters
-        ----------
-        dry_run : bool, optional
-            If True, log the commands that would be run without executing them.
-        nproc : int, optional
-            Number of processors to use.
-        mem : int, optional
-            Amount of memory to use (in GB).
-        """
-        super()._setup_execution(dry_run=dry_run, nproc=nproc, mem=mem)
-
+    def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
+        """Convert the Gaussian log to mol2 and copy charges from the template."""
         warnings.filterwarnings("ignore")
-        self.setup(self.in_log.stem)
 
         # Convert from gaussian to mol2
         ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
@@ -986,13 +809,6 @@ class StageGaussianToMol2(AbstractStage):
             assert len(u1.atoms) == len(u2.atoms), "Number of atoms in the two files do not match"
 
             u2.atoms.charges = u1.atoms.charges
-            """
-            ag = u2.select_atoms("all")
-            ag.write(self.name+'.tmp2.mol2')
-            # This exists because for some reason antechamber misinterprets
-            # the mol2 file's blank lines in the atoms section.
-            self.remove_blank_lines(self.name+'.tmp2.mol2')
-            """
             Mol2Writer(u2, self.temp2_mol2, selection="all").write()
 
         # Use antechamber to clean up the mol2 format
@@ -1000,24 +816,6 @@ class StageGaussianToMol2(AbstractStage):
         ante.call(i=self.temp2_mol2, fi="mol2", o=self.out_mol2, fo="mol2", pf="y", at=self.atom_type, an="no", nc=self.net_charge, dry_run=dry_run)
 
         return
-
-    def remove_blank_lines(self, file_path):
-        """Remove blank lines from a file.
-
-        Parameters
-        ----------
-        file_path : str
-            Path to the file to clean.
-        """
-        if Path(file_path).exists():
-            # Read the file and filter out blank lines
-            with open(file_path, "r") as file:
-                lines = file.readlines()
-                non_blank_lines = [line for line in lines if line.strip()]
-
-            # Write the non-blank lines back to the file
-            with open(file_path, "w") as file:
-                file.writelines(non_blank_lines)
 
 
 # Back-compat alias
