@@ -1,42 +1,10 @@
 #!/usr/bin/env python3
 
-# def FindFuncGrps_from_ChemFG_Tool(mol):
-#     from . ChemFG_Tool.ChemFG_Tool import GetFunctionalGroups
-#     return GetFunctionalGroups(mol)
-
-
-# # --- Verification ---
-# mol = Chem.MolFromSmiles("CC(=O)O")  # Carboxylic acid (has an OH group)
-# # Add an independent alcohol to test both
-# mol_with_alcohol = Chem.MolFromSmiles("OCC(=O)O") 
-# mol_with_hs = Chem.AddHs(mol_with_alcohol)
-
-# final_dict = identify_unique_groups_with_true_hs(mol_with_hs)
-# print(final_dict)
-
-    
-
-
 def FindFuncGrps_from_rdkit(mol, custom_smarts_dict=None):
-    """
-    Finds native RDKit functional groups plus optional custom user rules.
-    Automatically captures explicit hydrogens and removes subset redundancies.
+    """Find RDKit functional groups plus optional custom SMARTS rules.
 
-
-    # --- Example Usage ---
-    # Suppose you want to define a custom rule for a "Trifluoromethyl" group
-    my_custom_rules = {
-        "Trifluoromethyl": "C(F)(F)F",
-        "Custom_Alkyl_Chloride": "[CX4][Cl]"
-    }
-
-    mol = Chem.MolFromSmiles("FC(F)(F)CC(O)=O") # Contains Trifluoromethyl & Carboxylic Acid
-    mol_with_hs = Chem.AddHs(mol)
-
-    # Run with your custom definitions injected
-    final_dict = FindFuncGrps_from_rdkit(mol_with_hs, custom_smarts_dict=my_custom_rules)
-    print(final_dict)
-
+    Captures explicit hydrogens and drops subset redundancies.
+    ``custom_smarts_dict`` maps group names to SMARTS strings.
     """
 
     from rdkit import Chem

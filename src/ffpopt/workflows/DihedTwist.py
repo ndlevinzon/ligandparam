@@ -49,6 +49,27 @@ def _stage_status(stage: str) -> str:
     return "running"
 
 
+def _start_whole_board(wd: Path, logger, registrations, *, log_root_hint: str):
+    """Register batches and start ``WHOLE_STATUS.txt``.
+
+    ``registrations`` is ``[(identity, bonds, log_path), ...]``.
+    """
+    from ffpopt.runtime.ProgressBoard import WholeBoardWatcher, WholeProgressStore
+
+    store = WholeProgressStore(wd / ".whole_progress.json")
+    for identity, bonds, log_path in registrations:
+        store.register(identity, bonds=bonds, log_path=str(log_path))
+    watcher = WholeBoardWatcher(
+        store,
+        board_path=wd / "WHOLE_STATUS.txt",
+        logger=logger,
+        interval_sec=5.0,
+        log_root_hint=log_root_hint,
+    )
+    watcher.start()
+    return store, watcher
+
+
 def run_batched_dihed_twist_workflow(
     *,
     inp: str,
@@ -175,23 +196,14 @@ def run_batched_dihed_twist_workflow(
 
     if len(batches) <= 1:
         if is_whole:
-            from ffpopt.runtime.ProgressBoard import (
-                WholeBoardWatcher,
-                WholeProgressStore,
-            )
-
-            store = WholeProgressStore(wd / ".whole_progress.json")
             identity = _whole_identity("00")
             log_path = wd / "whole-twist.log"
-            store.register(identity, bonds=len(bonds0), log_path=str(log_path))
-            watcher = WholeBoardWatcher(
-                store,
-                board_path=wd / "WHOLE_STATUS.txt",
-                logger=log,
-                interval_sec=5.0,
+            store, watcher = _start_whole_board(
+                wd,
+                log,
+                [(identity, len(bonds0), log_path)],
                 log_root_hint="whole-twist.log",
             )
-            watcher.start()
             try:
                 result = _run_logged_batch(
                     batch_inp=str(inp_path),
@@ -246,24 +258,19 @@ def run_batched_dihed_twist_workflow(
     whole_store = None
     watcher = None
     if is_whole:
-        from ffpopt.runtime.ProgressBoard import WholeBoardWatcher, WholeProgressStore
-
-        whole_store = WholeProgressStore(wd / ".whole_progress.json")
-        for bi, batch_bonds in enumerate(batches):
-            identity = _whole_identity(f"{bi:02d}")
-            whole_store.register(
-                identity,
-                bonds=len(batch_bonds),
-                log_path=str(wd / f"torsion_batch_{bi:02d}" / "whole-twist.log"),
-            )
-        watcher = WholeBoardWatcher(
-            whole_store,
-            board_path=wd / "WHOLE_STATUS.txt",
-            logger=log,
-            interval_sec=5.0,
+        whole_store, watcher = _start_whole_board(
+            wd,
+            log,
+            [
+                (
+                    _whole_identity(f"{bi:02d}"),
+                    len(batch_bonds),
+                    wd / f"torsion_batch_{bi:02d}" / "whole-twist.log",
+                )
+                for bi, batch_bonds in enumerate(batches)
+            ],
             log_root_hint="torsion_batch_XX/whole-twist.log",
         )
-        watcher.start()
 
     try:
         for bi, batch_bonds in enumerate(batches):

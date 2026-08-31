@@ -339,83 +339,42 @@ def GeomOpt_SinglePoint(los,struct,constraints=None,restraints=None):
     ffpopt.Struct.Struct
         The optimized geometry with updated positions, forces, and energy
     """
-    import os
     import copy
-    #import subprocess as subp
-    #import ase.io
-    #from ffpopt.constants import AU_PER_ELECTRON_VOLT
-    #from ffpopt.Options import argparse2geometric
     from ffpopt.geom.Constraints import ConstraintList
-    from ffpopt.geom.Constraints import to_ase,ApplyConstraints
-    from ffpopt.geom.Restraints import RestraintList
-    #from ffpopt.geom.Constraints import constraints2info,constraints2ase
+    from ffpopt.geom.Constraints import to_ase, ApplyConstraints
 
-    if True:
-        # if stdargs.calc is None:
-        #     calc = stdargs.MakeCalc()
-        # else:
-        #     calc = stdargs.calc
-        # out = atoms.copy()
-        # del out.constraints
-        # out.calc = calc
-        # out.calc.reset()
-        # out.info = {"energy": out.get_potential_energy(), "forces": out.get_forces()}
-        # out.calc = None
+    conslist, reslist = merge_struct_constraints_restraints(
+        struct, constraints, restraints
+    )
 
+    myatoms = struct.GetASEAtoms()
+    myatoms.calc = los.BuildRestrainedCalc(struct, reslist=reslist)
+    calc = myatoms.calc
 
+    asecons = None
+    cons = None
+    if conslist is not None:
+        cons = conslist.FillConstraints(myatoms)
+        myatoms = ApplyConstraints(myatoms, cons, graph=struct.GetGraph())
+        asecons = to_ase(cons)
 
-        conslist, reslist = merge_struct_constraints_restraints(
-            struct, constraints, restraints
-        )
+    del myatoms.constraints
+    myatoms.set_constraint(asecons)
+    myatoms.calc = calc
+    myatoms.calc.reset()
 
-        myatoms = struct.GetASEAtoms()
-        myatoms.calc=los.BuildRestrainedCalc(struct,reslist=reslist)
-        calc = myatoms.calc
+    ene = myatoms.get_potential_energy()
+    crd = myatoms.get_positions()
+    frc = myatoms.get_forces()
+    out = copy.deepcopy(struct)
+    out.Update(ene, crd, frc)
 
-        asecons = None
-        cons = None
-        if conslist is not None:
-            cons = conslist.FillConstraints(myatoms)
-            myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph())
-            #asecons = constraints2ase(cons)
-            asecons = to_ase(cons)
-
-
-        # asecons = None
-        # cons = None
-        # if conslist is not None:
-        #     cons = conslist.FillConstraints(myatoms,force=False)
-        #     origcons = conslist.FillConstraints(myatoms,force=True)
-        # if cons is not None or reslist is not None:
-        #     myatoms = ApplyConstraints(myatoms,cons,graph=struct.GetGraph(),rests=reslist.rests)
-        #     if cons is not None:
-        #         asecons = to_ase(cons)
-
-        #         newcons = conslist.FillConstraints(myatoms,force=True)
-        #         for ic in range(len(cons)):
-        #             print(ic,str(origcons[ic]),str(newcons[ic]),cons[ic].value)
-
-
-            
-    
-        del myatoms.constraints
-        myatoms.set_constraint( asecons )
-        myatoms.calc = calc
-        myatoms.calc.reset()
-
-        ene = myatoms.get_potential_energy()
-        crd = myatoms.get_positions()
-        frc = myatoms.get_forces()
-        out = copy.deepcopy(struct)
-        out.Update(ene,crd,frc)
-        
-        if cons is not None:
-            out.constraints = ConstraintList( cons )
-            out.data["constraints"] = out.constraints.to_list_of_dict()
-        if reslist is not None:
-            out.restraints = reslist
-            out.data["restraints"] = out.restraints.to_list_of_dict()
-            
+    if cons is not None:
+        out.constraints = ConstraintList(cons)
+        out.data["constraints"] = out.constraints.to_list_of_dict()
+    if reslist is not None:
+        out.restraints = reslist
+        out.data["restraints"] = out.restraints.to_list_of_dict()
     return out
 
 

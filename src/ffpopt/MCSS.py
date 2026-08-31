@@ -211,35 +211,7 @@ def mcss(mol2str_1, mol2str_2, maxtime=60, isotope_map=None, selec=''):
 
         mapping = dict(zip(m1, m2) )
 
-    # FIXME: we may have to reconsider this and understand when rings have
-    #        to be assumed "broken"
-    #
-    # delete atoms from mapping that are also part of an map-external ring
-    if False:
-        ring_info1 = mol1.GetRingInfo()
-        ring_info2 = mol2.GetRingInfo()
-
-        rings1 = ring_info1.AtomRings()
-        rings2 = ring_info2.AtomRings()
-
-        map1 = set(mapping.keys())
-        map2 = set(mapping.values())
-
-        for ring in rings1:
-            if not set(ring).issubset(map1):
-                for idx in map1:
-                    if idx in ring and ring_info1.NumAtomRings(idx) == 1:
-                        del(mapping[idx])
-
-        delete_values = []
-        for ring in rings2:
-            if not set(ring).issubset(map2):
-                for idx in map2:
-                    if idx in ring and ring_info2.NumAtomRings(idx) == 1:
-                        delete_values.append(idx)
-
-        mapping = {k: v for k, v in mapping.items() if v not in delete_values}
-
+    # Map-external rings stay in the mapping (a ring-break filter was never enabled).
     return mapping
 
 

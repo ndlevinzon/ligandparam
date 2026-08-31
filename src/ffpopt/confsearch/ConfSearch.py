@@ -335,90 +335,42 @@ def ConformerSearch(fnameormol,outbasename,nconf,nkeep,mmff94,maxiter,rmstol,qui
     """
     
     from pathlib import Path
-    import os
     from copy import deepcopy
     from .. Struct import Struct, ListOfStruct
 
-    #mol2 = None
     inplos = None
     if Path(fnameormol).suffix == ".mol2":
-        #mol2 = ReadMol2(fnameormol)
-        #m = ConvertMol2toRDKIT(mol2)
-        inplos = ListOfStruct( [ Struct.from_mol2(fnameormol) ] )
+        inplos = ListOfStruct([Struct.from_mol2(fnameormol)])
         m = inplos.structs[0].GetRDKitAtoms()
     elif Path(fnameormol).suffix == ".json":
-        #mol2 = ReadMol2(fnameormol)
-        #m = ConvertMol2toRDKIT(mol2)
         inplos = ListOfStruct.from_file(fnameormol)
         m = inplos.structs[0].GetRDKitAtoms()
     else:
-        m = ReadMolecule(fnameormol,quiet=quiet)
-        #print(m)
-        inplos = ListOfStruct( [ Struct.from_rdkit(m) ] )
+        m = ReadMolecule(fnameormol, quiet=quiet)
+        inplos = ListOfStruct([Struct.from_rdkit(m)])
 
-  
-    GetConformers(m,nconf,nkeep,mmff94=mmff94,maxiter=maxiter,rmstol=rmstol,quiet=quiet)
-    
-    nat = m.GetNumAtoms()
+    GetConformers(
+        m, nconf, nkeep, mmff94=mmff94, maxiter=maxiter, rmstol=rmstol, quiet=quiet
+    )
+
     symbols = [a.GetSymbol() for a in m.GetAtoms()]
     confs = []
-    for i,conf in enumerate(m.GetConformers()):
+    for i, conf in enumerate(m.GetConformers()):
         myconf = []
-        for atom,symbol in enumerate(symbols):
+        for atom, symbol in enumerate(symbols):
             p = conf.GetAtomPosition(atom)
-            myconf.append( [symbol,p.x,p.y,p.z] )
+            myconf.append([symbol, p.x, p.y, p.z])
         confs.append(myconf)
 
     if outbasename is not None:
-        # if mol2 is not None:
-        #if Path(fnameormol).suffix == ".mol2":
-        #     for i,conf in enumerate(confs):
-        #         ofile = Path("%s_c%02i.mol2"%(outbasename,i+1))
-        #         dname = str(ofile.parent)
-        #         if dname != ".":
-        #             os.makedirs(dname,exist_ok=True)
-        #         file_name = str(ofile)
-        #         if not quiet:
-        #             print("Writing",file_name)
-        #         for a,data in enumerate(conf):
-        #             mol2.atoms[a].xx = data[1]
-        #             mol2.atoms[a].xy = data[2]
-        #             mol2.atoms[a].xz = data[3]
-        #         mol2.save(str(ofile),format="MOL2")
-        #if inplos is not None:
-        if True:
-            ss = ListOfStruct([])
-            for i,conf in enumerate(confs):
-                #ofile = Path("%s_c%02i.json"%(outbasename,i+1))
-                #dname = str(ofile.parent)
-                #if dname != ".":
-                #    os.makedirs(dname,exist_ok=True)
-                #file_name = str(ofile)
-                #if not quiet:
-                #    print("Writing",file_name)
-                o = deepcopy(inplos.structs[0])
-                #o.structs = [ o.structs[0] ]
-                crds = [ c[1:] for c in conf ]
-                o.Update(None,crds,None)
-                o.data["name"] = "s%03i"%(i)
-                ss.structs.append(o)
-                #o.save(file_name)
-            ss.save(outbasename)
-        # else:
-        #     for i,conf in enumerate(m.GetConformers()):
-        #         ofile = Path("%s_c%02i.xyz"%(outbasename,i+1))
-        #         dname = str(ofile.parent)
-        #         if dname != ".":
-        #             os.makedirs(dname,exist_ok=True)
-        #         file_name = str(ofile)
-        #         if not quiet:
-        #             print("Writing",file_name)
-        #         with open(file_name, "w") as fh:
-        #             fh.write(str(nat)+"\n")
-        #             fh.write("%s_c%02i\n"%(outbasename,i+1))
-        #             for data in confs[i]:
-        #                 fh.write("%2s %15.8f %15.8f %15.8f\n"%\
-        #                          (data[0],data[1],data[2],data[3]))
+        ss = ListOfStruct([])
+        for i, conf in enumerate(confs):
+            o = deepcopy(inplos.structs[0])
+            crds = [c[1:] for c in conf]
+            o.Update(None, crds, None)
+            o.data["name"] = "s%03i" % (i)
+            ss.structs.append(o)
+        ss.save(outbasename)
 
     return confs
 

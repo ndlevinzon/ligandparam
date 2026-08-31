@@ -37,7 +37,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   an ordered attempt list. Progress boards are one profile table plus
   fragment/whole aliases. Dead FindFuncGrps SMARTS ``else`` table
   removed. Developer regression splits ``TestFfpoptCoreFunctions`` into
-  sibling classes in the same file.
+  sibling classes in the same file. Follow-up: unwrap ``if True:`` live
+  paths (GeomOpt single-point, amber restart, frcmod write, RESP
+  charges, ConfSearch dump), drop unused MCSS ring-mapping and
+  FindFuncGrps scratch, and share whole-ligand ``WHOLE_STATUS.txt``
+  board setup in ``DihedTwist``.
 
 ## [1.6.1] - 2026-08-27
 

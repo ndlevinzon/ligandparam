@@ -260,23 +260,19 @@ class EndState(object):
             The file handle to read the charges from
         
         """
-        import sys
-        if True:
-            fit_charges = respfunctions.ReadNextRespCharges( fh )
-            #print fit_charges
-            qm_charges = []
-            mm_charges = []
-            for i,a in enumerate( self.frag.atomsel ):
-                qqm  = 0.
-                for imm in self.parm2fit_map[a]:
-                    #sys.stderr.write("%s %s\n"%( str(a),str(imm) ))
-                    qqm += fit_charges[imm]
-                qm_charges.append( qqm )
-                mm_charges.append( self.parm.atoms[a].charge )
-            dq = ( sum(mm_charges) - sum(qm_charges) ) / len( mm_charges )
-            qm_charges = [ q + dq for q in qm_charges ]
-            for i,a in enumerate(self.frag.atomsel):
-                self.charge_data[a].append( qm_charges[i] )
+        fit_charges = respfunctions.ReadNextRespCharges(fh)
+        qm_charges = []
+        mm_charges = []
+        for i, a in enumerate(self.frag.atomsel):
+            qqm = 0.0
+            for imm in self.parm2fit_map[a]:
+                qqm += fit_charges[imm]
+            qm_charges.append(qqm)
+            mm_charges.append(self.parm.atoms[a].charge)
+        dq = (sum(mm_charges) - sum(qm_charges)) / len(mm_charges)
+        qm_charges = [q + dq for q in qm_charges]
+        for i, a in enumerate(self.frag.atomsel):
+            self.charge_data[a].append(qm_charges[i])
 
                 
     def read_respfile(self):

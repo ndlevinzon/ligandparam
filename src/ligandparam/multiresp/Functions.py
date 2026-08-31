@@ -173,234 +173,228 @@ def WriteFrcmodObj(self,native_frcmod,angfact=1.0,uniqueparams=False,selected_na
             selected_names[atom]=1
     elif selected_names is None:
         selected_names = {}
-        
 
-    if True:
+    class combofile(object):
+        def __init__(self,fh1,fh2):
+            self.fh1 = fh1
+            self.fh2 = fh2
+        def write(self,s):
+            self.fh1.write(s)
+            self.fh2.write(s)
+    
+    nfile = open(native_frcmod,"w")
+    if changed_frcmod is None:
+        cfile = nfile
+        outfile = nfile
+    else:
+        cfile = open(changed_frcmod,"w")
+        outfile = combofile( nfile, cfile )
 
-#        angfact = 0.9999995714245039
-
-        class combofile(object):
-            def __init__(self,fh1,fh2):
-                self.fh1 = fh1
-                self.fh2 = fh2
-            def write(self,s):
-                self.fh1.write(s)
-                self.fh2.write(s)
-        
-        nfile = open(native_frcmod,"w")
-        if changed_frcmod is None:
-            cfile = nfile
-            outfile = nfile
-        else:
-            cfile = open(changed_frcmod,"w")
-            outfile = combofile( nfile, cfile )
-
-#        self = parmed.amber.parameters.AmberParameterSet.from_structure(param)
-        outfile.write("modified parameters")
-        outfile.write('\n')
-        # Write the atom mass
-        outfile.write('MASS\n')
-        if with_mass:
-            for atom, typ in iteritems(self.atom_types):
-                fh=nfile
-                if atom in selected_names:
-                    fh = cfile
-                fh.write('%s%11.8f\n' % (atom.ljust(6), typ.mass))
-                
-        outfile.write('\n')
-        # Write the bonds
-        outfile.write('BOND\n')
-        cdone = set()
-        ndone = set()
-        deltas = ddict( lambda: ddict(float) )
-        for (a1, a2), typ in iteritems(self.bond_types):
-            typ.k = float("%.8f"%(typ.k))
+    outfile.write("modified parameters")
+    outfile.write('\n')
+    # Write the atom mass
+    outfile.write('MASS\n')
+    if with_mass:
+        for atom, typ in iteritems(self.atom_types):
             fh=nfile
-            delta = 0
-            if a1 in selected_names or a2 in selected_names:
-                fh=cfile
-                qq = (a1,a2)
-                if qq in cdone: continue
-                qq = (a2,a1)
-                if qq in cdone: continue
-                cdone.add(qq)
-                deltas[typ.k][typ.req] += 1.e-13
-                delta = deltas[typ.k][typ.req]
+            if atom in selected_names:
+                fh = cfile
+            fh.write('%s%11.8f\n' % (atom.ljust(6), typ.mass))
+            
+    outfile.write('\n')
+    # Write the bonds
+    outfile.write('BOND\n')
+    cdone = set()
+    ndone = set()
+    deltas = ddict( lambda: ddict(float) )
+    for (a1, a2), typ in iteritems(self.bond_types):
+        typ.k = float("%.8f"%(typ.k))
+        fh=nfile
+        delta = 0
+        if a1 in selected_names or a2 in selected_names:
+            fh=cfile
+            qq = (a1,a2)
+            if qq in cdone: continue
+            qq = (a2,a1)
+            if qq in cdone: continue
+            cdone.add(qq)
+            deltas[typ.k][typ.req] += 1.e-13
+            delta = deltas[typ.k][typ.req]
+        else:
+            fh=nfile
+            if id(typ) in ndone: continue
+            ndone.add(id(typ))
+        fh.write('%s-%s   %19.14f  %11.8f\n' %
+                 (a1.ljust(2), a2.ljust(2), typ.k+delta, typ.req))
+    outfile.write('\n')
+    # Write the angles
+    outfile.write('ANGLE\n')
+    cdone = set()
+    ndone = set()
+    deltas = ddict( lambda: ddict(float) )
+    for (a1, a2, a3), typ in iteritems(self.angle_types):
+        typ.k = float("%.8f"%(typ.k))
+        delta = 0.
+        if a1 in selected_names or a2 in selected_names or \
+           a3 in selected_names:
+            fh=cfile
+            qq = (a1,a2,a3)
+            if qq in cdone: continue
+            qq = (a3,a2,a1)
+            if qq in cdone: continue
+            cdone.add(qq)
+            deltas[typ.k][typ.theteq] += 1.e-13
+            delta = deltas[typ.k][typ.theteq]
+        else:
+            fh=nfile
+            if id(typ) in ndone: continue
+            ndone.add(id(typ))
+        fh.write('%s-%s-%s   %19.14f  %17.3f\n' %
+                 (a1.ljust(2), a2.ljust(2), a3.ljust(2), typ.k+delta,
+                  typ.theteq * angfact))
+    outfile.write('\n')
+    # Write the dihedrals
+    outfile.write('DIHE\n')
+    cdone = set()
+    ndone = set()
+    deltas = ddict( lambda: ddict( lambda: ddict( float ) ) )
+    for (a1, a2, a3, a4), typ in iteritems(self.dihedral_types):
+        isnew = False
+        if a1 in selected_names or a2 in selected_names or \
+           a3 in selected_names or a4 in selected_names:
+            fh=cfile
+            qq = (a1,a2,a3,a4)
+            if qq in cdone: continue
+            qq = (a4,a3,a2,a1)
+            if qq in cdone: continue
+            cdone.add(qq)
+            isnew = True
+        else:
+            fh=nfile
+            if id(typ) in ndone: continue
+            ndone.add(id(typ))
+        if isinstance(typ, DihedralType) or len(typ) == 1:
+            if not isinstance(typ, DihedralType):
+                typ = typ[0]
+                typ.phi_k = float("%.8f"%(typ.phi_k))
+                delta = 0
+                if isnew:
+                    deltas[typ.phi_k][typ.phase][typ.per] += 1.e-13
+                    delta = deltas[typ.phi_k][typ.phase][typ.per]
+            if abs(typ.phase-180) < 0.0001:
+                fh.write('%s-%s-%s-%s %4i %20.14f %13.3f %5.1f    '
+                         'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
+                                                a3.ljust(2), a4.ljust(2), 1, typ.phi_k+delta, typ.phase * angfact,
+                                                typ.per, typ.scee, typ.scnb))
             else:
-                fh=nfile
-                if id(typ) in ndone: continue
-                ndone.add(id(typ))
-            fh.write('%s-%s   %19.14f  %11.8f\n' %
-                     (a1.ljust(2), a2.ljust(2), typ.k+delta, typ.req))
-        outfile.write('\n')
-        # Write the angles
-        outfile.write('ANGLE\n')
-        cdone = set()
-        ndone = set()
-        deltas = ddict( lambda: ddict(float) )
-        for (a1, a2, a3), typ in iteritems(self.angle_types):
-            typ.k = float("%.8f"%(typ.k))
-            delta = 0.
-            if a1 in selected_names or a2 in selected_names or \
-               a3 in selected_names:
-                fh=cfile
-                qq = (a1,a2,a3)
-                if qq in cdone: continue
-                qq = (a3,a2,a1)
-                if qq in cdone: continue
-                cdone.add(qq)
-                deltas[typ.k][typ.theteq] += 1.e-13
-                delta = deltas[typ.k][typ.theteq]
-            else:
-                fh=nfile
-                if id(typ) in ndone: continue
-                ndone.add(id(typ))
-            fh.write('%s-%s-%s   %19.14f  %17.3f\n' %
-                     (a1.ljust(2), a2.ljust(2), a3.ljust(2), typ.k+delta,
-                      typ.theteq * angfact))
-        outfile.write('\n')
-        # Write the dihedrals
-        outfile.write('DIHE\n')
-        cdone = set()
-        ndone = set()
-        deltas = ddict( lambda: ddict( lambda: ddict( float ) ) )
-        for (a1, a2, a3, a4), typ in iteritems(self.dihedral_types):
-            isnew = False
-            if a1 in selected_names or a2 in selected_names or \
-               a3 in selected_names or a4 in selected_names:
-                fh=cfile
-                qq = (a1,a2,a3,a4)
-                if qq in cdone: continue
-                qq = (a4,a3,a2,a1)
-                if qq in cdone: continue
-                cdone.add(qq)
-                isnew = True
-            else:
-                fh=nfile
-                if id(typ) in ndone: continue
-                ndone.add(id(typ))
-            if isinstance(typ, DihedralType) or len(typ) == 1:
-                if not isinstance(typ, DihedralType):
-                    typ = typ[0]
-                    typ.phi_k = float("%.8f"%(typ.phi_k))
-                    delta = 0
-                    if isnew:
-                        deltas[typ.phi_k][typ.phase][typ.per] += 1.e-13
-                        delta = deltas[typ.phi_k][typ.phase][typ.per]
-                if abs(typ.phase-180) < 0.0001:
-                    fh.write('%s-%s-%s-%s %4i %20.14f %13.3f %5.1f    '
-                             'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
-                                                    a3.ljust(2), a4.ljust(2), 1, typ.phi_k+delta, typ.phase * angfact,
-                                                    typ.per, typ.scee, typ.scnb))
-                else:
-                    fh.write('%s-%s-%s-%s %4i %20.14f %13.8f %5.1f    '
-                             'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
-                                                    a3.ljust(2), a4.ljust(2), 1, typ.phi_k+delta, typ.phase * angfact,
-                                                    typ.per, typ.scee, typ.scnb))
-            else:
-                typ = sorted( typ, key=lambda x: x.per, reverse=False )
-                for dtyp in typ[:-1]:
-                    dtyp.phi_k = float("%.8f"%(dtyp.phi_k))
-                    delta = 0
-                    if isnew:
-                        deltas[dtyp.phi_k][dtyp.phase][dtyp.per] += 1.e-13
-                        delta = deltas[dtyp.phi_k][dtyp.phase][dtyp.per]
-                    if abs(dtyp.phase-180) < 0.0001:
-                        #print "%20.16f"%(180.0/dtyp.phase)
-                        fh.write('%s-%s-%s-%s %4i %20.14f %13.3f %5.1f    '
-                                 'SCEE=%s SCNB=%s\n'%(a1.ljust(2), a2.ljust(2),
-                                                      a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
-                                                      dtyp.phase * angfact, -dtyp.per, dtyp.scee, dtyp.scnb))
-                    else:
-                        fh.write('%s-%s-%s-%s %4i %20.14f %13.8f %5.1f    '
-                                 'SCEE=%s SCNB=%s\n'%(a1.ljust(2), a2.ljust(2),
-                                                      a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
-                                                      dtyp.phase * angfact, -dtyp.per, dtyp.scee, dtyp.scnb))
-                dtyp = typ[-1]
+                fh.write('%s-%s-%s-%s %4i %20.14f %13.8f %5.1f    '
+                         'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
+                                                a3.ljust(2), a4.ljust(2), 1, typ.phi_k+delta, typ.phase * angfact,
+                                                typ.per, typ.scee, typ.scnb))
+        else:
+            typ = sorted( typ, key=lambda x: x.per, reverse=False )
+            for dtyp in typ[:-1]:
                 dtyp.phi_k = float("%.8f"%(dtyp.phi_k))
                 delta = 0
                 if isnew:
                     deltas[dtyp.phi_k][dtyp.phase][dtyp.per] += 1.e-13
                     delta = deltas[dtyp.phi_k][dtyp.phase][dtyp.per]
                 if abs(dtyp.phase-180) < 0.0001:
+                    #print "%20.16f"%(180.0/dtyp.phase)
                     fh.write('%s-%s-%s-%s %4i %20.14f %13.3f %5.1f    '
-                             'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
-                                                    a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
-                                                    dtyp.phase * angfact, dtyp.per, dtyp.scee, dtyp.scnb))
+                             'SCEE=%s SCNB=%s\n'%(a1.ljust(2), a2.ljust(2),
+                                                  a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
+                                                  dtyp.phase * angfact, -dtyp.per, dtyp.scee, dtyp.scnb))
                 else:
                     fh.write('%s-%s-%s-%s %4i %20.14f %13.8f %5.1f    '
-                             'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
-                                                    a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
-                                                    dtyp.phase * angfact, dtyp.per, dtyp.scee, dtyp.scnb))
-                    
-        outfile.write('\n')
-        # Write the impropers
-        deltas = ddict( lambda: ddict( lambda: ddict( float ) ) )
-        outfile.write('IMPROPER\n')
-        for (a1, a2, a3, a4), typ in iteritems(self.improper_periodic_types):
-            # Make sure wild-cards come at the beginning
-            if a2 == 'X':
-                assert a4 == 'X', 'Malformed generic improper!'
-                a1, a2, a3, a4 = a2, a4, a3, a1
-            elif a4 == 'X':
-                a1, a2, a3, a4 = a4, a1, a3, a2
-
-            typ.phi_k = float("%.8f"%(typ.phi_k))
+                             'SCEE=%s SCNB=%s\n'%(a1.ljust(2), a2.ljust(2),
+                                                  a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
+                                                  dtyp.phase * angfact, -dtyp.per, dtyp.scee, dtyp.scnb))
+            dtyp = typ[-1]
+            dtyp.phi_k = float("%.8f"%(dtyp.phi_k))
             delta = 0
-            if a1 in selected_names or a2 in selected_names or \
-               a3 in selected_names or a4 in selected_names:
+            if isnew:
+                deltas[dtyp.phi_k][dtyp.phase][dtyp.per] += 1.e-13
+                delta = deltas[dtyp.phi_k][dtyp.phase][dtyp.per]
+            if abs(dtyp.phase-180) < 0.0001:
+                fh.write('%s-%s-%s-%s %4i %20.14f %13.3f %5.1f    '
+                         'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
+                                                a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
+                                                dtyp.phase * angfact, dtyp.per, dtyp.scee, dtyp.scnb))
+            else:
+                fh.write('%s-%s-%s-%s %4i %20.14f %13.8f %5.1f    '
+                         'SCEE=%s SCNB=%s\n' % (a1.ljust(2), a2.ljust(2),
+                                                a3.ljust(2), a4.ljust(2), 1, dtyp.phi_k+delta,
+                                                dtyp.phase * angfact, dtyp.per, dtyp.scee, dtyp.scnb))
+                
+    outfile.write('\n')
+    # Write the impropers
+    deltas = ddict( lambda: ddict( lambda: ddict( float ) ) )
+    outfile.write('IMPROPER\n')
+    for (a1, a2, a3, a4), typ in iteritems(self.improper_periodic_types):
+        # Make sure wild-cards come at the beginning
+        if a2 == 'X':
+            assert a4 == 'X', 'Malformed generic improper!'
+            a1, a2, a3, a4 = a2, a4, a3, a1
+        elif a4 == 'X':
+            a1, a2, a3, a4 = a4, a1, a3, a2
+
+        typ.phi_k = float("%.8f"%(typ.phi_k))
+        delta = 0
+        if a1 in selected_names or a2 in selected_names or \
+           a3 in selected_names or a4 in selected_names:
+            fh=cfile
+            deltas[typ.phi_k][typ.phase][typ.per] += 1.e-13
+            delta = deltas[typ.phi_k][typ.phase][typ.per]
+        else:
+            fh=nfile
+        if abs(typ.phase-180) < 0.0001:
+            fh.write('%s-%s-%s-%s %20.14f %13.3f %5.1f\n' %
+                     (a1.ljust(2), a2.ljust(2), a3.ljust(2), a4.ljust(2),
+                      typ.phi_k+delta, typ.phase * angfact, typ.per))
+        else:
+            fh.write('%s-%s-%s-%s %20.14f %13.8f %5.1f\n' %
+                     (a1.ljust(2), a2.ljust(2), a3.ljust(2), a4.ljust(2),
+                      typ.phi_k+delta, typ.phase * angfact, typ.per))
+
+            
+    outfile.write('\n')
+    # Write the LJ terms
+
+    deltas = ddict( lambda: ddict( float ) )
+
+    outfile.write('NONB\n')
+    if with_nonb:
+        for atom, typ in iteritems(self.atom_types):
+            #typ.rmin = float("%.8f"%(typ.rmin))
+            typ.epsilon = float("%.9f"%(typ.epsilon))
+            delta = 0.
+            if atom in selected_names:
                 fh=cfile
-                deltas[typ.phi_k][typ.phase][typ.per] += 1.e-13
-                delta = deltas[typ.phi_k][typ.phase][typ.per]
+                deltas[typ.rmin][typ.epsilon] += 1.e-13
+                delta = deltas[typ.rmin][typ.epsilon]
             else:
                 fh=nfile
-            if abs(typ.phase-180) < 0.0001:
-                fh.write('%s-%s-%s-%s %20.14f %13.3f %5.1f\n' %
-                         (a1.ljust(2), a2.ljust(2), a3.ljust(2), a4.ljust(2),
-                          typ.phi_k+delta, typ.phase * angfact, typ.per))
+            if delta == 0.:
+                fh.write('%-3s  %12.8f %18.9f\n' %
+                         (atom.ljust(2), typ.rmin, typ.epsilon))
             else:
-                fh.write('%s-%s-%s-%s %20.14f %13.8f %5.1f\n' %
-                         (a1.ljust(2), a2.ljust(2), a3.ljust(2), a4.ljust(2),
-                          typ.phi_k+delta, typ.phase * angfact, typ.per))
-
-                
+                fh.write('%-3s  %12.8f %18.14f\n' %
+                         (atom.ljust(2), typ.rmin, typ.epsilon+delta))
         outfile.write('\n')
-        # Write the LJ terms
-
-        deltas = ddict( lambda: ddict( float ) )
-
-        outfile.write('NONB\n')
-        if with_nonb:
-            for atom, typ in iteritems(self.atom_types):
-                #typ.rmin = float("%.8f"%(typ.rmin))
-                typ.epsilon = float("%.9f"%(typ.epsilon))
-                delta = 0.
-                if atom in selected_names:
+        # Write the NBFIX terms
+        if self.nbfix_types:
+            outfile.write('LJEDIT\n')
+            for (a1, a2), (eps, rmin) in iteritems(self.nbfix_types):
+                if a1 in selected_names or a2 in selected_names:
                     fh=cfile
-                    deltas[typ.rmin][typ.epsilon] += 1.e-13
-                    delta = deltas[typ.rmin][typ.epsilon]
                 else:
                     fh=nfile
-                if delta == 0.:
-                    fh.write('%-3s  %12.8f %18.9f\n' %
-                             (atom.ljust(2), typ.rmin, typ.epsilon))
-                else:
-                    fh.write('%-3s  %12.8f %18.14f\n' %
-                             (atom.ljust(2), typ.rmin, typ.epsilon+delta))
-            outfile.write('\n')
-            # Write the NBFIX terms
-            if self.nbfix_types:
-                outfile.write('LJEDIT\n')
-                for (a1, a2), (eps, rmin) in iteritems(self.nbfix_types):
-                    if a1 in selected_names or a2 in selected_names:
-                        fh=cfile
-                    else:
-                        fh=nfile
-                    fh.write('%s %s %13.8f %13.8f %13.8f %13.8f\n' %
-                             (a1.ljust(2), a2.ljust(2), eps, rmin/2,
-                              eps, rmin/2))
-        cfile.close()
-        nfile.close()
+                fh.write('%s %s %13.8f %13.8f %13.8f %13.8f\n' %
+                         (a1.ljust(2), a2.ljust(2), eps, rmin/2,
+                          eps, rmin/2))
+    cfile.close()
+    nfile.close()
 
 def statisticalInefficiency(A_n):
     """Compute the (cross) statistical inefficiency of (two) timeseries.
