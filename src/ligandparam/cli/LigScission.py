@@ -7,8 +7,10 @@ from a ``lig-getparam`` output directory::
     lig-getparam -i chaps.mol2 -r CHA -d CHA3 -rn freeligand ...
     lig-scission fragment -d CHA3 -r CHA --label chaps
 
-``lig-scission`` and ``scission`` are both installed entry points for the same
-integrated package under ``src/scission``.
+``lig-scission`` expands ``-d`` / ``-r`` / ``--label`` then delegates to
+``scission.Cli.main``. The ``scission`` console script uses the same
+resolver (so ``LIGANDPARAM_SCISSION=external`` applies) without the
+ligandparam banner.
 """
 
 from __future__ import annotations
@@ -66,16 +68,26 @@ def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-scission`` / convenience wrapper."""
     from ffpopt.runtime.Console import print_startup_banner
+    from ligandparam.companions import print_status_line
 
     raw = list(sys.argv[1:] if argv is None else argv)
     if not any(a in ("-h", "--help") for a in raw):
         print_startup_banner()
+        print_status_line()
     try:
         expanded = _expand_fragment_shortcuts(raw)
     except FileNotFoundError as exc:
         print(f"lig-scission: {exc}", file=sys.stderr)
         return 2
     return scission_main(expanded)
+
+
+def scission_console(argv: list[str] | None = None) -> int:
+    """``scission`` console script: honor companion env, no ligandparam banner."""
+    from scission.Cli import main as raw_scission_main
+
+    raw = list(sys.argv[1:] if argv is None else argv)
+    return raw_scission_main(raw)
 
 
 if __name__ == "__main__":

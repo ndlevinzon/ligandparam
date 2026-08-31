@@ -19,7 +19,9 @@ Editable install for development:
     pip install -e .
 
 This installs three packages from ``src/``: ``ligandparam``, ``ffpopt``, and
-``scission``, plus the CLI entry points listed in :doc:`cli`.
+``scission``, plus the CLI entry points listed in :doc:`cli`. Those in-tree
+copies are the **internal** companions. To point ligandparam at independent
+ffpopt / scission checkouts instead, see :doc:`companions`.
 
 Validate your install
 ---------------------

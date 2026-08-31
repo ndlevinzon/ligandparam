@@ -1,3 +1,7 @@
+# Set by the ligandparam-bundled copy so companion resolution can tell
+# in-tree scission from an independent checkout of the same import name.
+__ligandparam_bundle__ = True
+
 from .Models import (
     Atom,
     Bond,

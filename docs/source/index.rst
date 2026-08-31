@@ -6,7 +6,9 @@ parameterization. Workflows are expressed as **recipes** (ordered lists of
 **stages**) that wrap familiar tools such as Antechamber, Gaussian,
 ``parmchk2``, and LEaP.
 
-The repository also ships two integrated companion packages under ``src/``:
+The repository also ships two integrated companion packages under ``src/``
+(default). Independent ffpopt / scission checkouts can replace either tree;
+see :doc:`documentation_pages/companions`.
 
 * ``ffpopt`` - post-hoc torsion fitting in **fragment** (default) or
   **whole-ligand** (``--whole-ligand``) mode
@@ -78,6 +80,7 @@ See the examples directory and the pages below for details.
    ./documentation_pages/overview.rst
    ./documentation_pages/design_philosophy.rst
    ./documentation_pages/installation.rst
+   ./documentation_pages/companions.rst
    ./documentation_pages/cli.rst
    ./documentation_pages/dihedrals.rst
    ./documentation_pages/fourier_fit.rst

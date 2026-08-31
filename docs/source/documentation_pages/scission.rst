@@ -72,5 +72,6 @@ Module reference
    :undoc-members:
    :show-inheritance:
 
-Runtime package is ``src/scission``. An optional ``scission-main/`` checkout is
-upstream reference only. See ``src/scission/README.md``.
+Runtime package is ``src/scission`` unless ``LIGANDPARAM_SCISSION=external``
+points at another tree (:doc:`companions`). An optional ``scission-main/``
+checkout is upstream reference only. See ``src/scission/README.md``.

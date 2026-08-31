@@ -161,6 +161,7 @@ def main():
     import argparse
 
     from ffpopt.runtime.Console import print_startup_banner
+    from ligandparam.companions import print_status_line
 
     parser = argparse.ArgumentParser(description="Ligand parameterization CLI")
     parser.add_argument("-i", "--input", type=str, required=True, help="Input PDB file with ligand")
@@ -206,6 +207,7 @@ def main():
     args = parser.parse_args()
 
     print_startup_banner()
+    print_status_line()
 
     worker(
         recipe_name=args.recipe_name,

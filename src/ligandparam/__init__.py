@@ -8,3 +8,7 @@ Public entry points typically come from :mod:`ligandparam.recipes`
 
 __version__ = "1.6.1"
 __logging_name__ = "ligandparam"
+
+from .companions import install_import_hook as _install_companion_hook
+
+_install_companion_hook()

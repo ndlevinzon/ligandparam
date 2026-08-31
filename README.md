@@ -150,6 +150,17 @@ python -m unittest tests.test_developer_regression -v
 
 Other extras from the clone: `.[ml]`, `.[sage]`, `.[docs]`, `.[all]`. DeepMD on HPC: install TensorFlow from conda-forge, then `pip install -e ".[ml]"`.
 
+Default install uses the bundled `src/ffpopt` and `src/scission`. Independent checkouts:
+
+```bash
+export LIGANDPARAM_FFPOPT=external
+export LIGANDPARAM_FFPOPT_PATH=/path/to/ffpopt/src
+export LIGANDPARAM_SCISSION=external
+export LIGANDPARAM_SCISSION_PATH=/path/to/scission/src
+```
+
+Contract for those packages: [`docs/source/documentation_pages/companions.rst`](docs/source/documentation_pages/companions.rst).
+
 ---
 
 ## Parameterization recipes

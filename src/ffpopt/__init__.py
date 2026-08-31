@@ -22,6 +22,10 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
+# Set by the ligandparam-bundled copy so companion resolution can tell
+# in-tree ffpopt from an independent checkout of the same import name.
+__ligandparam_bundle__ = True
+
 __all__ = [
     "ase",
     "constants",

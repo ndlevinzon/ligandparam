@@ -21,6 +21,7 @@ import io
 import json
 import logging
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -4193,6 +4194,120 @@ class TestRecipeDefaultsIsolation(unittest.TestCase):
         self.assertNotIn("leaprc.protein.ff14SB", b["leaprc"])
         a["theory"]["low"] = "X"
         self.assertNotEqual(b["theory"]["low"], "X")
+
+
+_COMPANION_ENV = (
+    "LIGANDPARAM_FFPOPT",
+    "LIGANDPARAM_SCISSION",
+    "LIGANDPARAM_FFPOPT_PATH",
+    "LIGANDPARAM_SCISSION_PATH",
+    "PYTHONPATH",
+)
+
+
+class TestCompanionResolver(unittest.TestCase):
+    """LIGANDPARAM_FFPOPT / SCISSION internal vs external binding."""
+
+    def setUp(self):
+        self._env = {key: os.environ.get(key) for key in _COMPANION_ENV}
+        self._sys_path = list(sys.path)
+        self.addCleanup(self._restore_bundled)
+
+    def _restore_bundled(self):
+        from ligandparam.companions import bootstrap, reset_for_tests
+
+        for key, value in self._env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        sys.path[:] = self._sys_path
+        reset_for_tests()
+        bootstrap()
+        importlib.invalidate_caches()
+        ffpopt = importlib.import_module("ffpopt")
+        scission = importlib.import_module("scission")
+        self.assertTrue(getattr(ffpopt, "__ligandparam_bundle__", False))
+        self.assertTrue(getattr(scission, "__ligandparam_bundle__", False))
+
+    def _stub_package(self, parent: Path, name: str, token: str) -> None:
+        pkg = parent / name
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text(f"TOKEN = {token!r}\n", encoding="utf-8")
+
+    def test_default_internal_is_bundled(self):
+        from ligandparam.companions import bundled_src_root, companion_status
+
+        status = companion_status()
+        root = bundled_src_root()
+        for name in ("ffpopt", "scission"):
+            info = status[name]
+            self.assertEqual(info.mode, "internal")
+            self.assertTrue(info.bundled)
+            self.assertEqual(info.origin, (root / name).resolve())
+
+    def test_invalid_mode_raises(self):
+        from ligandparam.companions import bootstrap, reset_for_tests
+
+        os.environ["LIGANDPARAM_FFPOPT"] = "maybe"
+        reset_for_tests()
+        with self.assertRaises(RuntimeError) as ctx:
+            bootstrap()
+        self.assertIn("not a known mode", str(ctx.exception))
+
+    def test_external_without_path_raises(self):
+        from ligandparam.companions import bootstrap, reset_for_tests
+
+        os.environ["LIGANDPARAM_FFPOPT"] = "external"
+        os.environ.pop("LIGANDPARAM_FFPOPT_PATH", None)
+        reset_for_tests()
+        with self.assertRaises(RuntimeError) as ctx:
+            bootstrap()
+        self.assertIn("LIGANDPARAM_FFPOPT_PATH", str(ctx.exception))
+
+    def test_external_path_to_bundle_raises(self):
+        from ligandparam.companions import bootstrap, bundled_src_root, reset_for_tests
+
+        os.environ["LIGANDPARAM_FFPOPT"] = "external"
+        os.environ["LIGANDPARAM_FFPOPT_PATH"] = str(bundled_src_root())
+        reset_for_tests()
+        with self.assertRaises(RuntimeError) as ctx:
+            bootstrap()
+        self.assertIn("bundled", str(ctx.exception))
+
+    def test_external_ffpopt_from_path(self):
+        from ligandparam.companions import bootstrap, reset_for_tests
+
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            self._stub_package(src, "ffpopt", "ext-ffpopt")
+            os.environ["LIGANDPARAM_FFPOPT"] = "external"
+            os.environ["LIGANDPARAM_FFPOPT_PATH"] = str(src)
+            os.environ.pop("LIGANDPARAM_SCISSION", None)
+            reset_for_tests()
+            info = bootstrap()
+            self.assertEqual(info["ffpopt"].mode, "external")
+            self.assertFalse(info["ffpopt"].bundled)
+            self.assertEqual(info["scission"].mode, "internal")
+            ffpopt = importlib.import_module("ffpopt")
+            self.assertEqual(ffpopt.TOKEN, "ext-ffpopt")
+            self.assertFalse(getattr(ffpopt, "__ligandparam_bundle__", False))
+
+    def test_external_path_may_be_package_dir(self):
+        from ligandparam.companions import bootstrap, reset_for_tests
+
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            self._stub_package(src, "scission", "ext-scission")
+            os.environ["LIGANDPARAM_SCISSION"] = "external"
+            os.environ["LIGANDPARAM_SCISSION_PATH"] = str(src / "scission")
+            os.environ.pop("LIGANDPARAM_FFPOPT", None)
+            reset_for_tests()
+            info = bootstrap()
+            self.assertEqual(info["scission"].mode, "external")
+            self.assertEqual(info["ffpopt"].mode, "internal")
+            scission = importlib.import_module("scission")
+            self.assertEqual(scission.TOKEN, "ext-scission")
 
 
 if __name__ == "__main__":

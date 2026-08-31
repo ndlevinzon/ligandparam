@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Internal vs external companions** - ligandparam can keep the bundled
+  ``src/ffpopt`` / ``src/scission`` trees or load independent checkouts
+  via ``LIGANDPARAM_FFPOPT`` / ``LIGANDPARAM_SCISSION``
+  (``internal`` | ``external``) and ``LIGANDPARAM_*_PATH``. Import names
+  stay ``ffpopt`` / ``scission``. The contract for external packages is
+  ``docs/source/documentation_pages/companions.rst``.
+
 ### Fixed
 
 - **Gaussian orientation ESP OOM** - Rotate pooled 28 ``so3_n28`` jobs as

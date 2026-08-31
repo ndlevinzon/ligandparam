@@ -215,4 +215,5 @@ Related pages
 * :doc:`stages` - stage catalog
 * :doc:`ffpopt` / :doc:`wavefront` / :doc:`scission` - companion packages
   and scan algorithms
+* :doc:`companions` - internal vs external ffpopt / scission contract
 * :doc:`cli` - supported entry points

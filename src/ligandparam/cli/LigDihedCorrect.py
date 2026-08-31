@@ -127,6 +127,7 @@ def run_dihed_correct(
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-dihed-correct``."""
     from ffpopt.runtime.Console import print_startup_banner
+    from ligandparam.companions import print_status_line
 
     parser = argparse.ArgumentParser(
         description=(
@@ -286,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     print_startup_banner()
+    print_status_line()
 
     try:
         bundle = resolve_getparam_bundle(

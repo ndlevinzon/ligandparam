@@ -33,10 +33,13 @@ As of version **1.6**, the installable tree under ``src/`` is:
 
 ``ligandparam`` owns parameterization (charges, typing, baseline
 ``frcmod`` / ``lib``). ``ffpopt`` + ``scission`` own optional **post-hoc**
-torsion correction on that Amber triplet. After ``pip install``, only the
-packages under ``src/`` are used. Optional ``ffpopt-main/`` / ``scission-main/``
-checkouts (often gitignored) are upstream reference trees only - not a runtime
-dependency.
+torsion correction on that Amber triplet. After ``pip install``, the
+packages under ``src/`` are the default (internal) companions. Set
+``LIGANDPARAM_FFPOPT=external`` / ``LIGANDPARAM_SCISSION=external`` plus
+``*_PATH`` to load independent trees; see :doc:`companions`. Optional
+``ffpopt-main/`` / ``scission-main/`` checkouts (often gitignored) are
+upstream reference trees - not a runtime dependency unless you point
+``*_PATH`` at them.
 
 Canonical imports use ``ffpopt.workflows``, ``ffpopt.scan``, ``ffpopt.geom``,
 and ``ffpopt.runtime``. New wavefront checkpoints pickle as

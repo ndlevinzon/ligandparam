@@ -42,7 +42,10 @@ Tools: ``DihedTwistAnimate``, ``WavefrontAnimate``, ``FindSugarPuckers``,
 ``JsonSplit``, ``Json2Img``.
 
 CLIs print a one-time startup banner (logo, authors, version) at the top of
-stdout; fragment workers do not reprint it.
+stdout, then one ``companions: ffpopt=... scission=...`` line so you can see
+which trees were loaded. Fragment workers do not reprint the banner.
+
+Independent ffpopt / scission checkouts: :doc:`companions`.
 
 Typical same-session workflow
 -----------------------------

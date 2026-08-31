@@ -137,6 +137,7 @@ Module reference
    :undoc-members:
    :show-inheritance:
 
-Runtime package is ``src/ffpopt``. An optional ``ffpopt-main/`` checkout is
-upstream reference only. See also :doc:`wavefront`, ``src/ffpopt/GLOSSARY.md``,
-and ``src/ffpopt/README.md``.
+Runtime package is ``src/ffpopt`` unless ``LIGANDPARAM_FFPOPT=external``
+points at another tree (:doc:`companions`). An optional ``ffpopt-main/``
+checkout is upstream reference only. See also :doc:`wavefront`,
+``src/ffpopt/GLOSSARY.md``, and ``src/ffpopt/README.md``.

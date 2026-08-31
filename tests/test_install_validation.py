@@ -142,6 +142,19 @@ class TestPublicAPISurface(unittest.TestCase):
             pdb_names = importlib.import_module("ligandparam.stages.PdbNames")
             self.assertIs(pdb_names.PDB_Name_Fixer, pdb_names.StagePdbNameFixer)
 
+    def test_companion_default_is_bundled(self):
+        from ligandparam.companions import bundled_src_root, companion_status
+
+        status = companion_status()
+        root = bundled_src_root()
+        for name in ("ffpopt", "scission"):
+            info = status[name]
+            self.assertEqual(info.mode, "internal")
+            self.assertTrue(info.bundled)
+            self.assertEqual(info.origin, (root / name).resolve())
+            mod = importlib.import_module(name)
+            self.assertTrue(getattr(mod, "__ligandparam_bundle__", False), name)
+
     def test_gaussian_and_smiles_stages(self):
         if not _has_module("rdkit"):
             self.skipTest(
@@ -249,6 +262,7 @@ class TestCLIEntrypoints(unittest.TestCase):
     EXPECTED = (
         ("ligandparam.cli.LigDihedCorrect", "main"),
         ("ligandparam.cli.LigScission", "main"),
+        ("ligandparam.cli.LigScission", "scission_console"),
         ("scission.Cli", "main"),
     )
     # These pull RDKit at import time (core dep; skipped only if RDKit absent).
