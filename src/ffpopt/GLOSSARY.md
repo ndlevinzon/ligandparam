@@ -146,10 +146,11 @@ enough to fill the grid. Contrast Moore (`3**ndim - 1`, includes diagonals).
 with the current Amber force field (LL), fits cosine force constants, applies
 them, and rescans until HL~=LL or `maxiter` is reached.
 
-**Detail.** Exposed as `run_dihed_twist_workflow` (single molecule) and
-`run_fragmented_dihed_twist_workflow` (scission fragments + merge).
+**Detail.** Exposed as `run_dihed_twist_workflow` (single molecule,
+0-based bonds). Fragmented / whole-ligand orchestration lives in
+`alps.workflows`.
 
-**Authoritative source.** `src/ffpopt/workflows/`
+**Authoritative source.** `src/ffpopt/workflows/DihedTwist.py`
 
 ## Domain concepts
 
@@ -197,7 +198,7 @@ quartets via a Parmed Python patch script.
 **Detail.** Fragmented / scission merges **require** `bytype=True` because
 fragment atom names do not exist in the parent topology.
 
-**Authoritative source.** `src/ffpopt/workflows/FragmentedTwist.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/alps/workflows/FragmentedTwist.py:run_fragmented_dihed_twist_workflow`
 
 ### nprim
 
@@ -240,7 +241,7 @@ terms back into a parent frcmod.
 Per-fragment merge accumulates DIHE from all `itXX.frcmod` files in order
 (drop-mode survivors retained unless a later iteration refits the same key).
 
-**Authoritative source.** `src/ffpopt/workflows/FragmentedTwist.py:run_fragmented_dihed_twist_workflow`
+**Authoritative source.** `src/alps/workflows/FragmentedTwist.py:run_fragmented_dihed_twist_workflow`
 
 ### Whole-ligand dihed twist
 
@@ -254,7 +255,7 @@ caps) and write a parent ``.frcmod``.
 bond x wavefront workers. Fragments with at most two fit bonds flatten to
 one axis; larger fragments use the same nested joint packing.
 
-**Authoritative source.** `src/ffpopt/workflows/WholeLigandTwist.py:run_whole_ligand_dihed_twist_workflow`
+**Authoritative source.** `src/alps/workflows/WholeLigandTwist.py:run_whole_ligand_dihed_twist_workflow`
 
 ### skip_existing
 
@@ -298,7 +299,7 @@ scan ``.dat`` / JSON to refit.
 **Definition.** Integrated package under ``src/scission`` that fragments a
 ligand Amber bundle and merges per-fragment frcmods by atom type.
 
-**Detail.** Required for ``run_fragmented_dihed_twist_workflow`` and for the
+**Detail.** Required for ALPS ``run_fragmented_dihed_twist_workflow`` and for the
 ``lig-scission`` / ``scission`` CLIs. Needs AmberTools (``tleap``) on ``PATH``
 to build fragment ``parm7``/``rst7``.
 

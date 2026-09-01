@@ -184,7 +184,8 @@ Stages               one external or data step
 ``ligandparam.io``   file formats, orientations, leap/gaussian I/O
 ``ffpopt.runtime``   process/console/CPU/pool cross-cuts
 ``ffpopt.scan``      wavefront engines + shared mixins
-``ffpopt.workflows`` high-level twist / fragmented orchestration
+``ffpopt.workflows`` single-molecule twist (0-based bonds)
+``alps.workflows``   scission + ffpopt orchestration
 ``scission``         fragment selection, writers, frcmod merge
 Tests                install gate vs developer regression (two suites)
 ==================== ==================================================

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Amber / ParmEd helpers used by ffpopt scans and torsion fits.
 
-``CopyParm`` is the canonical shallow-copy helper. ligandparam's
-``multiresp.parmhelper`` re-exports it so both packages share one
-implementation.
+``CopyParm`` is the canonical shallow-copy helper for AmberParm objects
+inside ffpopt.
 """
 
 
@@ -63,9 +62,9 @@ def RotateMask(graph, idxs):
     """Build a 0/1 atom mask for rotating about a central bond.
 
     For dihedral ``idxs = [a, b, c, d]``, the rotatable bond is ``b-c``.
-    Atoms are bipartitioned with a single BFS across that bond (same idea as
-    scission ``component_beyond_bond``), then the mask is oriented so atom
-    ``d`` moves. Prefer the smaller side before flipping.
+    Atoms are bipartitioned with a single BFS across that bond, then the
+    mask is oriented so atom ``d`` moves. Prefer the smaller side before
+    flipping.
 
     Parameters
     ----------

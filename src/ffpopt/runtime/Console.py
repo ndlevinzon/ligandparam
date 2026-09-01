@@ -227,12 +227,11 @@ def ensure_ascii_stdio() -> None:
 
 
 _LOGO = r"""
-.____    .__                         ._____________                              
-|    |   |__| _________    ____    __| _/\______   \_____ ____________    _____  
-|    |   |  |/ ___\__  \  /    \  / __ |  |     ___/\__  \\_  __ \__  \  /     \ 
-|    |___|  / /_/  > __ \|   |  \/ /_/ |  |    |     / __ \|  | \// __ \|  Y Y  \
-|_______ \__\___  (____  /___|  /\____ |  |____|    (____  /__|  (____  /__|_|  /
-        \/ /_____/     \/     \/      \/                 \/           \/      \/ 
+  _____ _____ ____   ___  ____ _____
+ |  ___|  ___|  _ \ / _ \|  _ \_   _|
+ | |_  | |_  | |_) | | | | |_) || |
+ |  _| |  _| |  __/| |_| |  __/ | |
+ |_|   |_|   |_|    \___/|_|    |_|
 """.strip(
     "\n"
 )
@@ -246,18 +245,21 @@ _AUTHORS = (
 
 
 def package_version() -> str:
-    """Return the installed ``ligandparam`` version string."""
+    """Return the installed ``ffpopt`` version string."""
     try:
-        from ligandparam import __version__
+        import ffpopt as pkg
 
-        return str(__version__)
+        ver = getattr(pkg, "__version__", None)
+        if ver:
+            return str(ver)
     except Exception:
-        try:
-            from importlib.metadata import version
+        pass
+    try:
+        from importlib.metadata import version
 
-            return version("ligandparam")
-        except Exception:
-            return "unknown"
+        return version("ffpopt")
+    except Exception:
+        return "unknown"
 
 
 def format_startup_banner(*, version: str | None = None) -> str:
@@ -267,8 +269,8 @@ def format_startup_banner(*, version: str | None = None) -> str:
     return (
         f"{_LOGO}\n"
         f"\n"
-        f"  ligandparam  v{ver}\n"
-        f"  Amber ligand parameterization + ffpopt / scission\n"
+        f"  ffpopt  v{ver}\n"
+        f"  Force-field torsion optimization\n"
         f"\n"
         f"  Authors:\n"
         f"{authors}\n"
@@ -390,7 +392,7 @@ def format_fragmented_run_banner(
     n_fragments: int = 0,
     work_dir: str = "",
 ) -> str:
-    """ASCII card for the default scission / fragment twist path."""
+    """ASCII card for the fragmented twist path (used by ALPS)."""
     return format_run_banner(
         "FRAGMENTED TWIST",
         [
@@ -411,7 +413,7 @@ def print_startup_banner(
 ) -> bool:
     """Print the project banner once for this job (stdout top).
 
-    Uses a process-local flag **and** ``LIGANDPARAM_BANNER_PRINTED`` so spawned
+    Uses a process-local flag **and** ``FFPOPT_BANNER_PRINTED`` so spawned
     fragment / wavefront workers that re-import this module do not reprint.
     Do not call from ``attach_console_handlers`` - only from top-level CLI
     entry points.
@@ -425,7 +427,7 @@ def print_startup_banner(
 
     global _BANNER_PRINTED
     if not force:
-        if _BANNER_PRINTED or os.environ.get("LIGANDPARAM_BANNER_PRINTED"):
+        if _BANNER_PRINTED or os.environ.get("FFPOPT_BANNER_PRINTED"):
             return False
     ensure_ascii_stdio()
     out = stream if stream is not None else sys.__stdout__
@@ -436,7 +438,7 @@ def print_startup_banner(
     except OSError:
         return False
     _BANNER_PRINTED = True
-    os.environ["LIGANDPARAM_BANNER_PRINTED"] = "1"
+    os.environ["FFPOPT_BANNER_PRINTED"] = "1"
     return True
 
 

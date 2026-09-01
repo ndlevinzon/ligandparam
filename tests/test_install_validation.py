@@ -167,8 +167,15 @@ class TestPublicAPISurface(unittest.TestCase):
         m = importlib.import_module("ffpopt.workflows")
         for name in (
             "run_dihed_twist_workflow",
-            "run_fragmented_dihed_twist_workflow",
             "normalize_bond_pairs0",
+        ):
+            self.assertTrue(callable(getattr(m, name)), name)
+
+    def test_alps_workflow_surface(self):
+        m = importlib.import_module("alps.workflows")
+        for name in (
+            "run_fragmented_dihed_twist_workflow",
+            "run_whole_ligand_dihed_twist_workflow",
             "bonds0_from_scission_fit_torsions",
         ):
             self.assertTrue(callable(getattr(m, name)), name)
@@ -225,6 +232,7 @@ class TestPublicAPISurface(unittest.TestCase):
             "ffpopt.dihed.ExtendedFit",
             "ffpopt.workflows",
             "ffpopt.geom.Geometric",
+            "alps.workflows",
         )
         for mod in runtime:
             importlib.import_module(mod)
@@ -391,16 +399,36 @@ class TestBehavioralSmoke(unittest.TestCase):
         from ffpopt.runtime.Console import print_startup_banner
 
         console_mod._BANNER_PRINTED = False
-        os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
+        os.environ.pop("FFPOPT_BANNER_PRINTED", None)
         try:
             buf = io.StringIO()
             self.assertTrue(print_startup_banner(stream=buf))
-            self.assertIn("ligandparam", buf.getvalue())
+            self.assertIn("ffpopt", buf.getvalue())
             self.assertIn("Authors:", buf.getvalue())
             console_mod._BANNER_PRINTED = False  # simulate worker re-import
             self.assertFalse(print_startup_banner(stream=buf))
         finally:
             console_mod._BANNER_PRINTED = False
+            os.environ.pop("FFPOPT_BANNER_PRINTED", None)
+
+    def test_alps_banner_once(self):
+        from alps.cli import Banner as banner_mod
+        from alps.cli.Banner import print_startup_banner
+
+        banner_mod._BANNER_PRINTED = False
+        os.environ.pop("ALPS_BANNER_PRINTED", None)
+        os.environ.pop("FFPOPT_BANNER_PRINTED", None)
+        try:
+            buf = io.StringIO()
+            self.assertTrue(print_startup_banner(stream=buf))
+            self.assertIn("ALPS", buf.getvalue())
+            banner_mod._BANNER_PRINTED = False
+            self.assertFalse(print_startup_banner(stream=buf))
+            self.assertEqual(os.environ.get("FFPOPT_BANNER_PRINTED"), "1")
+        finally:
+            banner_mod._BANNER_PRINTED = False
+            os.environ.pop("ALPS_BANNER_PRINTED", None)
+            os.environ.pop("FFPOPT_BANNER_PRINTED", None)
             os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
 
     def test_scission_frcmod_merge_accumulates_iterations(self):

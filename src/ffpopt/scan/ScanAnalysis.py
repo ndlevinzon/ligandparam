@@ -538,7 +538,7 @@ def _load_structure_image_array(path: Path):
     """ Rasterize a 2D structure image into an RGBA array for plotting.
 
     Handles ``.png`` / ``.jpg`` via :mod:`matplotlib.image` directly. For
-    ``.svg`` (scission's native output), prefers :mod:`cairosvg` (no
+    ``.svg`` drawings, prefers :mod:`cairosvg` (no
     subprocess), falls back to the ``rsvg-convert`` system binary, and
     returns ``None`` with a warning print if neither is available.
 

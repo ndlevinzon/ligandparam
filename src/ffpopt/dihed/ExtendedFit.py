@@ -376,8 +376,7 @@ def _jax_objective_factory(finp, caches):
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "fit_backend=jax requires jax; from the clone run pip install -e '.[jax]' "
-            "or conda install -c conda-forge jax jaxlib "
-            "(do not pip install ligandparam[jax] from PyPI; that is 1.0.0). "
+            "or conda install -c conda-forge jax jaxlib. "
             "Omit --fit-backend jax to use SciPy L-BFGS-B."
         ) from exc
 

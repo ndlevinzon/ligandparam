@@ -1,4 +1,8 @@
-"""Whole-ligand (non-fragmented) dihedral twist with optional AFFDO extras."""
+"""Whole-ligand (non-fragmented) dihedral twist with optional AFFDO extras.
+
+ALPS discovers rotatable bonds with scission, converts them to 0-based
+pairs, then calls :func:`ffpopt.workflows.run_dihed_twist_workflow`.
+"""
 
 from __future__ import annotations
 

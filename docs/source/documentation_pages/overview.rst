@@ -43,8 +43,9 @@ packages under ``src/`` are the default (internal) companions. Set
 upstream reference trees - not a runtime dependency unless you point
 ``*_PATH`` at them.
 
-Canonical imports use ``ffpopt.workflows``, ``ffpopt.scan``, ``ffpopt.geom``,
-and ``ffpopt.runtime``. New wavefront checkpoints pickle as
+Canonical imports use ``ffpopt.workflows`` (single-molecule twist),
+``alps.workflows`` (fragmented / whole-ligand), ``ffpopt.scan``,
+``ffpopt.geom``, and ``ffpopt.runtime``. New wavefront checkpoints pickle as
 ``ffpopt.scan.WavefrontEngine.Wavefront``. Loaders still map historical
 ``ffpopt.WaveFront`` / ``ffpopt.WaveFrontND`` names onto the ``scan`` facades.
 

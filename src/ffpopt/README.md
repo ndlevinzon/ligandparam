@@ -1,9 +1,11 @@
-# ffpopt (integrated)
+# ffpopt
 
-Python package for force-field torsion optimization, vendored alongside
-``ligandparam`` under ``src/ffpopt``.
+Python package for force-field torsion optimization. It twists one molecule
+given ``parm7`` / ``rst7`` and 0-based bonds. It does not import ligandparam
+or scission.
 
-ligandparam drives it through ``lig-dihed-correct``. Two scan modes:
+ALPS drives fragmented / whole-ligand correction through
+``lig-dihed-correct``:
 
 * **Fragment (default)** - scission caps, twist each piece, merge DIHE by atom type.
 * **Whole-ligand** (``--whole-ligand``) - twist rotatable bonds on the intact parent.
@@ -26,7 +28,7 @@ entrypoints, domain packages.
 |------|---------|
 | ``runtime/`` | ``Console``, ``ProgressBoard``, ``CpuBudget``, ``FastWavefront`` |
 | ``scan/`` | ``WavefrontEngine`` (1-D + N-D); ``WaveFront`` / ``WaveFrontND`` facades; ``WavefrontMixins``; ``ScanAnalysis`` |
-| ``workflows/`` | Twist, fragmented, whole-ligand orchestration + bond batches |
+| ``workflows/`` | Single-molecule twist + bond batches (0-based bonds) |
 | ``dihed/`` | Thin ``Dihedrals`` facade; ``DihedFitTypes``, Fourier, ParmEd, solvers, pucker |
 | ``geom/`` | ``GeomOpt``, constraints/restraints, geomeTRIC driver, linear-torsion |
 | ``affdo/`` | Opt-in extras: log, centroid profiles, Boltzmann charges |
@@ -35,13 +37,14 @@ entrypoints, domain packages.
 Canonical imports: ``ffpopt.workflows``, ``ffpopt.dihed``, ``ffpopt.geom``,
 ``ffpopt.scan``, ``ffpopt.runtime``.
 
-Primary API for ligandparam integration:
+Primary API for a single molecule (0-based central bonds):
 
 ```python
-from ffpopt.workflows import run_fragmented_dihed_twist_workflow
+from ffpopt.workflows import run_dihed_twist_workflow
 ```
 
-CLI (installed with ligandparam):
+Fragmented and whole-ligand orchestration (scission + ffpopt) is
+``alps.workflows``. The ALPS CLI:
 
 ```bash
 lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb --fast
@@ -60,19 +63,17 @@ tools (sugar/pucker, JSON, animate) are quarantined behind one dispatcher:
 ffpopt-specialty Json2Img --help
 ```
 
-Secondary-supported (not on the ``lig-*`` path): RespFit, DeltaRespFit,
-CpeFit. Fragmentation is provided by the integrated ``src/scission``
-package (also exposed as ``lig-scission`` / ``scission``).
+Secondary-supported: RespFit, DeltaRespFit, CpeFit. Fragmentation and
+parent-frcmod merge are a separate package (scission), wired by ALPS.
 
-## What is (and is not) overlapping with ligandparam
+## Independence
 
-ligandparam owns **parameterization** (antechamber / Gaussian RESP / parmchk /
-LEaP -> mol2+lib+frcmod). ffpopt owns **post-hoc torsion fitting**. Those are
-complementary, not duplicates.
+ffpopt does not import ligandparam, scission, or ALPS. It twists one
+molecule given ``parm7`` / ``rst7`` and 0-based bonds. ligandparam owns
+parameterization. ALPS owns fragmented / whole-ligand orchestration.
 
-Shared helper (deduplicated): ``CopyParm`` lives in ``ffpopt.AmberParm`` and is
-re-exported from ``ligandparam.multiresp.ParmHelper``. Core-budget splitting
-lives in ``ffpopt.runtime.FastWavefront.split_core_budget``.
+Each package has its own ``CopyParm`` / console helpers. Core-budget
+splitting lives in ``ffpopt.runtime.FastWavefront.split_core_budget``.
 
 See ``GLOSSARY.md`` for models and terminology. Runtime code lives in this
 ``src/ffpopt`` tree. The optional ``ffpopt-main/`` checkout (gitignored) is an

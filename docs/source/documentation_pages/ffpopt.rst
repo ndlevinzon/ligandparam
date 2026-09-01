@@ -13,7 +13,7 @@ Package layout
    ffpopt/
    +-- runtime/     # console logging, progress boards, CPU budget, --fast presets
    +-- scan/        # WavefrontEngine; WaveFront / WaveFrontND facades; mixins
-   +-- workflows/   # twist, fragmented, whole-ligand, bond batches
+   +-- workflows/   # single-molecule twist, bond batches (0-based bonds)
    +-- dihed/       # Dihedrals facade; FitTypes, Fourier, ParmEd, solvers, pucker
    +-- geom/        # GeomOpt, Constraints, Restraints, Geometric, linear-torsion
    +-- affdo/       # log, charges, multi-centroid profiles
@@ -23,45 +23,21 @@ Canonical imports:
 
 .. code-block:: python
 
-   from ffpopt.workflows import run_fragmented_dihed_twist_workflow
+   from ffpopt.workflows import run_dihed_twist_workflow
    from ffpopt.scan.WaveFront import run_dihed_wavefront
    from ffpopt.runtime.Console import attach_console_handlers
 
 Primary API
 -----------
 
-Fragment path (default; scission + per-fragment twist + merge)::
+Single-molecule twist (when you already have ``parm7`` / ``rst7`` and explicit
+bonds) is :func:`ffpopt.workflows.run_dihed_twist_workflow`. Pass
+``bond=[(i, j), ...]`` with **0-based** atom indices (CLI ``"i,j"`` strings
+still work).
 
-   from ffpopt.workflows import run_fragmented_dihed_twist_workflow
-
-   result = run_fragmented_dihed_twist_workflow(
-       mol2="LIG.mol2",
-       lib="LIG.lib",
-       frcmod="LIG.frcmod",
-       out_dir="fragments",
-       merged_frcmod="LIG.dihed.frcmod",
-       model="xtb",
-       geometric_opt=True,
-       nproc=8,
-       maxiter=2,
-   )
-
-Whole-ligand path (no scission; AFFDO extras optional)::
-
-   from ffpopt.workflows import run_whole_ligand_dihed_twist_workflow
-
-   result = run_whole_ligand_dihed_twist_workflow(
-       mol2="LIG.mol2",
-       lib="LIG.lib",
-       frcmod="LIG.frcmod",
-       out_dir="whole_ligand_twist",
-       model="xtb",
-       nproc=44,
-       fast_wavefront=True,
-   )
-
-Call from an ``if __name__ == "__main__":`` guard (wavefront uses spawn-mode
-multiprocessing).
+Fragmented and whole-ligand paths (scission + per-fragment twist + merge, or
+intact parent) live in :mod:`alps.workflows`. ALPS converts scission's
+1-based ``fit_torsions`` at that boundary.
 
 CLI (same two modes)::
 
@@ -71,13 +47,6 @@ CLI (same two modes)::
 The ALPS wrapper is ``lig-dihed-correct`` /
 :class:`~alps.stages.FfpoptDihed.StageDihedTwistCorrection`. Prefer
 that after ``lig-getparam``. See :doc:`dihedrals`.
-
-Single-molecule twist (when you already have ``parm7`` / ``rst7`` and explicit
-bonds) is :func:`ffpopt.workflows.run_dihed_twist_workflow`. Pass
-``bond=[(i, j), ...]`` with **0-based** atom indices (CLI ``"i,j"`` strings
-still work). Scission's ``fit_torsions`` use 1-based indices and are converted
-at the fragmented-workflow boundary via
-:func:`ffpopt.workflows.bonds0_from_scission_fit_torsions`.
 
 Wavefront evaluate policy
 -------------------------
@@ -120,7 +89,7 @@ ALPS wrapper
 ------------
 
 :class:`~alps.stages.FfpoptDihed.StageDihedTwistCorrection` and the
-``lig-dihed-correct`` CLI wrap both workflows (fragment default;
+``lig-dihed-correct`` CLI wrap both ALPS workflows (fragment default;
 ``--whole-ligand`` for the parent). Prefer those for everyday use after
 ``lig-getparam``.
 
@@ -133,7 +102,12 @@ Module reference
    :show-inheritance:
 
 .. automodule:: ffpopt.workflows
-   :members: run_fragmented_dihed_twist_workflow, run_dihed_twist_workflow, run_whole_ligand_dihed_twist_workflow
+   :members: run_dihed_twist_workflow
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: alps.workflows
+   :members: run_fragmented_dihed_twist_workflow, run_whole_ligand_dihed_twist_workflow
    :undoc-members:
    :show-inheritance:
 

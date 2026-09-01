@@ -1,4 +1,9 @@
-"""Fragmented dihedral-twist workflow (scission + per-fragment twist + merge)."""
+"""Fragmented dihedral-twist workflow (scission + per-fragment twist + merge).
+
+ALPS owns this orchestration. ffpopt only twists a molecule given 0-based
+bonds; scission only fragments and merges. This module converts 1-based
+``fit_torsions`` at the boundary.
+"""
 
 from __future__ import annotations
 
@@ -13,14 +18,76 @@ from ffpopt.workflows.TwistHelpers import (
     PathLike,
     _LOG,
     _as_path,
-    _parent_paths_from_args,
     _resolve_logger,
     _run_ffpopt_bin,
     _split_fragment_nproc,
-    bonds0_from_scission_fit_torsions,
 )
 from ffpopt.workflows.BondBatches import fragment_uses_correlated_twist
 from ffpopt.workflows.DihedTwist import run_dihed_twist_workflow
+
+
+def bonds0_from_scission_fit_torsions(fit_torsions) -> list[tuple[int, int]]:
+    """Map scission ``fit_torsions`` (1-based) to ffpopt central bonds (0-based).
+
+    Each record's ``fragment_rotatable_bond`` is a two-element list of
+    **1-based** fragment-local atom indices. Returns **0-based** pairs for
+    :func:`ffpopt.workflows.run_dihed_twist_workflow`.
+    """
+    bonds: list[tuple[int, int]] = []
+    for record in fit_torsions:
+        pair = record["fragment_rotatable_bond"]
+        if len(pair) != 2:
+            raise ValueError(
+                "fragment_rotatable_bond must have two 1-based indices; "
+                f"got {pair!r}"
+            )
+        bonds.append((int(pair[0]) - 1, int(pair[1]) - 1))
+    return bonds
+
+
+def _parent_paths_from_args(
+    *,
+    mol2: PathLike | None,
+    lib: PathLike | None,
+    frcmod: PathLike | None,
+    bundle,
+) -> tuple[Path, Path, Path]:
+    """Resolve parent mol2/lib/frcmod from paths or a duck-typed bundle.
+
+    Accepts objects with ``mol2`` / ``lib`` / ``frcmod`` (ligandparam
+    AmberLigandBundle) or ``mol2_path`` / ``lib_path`` / ``frcmod_path``
+    (scission InputBundle).
+    """
+    if bundle is not None:
+        if all(hasattr(bundle, attr) for attr in ("mol2", "lib", "frcmod")):
+            return (
+                _as_path(bundle.mol2).resolve(),
+                _as_path(bundle.lib).resolve(),
+                _as_path(bundle.frcmod).resolve(),
+            )
+        if all(
+            hasattr(bundle, attr)
+            for attr in ("mol2_path", "lib_path", "frcmod_path")
+        ):
+            return (
+                _as_path(bundle.mol2_path).resolve(),
+                _as_path(bundle.lib_path).resolve(),
+                _as_path(bundle.frcmod_path).resolve(),
+            )
+        raise TypeError(
+            "bundle must provide mol2/lib/frcmod or mol2_path/lib_path/frcmod_path"
+        )
+    if mol2 is None or lib is None or frcmod is None:
+        raise TypeError(
+            "run_fragmented_dihed_twist_workflow requires mol2, lib, and frcmod "
+            "(or a bundle= AmberLigandBundle / InputBundle)"
+        )
+    return (
+        _as_path(mol2).resolve(),
+        _as_path(lib).resolve(),
+        _as_path(frcmod).resolve(),
+    )
+
 
 def _load_existing_fragments(out_dir: Path):
     """ Build lightweight per-fragment records from a prior scission run.

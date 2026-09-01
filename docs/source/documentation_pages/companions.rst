@@ -79,9 +79,10 @@ scission.
 ``lig-getparam`` does not import ffpopt. External ffpopt does not need to
 ship those helpers for parameterization to work.
 
-scission must **not** import ffpopt or ligandparam. ffpopt workflows **do**
-import scission. Fragmented twist therefore needs both packages even when
-ligandparam only calls ``ffpopt.workflows``.
+scission must **not** import ffpopt, ligandparam, or ALPS. ffpopt must
+**not** import scission, ligandparam, or ALPS. ALPS is the only package
+that imports both. Fragmented twist therefore needs both companions even
+when ligandparam only records ``dihed_correct``.
 
 Call graph
 ----------
@@ -89,20 +90,21 @@ Call graph
 ::
 
     lig-getparam
-        ligandparam.Log                 -> ffpopt.runtime.Console
-        stages.Gaussian                 -> split_gaussian_orientation_budget
-                                        -> JobProgressStore / JobBoardWatcher
-        multiresp.ParmEdUtils.CopyParm  -> ffpopt.AmberParm.CopyParm
+        ligandparam.runtime.Console
+        ligandparam.runtime.CpuBudget / ProgressBoard
+        ligandparam.multiresp.ParmEdUtils.CopyParm
 
     lig-dihed-correct / StageDihedTwistCorrection
-        ffpopt.workflows.run_fragmented_dihed_twist_workflow
+        alps.workflows.run_fragmented_dihed_twist_workflow
             scission.Models.InputBundle / FragmentConfig
             scission.fragment_ligand
             scission.Merge.merge_fragment_frcmods
             scission.Writers.safe_name
-        ffpopt.workflows.run_whole_ligand_dihed_twist_workflow
+            ffpopt.workflows.run_dihed_twist_workflow
+        alps.workflows.run_whole_ligand_dihed_twist_workflow
             scission.LigandIo.load_ligand_from_mol2
             scission.Torsions.find_rotatable_bonds
+            ffpopt.workflows.run_dihed_twist_workflow
         ffpopt.affdo.AffdoLog.describe_affdo_extras / log_affdo
         scission.Models.FragmentConfig  (coerce_fragment_config)
 
@@ -110,14 +112,14 @@ Call graph
         expands -d / -r / --label to --mol2 / --lib / --frcmod / --outdir
         scission.Cli.main(argv) -> int
 
-    AmberLigandBundle.to_scission_input
-        scission.Models.InputBundle(mol2_path, lib_path, frcmod_path, ligand_name=)
+    AmberLigandBundle.as_input_paths / to_scission_input
+        dict of mol2 / lib / frcmod paths (does not import scission)
 
-Layer A: ffpopt science API
----------------------------
+Layer A: ALPS orchestration API
+-------------------------------
 
 Call both workflows from ``if __name__ == "__main__":`` (wavefront uses
-spawn-mode multiprocessing).
+spawn-mode multiprocessing). These functions live in ``alps.workflows``.
 
 Fragmented (default ``lig-dihed-correct``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -134,7 +136,7 @@ Fragmented (default ``lig-dihed-correct``)
        logger=None, **standard_kwargs,
    ) -> dict
 
-Keyword names ligandparam actually forwards: ``mol2``, ``lib``, ``frcmod``,
+Keyword names ALPS actually forwards: ``mol2``, ``lib``, ``frcmod``,
 ``out_dir``, ``merged_frcmod``, ``model``, ``maxiter``, ``nprim``, ``delta``,
 ``nproc``, ``geometric_opt``, ``skip_existing``, ``rotatable_bond_smarts``,
 ``fragment_config``, ``fast_wavefront``, ``multi_centroid``, ``centroid_mol2``,
@@ -142,7 +144,7 @@ Keyword names ligandparam actually forwards: ``mol2``, ``lib``, ``frcmod``,
 ``geometric_converge``, ``ase_opt_tol``, ``soft_dihed_restraint``,
 ``soft_dihed_k``, ``soft_dihed_kmax``, ``soft_dihed_tol``.
 
-Return keys ligandparam reads:
+Return keys ALPS reads:
 
 .. code-block:: python
 
@@ -170,7 +172,7 @@ Whole-ligand (``--whole-ligand``)
        fit_cli_args=None, logger=None, **standard_kwargs,
    ) -> dict
 
-Note ``out_frcmod``, not ``merged_frcmod``. Return keys ligandparam reads:
+Note ``out_frcmod``, not ``merged_frcmod``. Return keys ALPS reads:
 
 .. code-block:: python
 
@@ -179,7 +181,7 @@ Note ``out_frcmod``, not ``merged_frcmod``. Return keys ligandparam reads:
        "bonds": list,          # 0-based pairs; logged
        "boltzmann_charges": None | {"out_mol2": ..., "out_lib": ...},
        "out_dir": str,
-       "twist": dict,          # unused by ligandparam today
+       "twist": dict,          # unused by ALPS today
    }
 
 AffdoLog
@@ -198,15 +200,31 @@ AffdoLog
    # logger.info("[affdo] " + msg, *args)
 
 Index convention: ffpopt bonds are **0-based**. Scission ``fit_torsions``
-are **1-based**; the bundled fragmented workflow converts at the boundary
-(``bonds0_from_scission_fit_torsions``). Keep that conversion on the ffpopt
-side so ligandparam can keep passing scission objects through.
+are **1-based**; ALPS converts at the boundary
+(``alps.workflows.bonds0_from_scission_fit_torsions``).
+
+Layer A: ffpopt science API
+---------------------------
+
+External ffpopt implements single-molecule twist. ALPS supplies 0-based
+``bond`` pairs after any scission conversion.
+
+.. code-block:: python
+
+   def run_dihed_twist_workflow(
+       *, inp, bond, delta=10, nprim=3, maxiter=2, nproc=1,
+       geometric_opt=True, skip_existing=True, logger=None,
+       **standard_kwargs,
+   ) -> dict
+
+``inp`` is ``start.json`` from PrepareInput. ``bond`` is a list of
+0-based ``(i, j)`` pairs (or ``"i,j"`` strings).
 
 Layer A: scission API
 ---------------------
 
-Types ligandparam constructs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Types ALPS constructs
+~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -240,11 +258,11 @@ Types ligandparam constructs
 
 ``from_dict`` must accept a JSON/YAML mapping, including nested
 ``clash_thresholds``. SMARTS that mark a rotatable bond use ``:1`` and
-``:2`` on the two central atoms. ligandparam may pass a live
+``:2`` on the two central atoms. ALPS may pass a live
 ``FragmentConfig`` **or** a dict (``coerce_fragment_config``).
 
-Functions ffpopt (and thus ligandparam) calls
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Functions ALPS calls
+~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -264,7 +282,7 @@ Functions ffpopt (and thus ligandparam) calls
        ligand, include_rigid_single_bonds=True,
        rotatable_bond_smarts=(), graph=None,
    ) -> list[tuple[int, int]]
-       # 0-based sorted pairs for whole-ligand twist.
+       # 1-based parent atom indices. ALPS subtracts 1 for ffpopt.
 
    Writers.safe_name(text) -> str
 
@@ -287,6 +305,8 @@ Layer B: runtime (now in ligandparam)
 boards, Gaussian core/mem split, and ``CopyParm`` live under
 ``ligandparam.runtime`` and ``ligandparam.multiresp.ParmEdUtils``. Twist
 jobs still use ``ffpopt.runtime.Console`` for ffpopt's own logs.
+``lig-dihed-correct`` / ``lig-scission`` print :mod:`alps.cli.Banner`,
+not the ffpopt logo.
 
 The historical ffpopt names below remain useful if ALPS is talking to an
 external ffpopt that still logs through that API.
@@ -296,16 +316,16 @@ external ffpopt that still logs through that API.
 
 .. code-block:: python
 
-   print_startup_banner() -> bool
+   print_startup_banner() -> bool   # standalone ffpopt bins; sets FFPOPT_BANNER_PRINTED
    ascii_for_stdio(text) -> str
    format_console_line(text, tag=...) -> str
-   attach_console_handlers(logger, tag=..., level=...)
+   attach_console_handlers(logger, tag="ffpopt", level=...)
    console_formatter(tag) -> logging.Formatter
 
 Console writes must be ASCII (``+/-``, ``deg``, ``chi^2``) so latin-1 Slurm
 ``.out`` files do not mojibake. Leading ``[scope]`` tokens in log messages
 are peeled into a bracket hierarchy
-(``[ligandparam] [affdo] ...``).
+(``[ffpopt] [affdo] ...``).
 
 ``ffpopt.runtime.FastWavefront``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -348,7 +368,8 @@ Gaussian rotation uses ``collection_key="orientations"``, files
 
    CopyParm(parm) -> AmberParm   # shallow copy including coordinates and box
 
-ligandparam re-exports this as ``ligandparam.multiresp.ParmEdUtils.CopyParm``.
+ligandparam has its own ``CopyParm`` in
+``ligandparam.multiresp.ParmEdUtils`` (no import of ffpopt).
 
 Hard rules
 ----------
@@ -360,7 +381,8 @@ Hard rules
 * ffpopt atom indices are 0-based; scission parent indices are 1-based
   **inside** scission.
 * Logs stay ASCII.
-* scission must not import ffpopt or ligandparam.
+* scission must not import ffpopt, ligandparam, or ALPS.
+* ffpopt must not import scission, ligandparam, or ALPS.
 * Public CLIs, recipe names, and pickle facades (``WaveFront`` /
   ``WaveFrontND``) stay stable. Specialty tools
   (``ffpopt-specialty``) are not part of this contract.
@@ -373,17 +395,17 @@ Checklist for an external package
 ffpopt
 ~~~~~~
 
-1. Implement the two ``run_*_workflow`` functions with the keyword names
-   and return keys above.
+1. Implement ``run_dihed_twist_workflow`` with 0-based ``bond`` pairs
+   (and PrepareInput / GenDihedFit bins the workflow still shells out to).
 2. Implement ``AffdoLog.describe_affdo_extras`` / ``log_affdo``.
 3. Layer B helpers are optional for parameterization (ligandparam owns
    its copies). Keep ``ffpopt.runtime.Console`` if you want ALPS twist
    logs to match the in-tree formatter.
 4. Do **not** set ``__ligandparam_bundle__ = True``.
 5. Workflows that spawn ``ffpopt.bin`` scripts must honor ``sys.executable``
-   and the caller's ``PYTHONPATH`` (ligandparam prepends your PATH).
-6. Import scission for fragment + whole-ligand rotatable-bond discovery;
-   do not vendor a second scission.
+   and the caller's ``PYTHONPATH`` (ALPS prepends your PATH).
+6. Do **not** import scission, ligandparam, or ALPS. ALPS owns
+   fragmentation, rotatable-bond discovery, and frcmod merge.
 
 scission
 ~~~~~~~~
@@ -391,7 +413,7 @@ scission
 1. ``InputBundle``, ``FragmentConfig.from_dict``, ``fragment_ligand``,
    ``merge_fragment_frcmods``, ``load_ligand_from_mol2``,
    ``find_rotatable_bonds``, ``Writers.safe_name``, ``Cli.main``.
-2. No reverse imports of ffpopt / ligandparam.
+2. No reverse imports of ffpopt / ligandparam / ALPS.
 3. Do **not** set ``__ligandparam_bundle__ = True``.
 
 Verify against this tree

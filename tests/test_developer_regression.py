@@ -728,7 +728,12 @@ class TestEnvDefaults(unittest.TestCase):
         import re
         from ffpopt.runtime.EnvDefaults import packaged_defaults
 
-        allow = {"FFPOPT_IN_SPAWN_WORKER", "FFPOPT_DEFAULTS", "FFPOPT_IN_WALL_CHILD"}
+        allow = {
+            "FFPOPT_IN_SPAWN_WORKER",
+            "FFPOPT_DEFAULTS",
+            "FFPOPT_IN_WALL_CHILD",
+            "FFPOPT_BANNER_PRINTED",
+        }
         keys = set(packaged_defaults())
         name_re = re.compile(r"^FFPOPT_[A-Z0-9_]+$")
         found: set[str] = set()
@@ -761,13 +766,13 @@ class TestLoggingContracts(unittest.TestCase):
         from ffpopt.runtime import Console as console_mod
 
         console_mod._BANNER_PRINTED = False
-        os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
+        os.environ.pop("FFPOPT_BANNER_PRINTED", None)
 
     def tearDown(self):
         from ffpopt.runtime import Console as console_mod
 
         console_mod._BANNER_PRINTED = False
-        os.environ.pop("LIGANDPARAM_BANNER_PRINTED", None)
+        os.environ.pop("FFPOPT_BANNER_PRINTED", None)
 
     def test_ase_ignore_bad_restart_file_warning_filtered(self):
         import warnings
@@ -1740,7 +1745,7 @@ class TestAffdoLogging(unittest.TestCase):
     def test_whole_ligand_defaults_plot_comparisons(self):
         import inspect
 
-        from ffpopt.workflows.WholeLigandTwist import (
+        from alps.workflows.WholeLigandTwist import (
             run_whole_ligand_dihed_twist_workflow,
         )
 
@@ -1949,7 +1954,7 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
             normalize_bond_pairs0([42])
 
     def test_bonds0_from_scission_fit_torsions(self):
-        from ffpopt.workflows import bonds0_from_scission_fit_torsions
+        from alps.workflows import bonds0_from_scission_fit_torsions
 
         pairs = bonds0_from_scission_fit_torsions(
             [
@@ -3863,7 +3868,7 @@ class TestCpuBudget(unittest.TestCase):
 
 class TestTwistBatching(unittest.TestCase):
     def test_fragment_twist_done_sentinel(self):
-        from ffpopt.workflows import (
+        from alps.workflows import (
             clear_fragment_twist_done,
             is_fragment_twist_done,
             mark_fragment_twist_done,
@@ -3941,7 +3946,7 @@ class TestTwistBatching(unittest.TestCase):
         self.assertEqual(len(batches[0]), 5)
 
     def test_partition_fragment_twist_jobs(self):
-        from ffpopt.workflows.FragmentedTwist import (
+        from alps.workflows.FragmentedTwist import (
             partition_fragment_twist_jobs,
         )
 
@@ -4105,12 +4110,10 @@ class TestSrcImportGraph(unittest.TestCase):
                     broken.append(f"{rel}:{node.lineno} {tgt}")
         self.assertEqual(broken, [], "unresolved in-tree imports:\n" + "\n".join(broken))
 
-    def test_ligandparam_does_not_import_ffpopt_scission_or_alps(self):
-        """Parameterization must run without companion packages."""
+    def _banned_top_level_imports(self, package: str, banned: frozenset[str]) -> list[str]:
         import ast
 
-        root = Path(__file__).resolve().parents[1] / "src" / "ligandparam"
-        banned = frozenset({"ffpopt", "scission", "alps"})
+        root = Path(__file__).resolve().parents[1] / "src" / package
         hits: list[str] = []
         for fp in root.rglob("*.py"):
             text = fp.read_text(encoding="utf-8", errors="replace")
@@ -4126,7 +4129,28 @@ class TestSrcImportGraph(unittest.TestCase):
                     top = name.split(".")[0]
                     if top in banned:
                         hits.append(f"{rel}:{node.lineno} {name}")
+        return hits
+
+    def test_ligandparam_does_not_import_ffpopt_scission_or_alps(self):
+        """Parameterization must run without companion packages."""
+        hits = self._banned_top_level_imports(
+            "ligandparam", frozenset({"ffpopt", "scission", "alps"})
+        )
         self.assertEqual(hits, [], "ligandparam imports companions:\n" + "\n".join(hits))
+
+    def test_scission_does_not_import_ffpopt_ligandparam_or_alps(self):
+        """Fragmentation must run without ffpopt, ligandparam, or ALPS."""
+        hits = self._banned_top_level_imports(
+            "scission", frozenset({"ffpopt", "ligandparam", "alps"})
+        )
+        self.assertEqual(hits, [], "scission imports companions:\n" + "\n".join(hits))
+
+    def test_ffpopt_does_not_import_scission_ligandparam_or_alps(self):
+        """Torsion fitting must run without scission, ligandparam, or ALPS."""
+        hits = self._banned_top_level_imports(
+            "ffpopt", frozenset({"scission", "ligandparam", "alps"})
+        )
+        self.assertEqual(hits, [], "ffpopt imports companions:\n" + "\n".join(hits))
 
 
 class TestGaussianOrientationBudget(unittest.TestCase):

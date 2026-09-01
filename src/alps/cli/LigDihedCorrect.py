@@ -126,7 +126,7 @@ def run_dihed_correct(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-dihed-correct``."""
-    from ffpopt.runtime.Console import print_startup_banner
+    from alps.cli.Banner import print_startup_banner
     from alps.companions import print_status_line
 
     parser = argparse.ArgumentParser(

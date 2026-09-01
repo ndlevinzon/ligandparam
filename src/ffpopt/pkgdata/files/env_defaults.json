@@ -1,4 +1,4 @@
-// ffpopt / ligandparam environment defaults
+// ffpopt environment defaults
 //
 // This file ships with the package and is the store of values the code reads.
 // Edit a copy and point at it, or override single keys (preferred):

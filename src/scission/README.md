@@ -7,9 +7,9 @@ AMBER-aware torsion fragment generation, vendored under ``src/scission`` next to
 
 Flat package (intentional): PascalCase modules, thin public ``__init__.py``,
 ``Cli.py`` entrypoint, ``LigandIo.py`` / ``Models.py`` for I/O and dataclasses.
-No ffpopt/ligandparam imports - keep that edge one-way.
+No ffpopt/ligandparam/alps imports - ALPS owns that edge.
 
-Used by ``ffpopt.workflows.run_fragmented_dihed_twist_workflow`` and by the
+Used by ``alps.workflows.run_fragmented_dihed_twist_workflow`` and by the
 standalone CLIs:
 
 ```bash

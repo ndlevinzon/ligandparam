@@ -88,7 +88,7 @@ Whole-ligand opts are full-molecule XTB (or QDpi2) jobs. That is the dominant co
 Python entry points:
 
 ```python
-from ffpopt.workflows import (
+from alps.workflows import (
     run_fragmented_dihed_twist_workflow,
     run_whole_ligand_dihed_twist_workflow,
 )

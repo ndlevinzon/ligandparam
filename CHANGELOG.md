@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ``lig-getparam`` writes ``{resname}.log`` in the job directory and
   still mirrors INFO to stdout.
 
+- **Independent scission / ffpopt** - neither package imports the other
+  (or ligandparam / ALPS). Fragmented and whole-ligand twist live in
+  ``alps.workflows``; ffpopt only twists a molecule given 0-based bonds.
+  ffpopt's banner and ``FFPOPT_BANNER_PRINTED`` are its own;
+  ``lig-dihed-correct`` / ``lig-scission`` print the ALPS banner.
+
 - **Internal vs external companions** - ALPS can keep the bundled
   ``src/ffpopt`` / ``src/scission`` trees or load independent checkouts
   via ``LIGANDPARAM_FFPOPT`` / ``LIGANDPARAM_SCISSION``

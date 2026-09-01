@@ -1,4 +1,4 @@
-"""Shared helpers for ffpopt twist / fragment / whole-ligand workflows."""
+"""Shared helpers for ffpopt single-molecule twist workflows."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Callable, Optional, Union
 
 from ffpopt.runtime.NondaemonPool import make_nondaemon_spawn_pool
 
@@ -19,8 +19,8 @@ _LOG = logging.getLogger("ffpopt.workflows")
 PathLike = Union[str, Path]
 
 # Central bond of a proper dihedral as a pair of **0-based** atom indices
-# (ParmEd / ffpopt convention). Scission fit_torsions use 1-based indices;
-# convert at the boundary with :func:`bonds0_from_scission_fit_torsions`.
+# (ParmEd / ffpopt convention). ALPS converts scission 1-based
+# ``fit_torsions`` before calling this package.
 BondPair0 = tuple[int, int]
 
 
@@ -169,69 +169,6 @@ def normalize_bond_pairs0(bond) -> list[BondPair0]:
                 f"got {entry!r}"
             ) from exc
     return out
-
-
-def bonds0_from_scission_fit_torsions(fit_torsions) -> list[BondPair0]:
-    """Map scission ``fit_torsions`` (1-based) to ffpopt central bonds (0-based).
-
-    Each record's ``fragment_rotatable_bond`` is a two-element list of
-    **1-based** fragment-local atom indices. Returns **0-based** pairs for
-    :func:`run_dihed_twist_workflow`.
-    """
-    bonds: list[BondPair0] = []
-    for record in fit_torsions:
-        pair = record["fragment_rotatable_bond"]
-        if len(pair) != 2:
-            raise ValueError(
-                "fragment_rotatable_bond must have two 1-based indices; "
-                f"got {pair!r}"
-            )
-        bonds.append((int(pair[0]) - 1, int(pair[1]) - 1))
-    return bonds
-
-
-def _parent_paths_from_args(
-    *,
-    mol2: PathLike | None,
-    lib: PathLike | None,
-    frcmod: PathLike | None,
-    bundle: Any | None,
-) -> tuple[Path, Path, Path]:
-    """Resolve parent mol2/lib/frcmod from paths or a duck-typed bundle.
-
-    Accepts :class:`~ligandparam.io.AmberBundle.AmberLigandBundle`
-    (``mol2`` / ``lib`` / ``frcmod``) or :class:`scission.Models.InputBundle`
-    (``mol2_path`` / ``lib_path`` / ``frcmod_path``).
-    """
-    if bundle is not None:
-        if all(hasattr(bundle, attr) for attr in ("mol2", "lib", "frcmod")):
-            return (
-                _as_path(bundle.mol2).resolve(),
-                _as_path(bundle.lib).resolve(),
-                _as_path(bundle.frcmod).resolve(),
-            )
-        if all(
-            hasattr(bundle, attr)
-            for attr in ("mol2_path", "lib_path", "frcmod_path")
-        ):
-            return (
-                _as_path(bundle.mol2_path).resolve(),
-                _as_path(bundle.lib_path).resolve(),
-                _as_path(bundle.frcmod_path).resolve(),
-            )
-        raise TypeError(
-            "bundle must provide mol2/lib/frcmod or mol2_path/lib_path/frcmod_path"
-        )
-    if mol2 is None or lib is None or frcmod is None:
-        raise TypeError(
-            "run_fragmented_dihed_twist_workflow requires mol2, lib, and frcmod "
-            "(or a bundle= AmberLigandBundle / InputBundle)"
-        )
-    return (
-        _as_path(mol2).resolve(),
-        _as_path(lib).resolve(),
-        _as_path(frcmod).resolve(),
-    )
 
 
 class _TwistParam(object):

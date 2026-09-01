@@ -31,7 +31,7 @@ _FAMILY_ALIASES = {
 }
 
 _INSTALL_HINT = (
-    "AIMNet2 is not installed. From the ligandparam clone, on Python 3.11-3.13: "
+    "AIMNet2 is not installed. From this source tree, on Python 3.11-3.13: "
     "pip install torch --index-url https://download.pytorch.org/whl/cpu "
     '&& pip install -e ".[aimnet]". GPU: install a CUDA torch wheel first. '
     "Docs: https://isayevlab.github.io/aimnetcentral/"

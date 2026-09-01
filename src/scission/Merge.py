@@ -126,7 +126,7 @@ def _has_iteration_frcmod(directory: Path) -> bool:
 def discover_fragment_dirs(root: Path) -> list[Path]:
     """Discover mergeable fragment run directories under a root directory.
 
-    Handles both run layouts produced by ffpopt's
+    Handles both run layouts produced by ALPS
     ``run_fragmented_dihed_twist_workflow``: a single-coupling-group fragment
     whose ``itX.frcmod`` files live directly in the fragment directory, and a
     multi-coupling-group fragment whose fits live in ``coupling_NN/``

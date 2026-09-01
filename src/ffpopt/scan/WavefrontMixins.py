@@ -1394,8 +1394,8 @@ def apply_wavefront_minimum_to_node(
 def print_wavefront(msg: str, *, flush: bool = True) -> None:
     """Print one wavefront line with a leading ``[wavefront]`` scope.
 
-    The hierarchical console formatter peels this into ``[ffpopt] [wavefront]``
-    (or ``[ligandparam] [wavefront]``), matching ``[affdo]`` / ``[twist]``.
+    The hierarchical console formatter peels this into ``[ffpopt] [wavefront]``,
+    matching ``[affdo]`` / ``[twist]``.
     """
     from ffpopt.runtime.Console import ascii_for_stdio
 

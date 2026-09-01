@@ -1,8 +1,9 @@
 """Optional ffpopt dihedral-twist correction stage.
 
-Wraps ``ffpopt.workflows.run_fragmented_dihed_twist_workflow`` (package under
-``src/ffpopt``) so recipes and the ``lig-dihed-correct`` CLI can apply torsion
-corrections to a parent ``mol2`` / ``lib`` / ``frcmod`` triplet.
+Wraps ``alps.workflows.run_fragmented_dihed_twist_workflow`` so recipes and
+the ``lig-dihed-correct`` CLI can apply torsion corrections to a parent
+``mol2`` / ``lib`` / ``frcmod`` triplet. ALPS calls scission and ffpopt;
+those packages do not import each other.
 """
 
 from __future__ import annotations
@@ -40,9 +41,9 @@ def coerce_fragment_config(value: Any):
 class StageDihedTwistCorrection(AbstractStage):
     """Fit and merge dihedral corrections into a parent Amber frcmod.
 
-    Requires an installed ``ffpopt`` package (with ``scission`` / FragmentMol
-    and AmberTools on ``PATH``). The parent ``lib`` is left unchanged; use the
-    merged ``out_frcmod`` together with the original library in LEaP.
+Requires an installed ``ffpopt`` and ``scission`` (ALPS companions). The
+parent ``lib`` is left unchanged; use the merged ``out_frcmod`` together
+with the original library in LEaP.
 
     Parameters
     ----------
@@ -166,7 +167,7 @@ class StageDihedTwistCorrection(AbstractStage):
             return None
 
         try:
-            from ffpopt.workflows import (
+            from alps.workflows import (
                 run_fragmented_dihed_twist_workflow,
                 run_whole_ligand_dihed_twist_workflow,
             )

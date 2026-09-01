@@ -1,7 +1,7 @@
 """Stdout / logger helpers for AFFDO-style extras.
 
 Messages use a leading ``[affdo]`` scope so the hierarchical console
-formatter peels it into ``[ffpopt] [affdo]`` (or ``[ligandparam] [affdo]``).
+formatter peels it into ``[ffpopt] [affdo]``.
 Keep bodies ASCII-only for latin-1 Slurm ``.out`` files.
 """
 

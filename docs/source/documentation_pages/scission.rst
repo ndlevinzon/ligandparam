@@ -6,8 +6,8 @@ scission
 ``mol2`` / ``lib`` / ``frcmod`` triplet and can merge fitted fragment DIHE
 terms back into a parent frcmod.
 
-``ffpopt``'s fragmented dihed-twist workflow calls scission automatically.
-You can also run it alone.
+ALPS's fragmented dihed-twist workflow calls scission automatically.
+You can also run it alone. scission does not import ffpopt or ligandparam.
 
 CLI
 ---
