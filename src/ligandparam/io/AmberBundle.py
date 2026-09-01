@@ -50,16 +50,18 @@ class AmberLigandBundle:
         """File stem shared by the mol2 / lib / frcmod trio."""
         return self.mol2.stem
 
-    def to_scission_input(self, ligand_name: str | None = None):
-        """Map this bundle to :class:`scission.Models.InputBundle`."""
-        from scission.Models import InputBundle
+    def as_input_paths(self, ligand_name: str | None = None) -> dict[str, Path | str | None]:
+        """Return the Amber triplet as a mapping (ALPS builds scission InputBundle)."""
+        return {
+            "mol2_path": self.mol2,
+            "lib_path": self.lib,
+            "frcmod_path": self.frcmod,
+            "ligand_name": ligand_name,
+        }
 
-        return InputBundle(
-            mol2_path=self.mol2,
-            lib_path=self.lib,
-            frcmod_path=self.frcmod,
-            ligand_name=ligand_name,
-        )
+    def to_scission_input(self, ligand_name: str | None = None) -> dict[str, Path | str | None]:
+        """Alias of :meth:`as_input_paths` (does not import scission)."""
+        return self.as_input_paths(ligand_name=ligand_name)
 
 
 def resolve_getparam_bundle(

@@ -15,13 +15,15 @@ As of version **1.6**, the installable tree under ``src/`` is:
 .. code-block:: text
 
    src/
-   +-- ligandparam/          # recipes, stages, CLI (lig-getparam, ...)
+   +-- ligandparam/          # parameterization only (lig-getparam)
    |   +-- recipes/
-   |   +-- stages/           # includes StageDihedTwistCorrection
+   |   +-- stages/
+   |   +-- runtime/          # ASCII console, job boards, Gaussian CPU split
    |   +-- cli/
-   |   +-- io/               # gaussian_io, leap_io, smiles, orientations, ...
+   |   +-- io/
    |   +-- ...
-   +-- ffpopt/               # torsion / dihedral fitting (lig-dihed-correct)
+   +-- alps/                 # orchestrator (lig-dihed-correct, lig-scission)
+   +-- ffpopt/               # torsion / dihedral fitting (independent)
    |   +-- runtime/          # console, progress boards, CPU budget, --fast
    |   +-- scan/             # WavefrontEngine + WaveFront / WaveFrontND facades
    |   +-- workflows/        # twist, fragmented, whole-ligand

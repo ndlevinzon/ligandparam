@@ -42,8 +42,9 @@ Tools: ``DihedTwistAnimate``, ``WavefrontAnimate``, ``FindSugarPuckers``,
 ``JsonSplit``, ``Json2Img``.
 
 CLIs print a one-time startup banner (logo, authors, version) at the top of
-stdout, then one ``companions: ffpopt=... scission=...`` line so you can see
-which trees were loaded. Fragment workers do not reprint the banner.
+stdout. ``lig-dihed-correct`` and ``lig-scission`` also print
+``companions: ffpopt=... scission=...``. ``lig-getparam`` does not load
+ffpopt or scission. Fragment workers do not reprint the banner.
 
 Independent ffpopt / scission checkouts: :doc:`companions`.
 

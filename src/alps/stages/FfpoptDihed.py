@@ -173,7 +173,7 @@ class StageDihedTwistCorrection(AbstractStage):
         except ImportError as exc:
             raise ImportError(
                 "StageDihedTwistCorrection requires 'ffpopt' and 'scission' "
-                "(bundled under src/, or LIGANDPARAM_FFPOPT / "
+                "(ALPS companions: bundled under src/, or LIGANDPARAM_FFPOPT / "
                 "LIGANDPARAM_SCISSION=external with *_PATH). Also needs "
                 "AmberTools on PATH. Reinstall with: pip install -e '.[dihed]' "
                 "(and install the HL model stack, e.g. qdpi2)."

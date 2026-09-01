@@ -16,7 +16,7 @@ A PATH value is either the directory that *contains* the package
 (``.../src/ffpopt``). Two pip distributions cannot both own the top-level
 name ``ffpopt``; PATH is how an independent tree coexists with the bundle.
 
-This module is imported from :mod:`ligandparam` ``__init__``, which
+This module is imported from :mod:`alps` ``__init__``, which
 installs an import hook so the first ``import ffpopt`` / ``import scission``
 binds the chosen trees. Set the env vars before starting the process.
 """

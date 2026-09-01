@@ -36,8 +36,9 @@ What pulls the score **up**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * **Package separation of concerns:** ``ligandparam`` owns
-  parameterization; ``ffpopt`` owns torsion fitting / wavefront scans;
-  ``scission`` owns fragmentation and frcmod merge. Public CLIs map cleanly
+  parameterization; ``alps`` orchestrates ffpopt / scission; ``ffpopt``
+  owns torsion fitting / wavefront scans; ``scission`` owns fragmentation
+  and frcmod merge. Public CLIs map cleanly
   (``lig-getparam``, ``lig-dihed-correct``, ``lig-scission``).
 * **Recipe + stage pipeline:** workflows are ordered lists of stages.
   Recipes compose; stages do one job. Shared builders live in

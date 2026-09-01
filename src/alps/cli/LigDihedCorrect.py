@@ -21,7 +21,7 @@ from pathlib import Path
 
 from ligandparam.io.AmberBundle import AmberLigandBundle, resolve_getparam_bundle
 from ligandparam.Log import get_logger, set_file_logger, set_stream_logger
-from ligandparam.stages.FfpoptDihed import StageDihedTwistCorrection
+from alps.stages.FfpoptDihed import StageDihedTwistCorrection
 
 
 def _build_fit_cli_args(args) -> list[str]:
@@ -127,7 +127,7 @@ def run_dihed_correct(
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-dihed-correct``."""
     from ffpopt.runtime.Console import print_startup_banner
-    from ligandparam.companions import print_status_line
+    from alps.companions import print_status_line
 
     parser = argparse.ArgumentParser(
         description=(

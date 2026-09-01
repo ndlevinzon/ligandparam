@@ -15,12 +15,10 @@ Optional torsion correction
 :class:`~ligandparam.recipes.FreeLigand`,
 :class:`~ligandparam.recipes.LazyLigand`, and
 :class:`~ligandparam.recipes.DPFreeLigand` accept ``dihed_correct=True`` to
-append :class:`~ligandparam.stages.FfpoptDihed.StageDihedTwistCorrection`
-after Leap. Recipe kwargs mirror the CLI where applicable, including
-``dihed_delta`` (wavefront step) and ``dihed_fragment_config`` (a
-:class:`~scission.Models.FragmentConfig` or dict). For interactive sessions,
-prefer the separate ``lig-dihed-correct`` CLI after ``lig-getparam``
-(see :doc:`dihedrals` and :doc:`cli`).
+**record** twist options for ALPS. ligandparam does not import ffpopt or
+scission and does not append a twist stage. After ``lig-getparam``, run
+``lig-dihed-correct`` (see :doc:`dihedrals`, :doc:`cli`, and
+:doc:`companions`).
 
 Additional recipes such as :class:`~ligandparam.recipes.DPLigand` and
 :class:`~ligandparam.recipes.SQMLigand` are exported from

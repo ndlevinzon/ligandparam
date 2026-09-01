@@ -215,9 +215,9 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             self.assertTrue(seen)
             self.assertTrue(all(t == (True, 8, 16) for t in seen))
 
-    def test_dihed_correct_appends_twist_stage(self):
+    def test_dihed_correct_does_not_append_twist_stage(self):
+        """ligandparam recipes record dihed_correct; ALPS runs the twist."""
         from ligandparam.recipes.FreeLigand import FreeLigand
-        from ligandparam.stages.FfpoptDihed import StageDihedTwistCorrection
 
         with tempfile.TemporaryDirectory() as td:
             inp, cwd = self._tmp_recipe_args(td)
@@ -231,11 +231,11 @@ class TestRecipeSetupGraphs(unittest.TestCase):
                 logger="stream",
             )
             recipe.setup()
-            types = [type(s) for s in recipe.stages]
-            self.assertEqual(types[-1], StageDihedTwistCorrection)
-            twist = recipe.stages[-1]
-            self.assertEqual(twist.model, "xtb")
-            self.assertEqual(twist.delta, 15)
+            self.assertTrue(recipe.dihed_correct)
+            self.assertEqual(recipe.dihed_model, "xtb")
+            self.assertEqual(recipe.dihed_delta, 15)
+            names = [type(s).__name__ for s in recipe.stages]
+            self.assertNotIn("StageDihedTwistCorrection", names)
 
     def test_dry_run_execute_invokes_each_stage(self):
         """Driver.execute(dry_run=True) must call every stage.execute."""
@@ -1901,9 +1901,9 @@ class TestAmberBundleIO(unittest.TestCase):
                 frcmod=root / "LIG.frcmod",
             )
             inp = bundle.to_scission_input()
-            self.assertEqual(inp.mol2_path, bundle.mol2)
-            self.assertEqual(inp.lib_path, bundle.lib)
-            self.assertEqual(inp.frcmod_path, bundle.frcmod)
+            self.assertEqual(inp["mol2_path"], bundle.mol2)
+            self.assertEqual(inp["lib_path"], bundle.lib)
+            self.assertEqual(inp["frcmod_path"], bundle.frcmod)
 
 
 # ---------------------------------------------------------------------------
@@ -1932,14 +1932,11 @@ class TestDihedOptionsAndBonds(unittest.TestCase):
 
     def test_coerce_fragment_config(self):
         from ligandparam.recipes.DihedOptions import coerce_fragment_config
-        from scission.Models import FragmentConfig
 
         self.assertIsNone(coerce_fragment_config(None))
         cfg = coerce_fragment_config({"angle_step": 15, "cap_strategy": "hydrogen"})
-        self.assertIsInstance(cfg, FragmentConfig)
-        self.assertEqual(cfg.angle_step, 15)
-        with self.assertRaises(TypeError):
-            coerce_fragment_config("nope")
+        self.assertEqual(cfg["angle_step"], 15)
+        self.assertEqual(coerce_fragment_config("pass"), "pass")
 
     def test_normalize_bond_pairs0(self):
         from ffpopt.workflows import normalize_bond_pairs0
@@ -4014,7 +4011,7 @@ class TestGitTrackedModuleCase(unittest.TestCase):
         "src/ligandparam/Interfaces.py",
         "src/ligandparam/Parametrization.py",
         "src/ligandparam/Utils.py",
-        "src/ligandparam/cli/LigDihedCorrect.py",
+        "src/ligandparam/cli/LigGetParam.py",
         "src/ffpopt/Scripts.py",
         "src/ffpopt/runtime/Console.py",
         "src/ffpopt/geom/Geometric.py",
@@ -4047,7 +4044,7 @@ class TestGitTrackedModuleCase(unittest.TestCase):
 class TestSrcImportGraph(unittest.TestCase):
     """Every ``src/`` import of ffpopt / ligandparam / scission must resolve."""
 
-    _TOP = frozenset({"ffpopt", "ligandparam", "scission"})
+    _TOP = frozenset({"ffpopt", "ligandparam", "scission", "alps"})
 
     def test_in_tree_imports_resolve(self):
         import ast
@@ -4108,6 +4105,29 @@ class TestSrcImportGraph(unittest.TestCase):
                     broken.append(f"{rel}:{node.lineno} {tgt}")
         self.assertEqual(broken, [], "unresolved in-tree imports:\n" + "\n".join(broken))
 
+    def test_ligandparam_does_not_import_ffpopt_scission_or_alps(self):
+        """Parameterization must run without companion packages."""
+        import ast
+
+        root = Path(__file__).resolve().parents[1] / "src" / "ligandparam"
+        banned = frozenset({"ffpopt", "scission", "alps"})
+        hits: list[str] = []
+        for fp in root.rglob("*.py"):
+            text = fp.read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(text, filename=str(fp))
+            rel = fp.relative_to(root.parent)
+            for node in ast.walk(tree):
+                names: list[str] = []
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = [node.module]
+                for name in names:
+                    top = name.split(".")[0]
+                    if top in banned:
+                        hits.append(f"{rel}:{node.lineno} {name}")
+        self.assertEqual(hits, [], "ligandparam imports companions:\n" + "\n".join(hits))
+
 
 class TestGaussianOrientationBudget(unittest.TestCase):
     def test_mem_is_split_not_replicated(self):
@@ -4136,6 +4156,16 @@ class TestGaussianOrientationBudget(unittest.TestCase):
             60, 28, 1
         )
         self.assertEqual((n_workers, job_nproc, job_mem), (1, 60, 1))
+
+    def test_ligandparam_cpu_budget_matches_gaussian_split(self):
+        from ligandparam.runtime.CpuBudget import split_gaussian_orientation_budget
+
+        n_workers, job_nproc, job_mem = split_gaussian_orientation_budget(
+            60, 28, 32
+        )
+        self.assertGreaterEqual(job_mem, 4)
+        self.assertLessEqual(n_workers * job_nproc, 60)
+        self.assertLessEqual(n_workers * job_mem, 32)
 
     def test_gaussian_failure_includes_returncode(self):
         import tempfile
@@ -4214,7 +4244,7 @@ class TestCompanionResolver(unittest.TestCase):
         self.addCleanup(self._restore_bundled)
 
     def _restore_bundled(self):
-        from ligandparam.companions import bootstrap, reset_for_tests
+        from alps.companions import bootstrap, reset_for_tests
 
         for key, value in self._env.items():
             if value is None:
@@ -4236,7 +4266,7 @@ class TestCompanionResolver(unittest.TestCase):
         (pkg / "__init__.py").write_text(f"TOKEN = {token!r}\n", encoding="utf-8")
 
     def test_default_internal_is_bundled(self):
-        from ligandparam.companions import bundled_src_root, companion_status
+        from alps.companions import bundled_src_root, companion_status
 
         status = companion_status()
         root = bundled_src_root()
@@ -4247,7 +4277,7 @@ class TestCompanionResolver(unittest.TestCase):
             self.assertEqual(info.origin, (root / name).resolve())
 
     def test_invalid_mode_raises(self):
-        from ligandparam.companions import bootstrap, reset_for_tests
+        from alps.companions import bootstrap, reset_for_tests
 
         os.environ["LIGANDPARAM_FFPOPT"] = "maybe"
         reset_for_tests()
@@ -4256,7 +4286,7 @@ class TestCompanionResolver(unittest.TestCase):
         self.assertIn("not a known mode", str(ctx.exception))
 
     def test_external_without_path_raises(self):
-        from ligandparam.companions import bootstrap, reset_for_tests
+        from alps.companions import bootstrap, reset_for_tests
 
         os.environ["LIGANDPARAM_FFPOPT"] = "external"
         os.environ.pop("LIGANDPARAM_FFPOPT_PATH", None)
@@ -4266,7 +4296,7 @@ class TestCompanionResolver(unittest.TestCase):
         self.assertIn("LIGANDPARAM_FFPOPT_PATH", str(ctx.exception))
 
     def test_external_path_to_bundle_raises(self):
-        from ligandparam.companions import bootstrap, bundled_src_root, reset_for_tests
+        from alps.companions import bootstrap, bundled_src_root, reset_for_tests
 
         os.environ["LIGANDPARAM_FFPOPT"] = "external"
         os.environ["LIGANDPARAM_FFPOPT_PATH"] = str(bundled_src_root())
@@ -4276,7 +4306,7 @@ class TestCompanionResolver(unittest.TestCase):
         self.assertIn("bundled", str(ctx.exception))
 
     def test_external_ffpopt_from_path(self):
-        from ligandparam.companions import bootstrap, reset_for_tests
+        from alps.companions import bootstrap, reset_for_tests
 
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -4294,7 +4324,7 @@ class TestCompanionResolver(unittest.TestCase):
             self.assertFalse(getattr(ffpopt, "__ligandparam_bundle__", False))
 
     def test_external_path_may_be_package_dir(self):
-        from ligandparam.companions import bootstrap, reset_for_tests
+        from alps.companions import bootstrap, reset_for_tests
 
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "src"

@@ -109,9 +109,9 @@ all = [
 [project.scripts]
 lighfix = "ligandparam.cli.CliLigHFix:lighfix"
 lig-getparam = "ligandparam.cli.LigGetParam:main"
-lig-dihed-correct = "ligandparam.cli.LigDihedCorrect:main"
-lig-scission = "ligandparam.cli.LigScission:main"
-scission = "ligandparam.cli.LigScission:scission_console"
+lig-dihed-correct = "alps.cli.LigDihedCorrect:main"
+lig-scission = "alps.cli.LigScission:main"
+scission = "scission.Cli:main"
 smiles-to-pdb = "ligandparam.cli.SmilesToPdb:main"
 lig-to-sage = "ligandparam.cli.Mol2ToSage:main"
 "ffpopt-DihedScan.py" = "ffpopt.Scripts:ffpopt_DihedScan"
@@ -131,7 +131,7 @@ ffpopt-specialty = "ffpopt.Scripts:ffpopt_specialty"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["ligandparam*", "ffpopt*", "scission*"]
+include = ["ligandparam*", "ffpopt*", "scission*", "alps*"]
 exclude = ["ligandparam.deprecated", "ligandparam.deprecated.*"]
 
 [tool.setuptools.package-data]

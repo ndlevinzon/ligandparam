@@ -45,7 +45,7 @@ def format_reminder_line(quote: str) -> str:
     The quotes file already wraps spoken text in ``"..."``; this does not
     add a second pair around the whole line.
     """
-    from ffpopt.runtime.Console import ascii_for_stdio
+    from ligandparam.runtime.Console import ascii_for_stdio
 
     return ascii_for_stdio(f"LIGANDPARAM reminds you: {quote}")
 
@@ -67,7 +67,7 @@ def log_success_quote(
     quotes = load_quotes(quotes_path)
     if not quotes:
         return None
-    from ffpopt.runtime.Console import format_console_line
+    from ligandparam.runtime.Console import format_console_line
 
     _ = logger
     quote = random.choice(quotes)
@@ -110,8 +110,8 @@ def get_logger() -> logging.Logger:
 
 
 def set_stream_logger(logging_level: int = logging.INFO) -> logging.Logger:
-    """Attach stdout (INFO) / stderr (WARNING+) handlers via ``ffpopt.runtime.Console``."""
-    from ffpopt.runtime.Console import attach_console_handlers
+    """Attach stdout (INFO) / stderr (WARNING+) handlers via ligandparam console."""
+    from ligandparam.runtime.Console import attach_console_handlers
 
     logger = logging.getLogger(__logging_name__)
     logger.setLevel(logging_level)
@@ -130,7 +130,7 @@ def set_file_logger(
     also_console: bool = True,
 ) -> logging.Logger:
     """Log to a file; optionally mirror to the console (Slurm-friendly)."""
-    from ffpopt.runtime.Console import attach_console_handlers, console_formatter
+    from ligandparam.runtime.Console import attach_console_handlers, console_formatter
 
     if logname is None:
         logname = __logging_name__

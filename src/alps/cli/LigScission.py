@@ -68,7 +68,7 @@ def _expand_fragment_shortcuts(argv: list[str]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``lig-scission`` / convenience wrapper."""
     from ffpopt.runtime.Console import print_startup_banner
-    from ligandparam.companions import print_status_line
+    from alps.companions import print_status_line
 
     raw = list(sys.argv[1:] if argv is None else argv)
     if not any(a in ("-h", "--help") for a in raw):

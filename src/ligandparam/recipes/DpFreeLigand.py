@@ -38,7 +38,7 @@ class DPFreeLigand(Recipe):
     orientation_protocol : {"so3_n28", "legacy_euler"}, optional
         Multi-RESP orientation set. Default ``so3_n28``.
     dihed_correct : bool, optional
-        If True, append an ffpopt fragmented dihed-twist stage after Leap.
+        Recorded for ALPS. ligandparam does not run ffpopt.
     dihed_model : str, optional
         High-level model for dihedral fitting. Default ``"qdpi2"``.
     dihed_delta : int, optional

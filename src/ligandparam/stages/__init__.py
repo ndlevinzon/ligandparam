@@ -26,7 +26,6 @@ _EXPORTS = {
     "PDB_Name_Fixer": ".PdbNames",
     "StagePdbNameFixer": ".PdbNames",
     "DPMinimize": ".DeepMd",
-    "StageDihedTwistCorrection": ".FfpoptDihed",
     "StageSageCreate": ".GenerateSageParams",
     "StageSageToAmber": ".GenerateSageParams",
 }

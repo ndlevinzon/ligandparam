@@ -19,9 +19,7 @@ from ligandparam.io.Orientations import (
 )
 from ligandparam.Interfaces import Gaussian, Antechamber
 from ligandparam.Log import get_logger
-from ffpopt.runtime.FastWavefront import (
-    split_gaussian_orientation_budget,
-)
+from ligandparam.runtime.CpuBudget import split_gaussian_orientation_budget
 
 #
 logger = logging.getLogger("ligandparam.gaussian")
@@ -146,7 +144,7 @@ def _orientation_id_from_paths(in_com: str | Path, out_log: str | Path) -> str:
 
 def _run_gaussian_rotation_job(payload: dict) -> dict:
     """Run one rotation ESP job (spawn-pool worker; must be picklable)."""
-    from ffpopt.runtime.ProgressBoard import JobProgressStore
+    from ligandparam.runtime.ProgressBoard import JobProgressStore
 
     cwd = Path(payload["cwd"])
     in_com = payload["in_com"]
@@ -594,7 +592,7 @@ class StageGaussianRotation(AbstractStage):
         """Pool orientation ESP jobs. ``nproc`` / ``mem`` are node budgets."""
         import multiprocessing as mp
 
-        from ffpopt.runtime.ProgressBoard import JobBoardWatcher, JobProgressStore
+        from ligandparam.runtime.ProgressBoard import JobBoardWatcher, JobProgressStore
 
         n_orients = self._n_orientation_count()
         n_workers, job_nproc, job_mem = split_gaussian_orientation_budget(

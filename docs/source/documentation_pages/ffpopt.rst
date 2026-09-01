@@ -68,8 +68,8 @@ CLI (same two modes)::
    lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
    lig-dihed-correct ... --whole-ligand --soft-dihed-restraint --fit-full
 
-The ligandparam wrapper is ``lig-dihed-correct`` /
-:class:`~ligandparam.stages.FfpoptDihed.StageDihedTwistCorrection`. Prefer
+The ALPS wrapper is ``lig-dihed-correct`` /
+:class:`~alps.stages.FfpoptDihed.StageDihedTwistCorrection`. Prefer
 that after ``lig-getparam``. See :doc:`dihedrals`.
 
 Single-molecule twist (when you already have ``parm7`` / ``rst7`` and explicit
@@ -116,10 +116,10 @@ generic sp3 rotors (:doc:`fourier_fit`).
 Status lines in logs use ASCII (``cond~=``, ``chi^2``) for Slurm / Windows
 compatibility.
 
-ligandparam wrapper
--------------------
+ALPS wrapper
+------------
 
-:class:`~ligandparam.stages.FfpoptDihed.StageDihedTwistCorrection` and the
+:class:`~alps.stages.FfpoptDihed.StageDihedTwistCorrection` and the
 ``lig-dihed-correct`` CLI wrap both workflows (fragment default;
 ``--whole-ligand`` for the parent). Prefer those for everyday use after
 ``lig-getparam``.

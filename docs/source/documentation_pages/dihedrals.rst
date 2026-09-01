@@ -76,13 +76,13 @@ and shortens maxiter (wall-time trade). Scan ``delta`` stays 10 deg.
 Explicit ``--delta`` and related knobs still win when not left at library
 defaults. See :doc:`wavefront`.
 
-Python stage (also used when ``dihed_correct=True`` on FreeLigand / LazyLigand /
-DPFreeLigand). Recipe kwargs ``dihed_delta`` and ``dihed_fragment_config``
-mirror CLI ``--delta`` and scission ``FragmentConfig`` settings:
+Python stage (ALPS; also used after ``lig-getparam``). Recipe kwargs
+``dihed_delta`` and ``dihed_fragment_config`` are recorded on the recipe
+for ALPS; ligandparam does not run the twist itself:
 
 .. code-block:: python
 
-   from ligandparam.stages import StageDihedTwistCorrection
+   from alps.stages.FfpoptDihed import StageDihedTwistCorrection
 
    StageDihedTwistCorrection(
        "DihedTwist",

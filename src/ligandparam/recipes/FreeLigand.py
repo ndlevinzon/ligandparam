@@ -42,9 +42,8 @@ class FreeLigand(Recipe):
         Multi-RESP orientation set. Default ``so3_n28`` (28 quaternion-packed
         orientations). ``legacy_euler`` restores the older alpha/beta grid.
     dihed_correct : bool, optional
-        If True, append an ffpopt fragmented dihed-twist stage after Leap.
-        For interactive sessions after ``lig-getparam``, prefer the separate
-        ``lig-dihed-correct`` CLI instead.
+        Recorded for ALPS. ligandparam does not run ffpopt; after this
+        recipe, run ``lig-dihed-correct`` (ALPS) on the Amber triplet.
     dihed_model : str, optional
         High-level model for dihedral fitting. Default ``"qdpi2"``.
     dihed_maxiter : int, optional

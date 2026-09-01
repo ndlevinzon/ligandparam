@@ -43,13 +43,21 @@ def OpenParm( fname, xyz=None ):
     return param
 
 def CopyParm(parm):
-    """Copy a ParmEd AmberParm (coordinates and box included).
+    """Shallow-copy a ParmEd AmberParm, including coordinates and box."""
+    import copy
 
-    Canonical implementation lives in :func:`ffpopt.AmberParm.CopyParm`.
-    """
-    from ffpopt.AmberParm import CopyParm as _copy_parm
-
-    return _copy_parm(parm)
+    try:
+        parm.remake_parm()
+    except Exception:
+        pass
+    p = copy.copy(parm)
+    p.coordinates = copy.copy(parm.coordinates)
+    p.box = copy.copy(parm.box)
+    try:
+        p.hasbox = copy.copy(parm.hasbox)
+    except Exception:
+        p.hasbox = False
+    return p
 
 def MakeUniqueParams(p, xlist, *, type_attr: str, type_factory, scale: float = 1.0):
     """Duplicate selected bonded parameter types so they are unique to ``xlist``.

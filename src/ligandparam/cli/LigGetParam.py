@@ -58,8 +58,8 @@ def worker(
 ) -> Path:
     """Execute a ligand parameterization recipe for one ligand.
 
-    After completion, run ``lig-dihed-correct`` in the same session to apply
-    optional ffpopt torsion corrections to the generated mol2/lib/frcmod.
+        After completion, ALPS / ``lig-dihed-correct`` can apply optional
+        torsion corrections to the generated mol2/lib/frcmod.
 
     Returns
     -------
@@ -134,12 +134,6 @@ def worker(
     recipe.setup()
     recipe.execute()
     logger.info("Recipe execution complete.")
-    logger.info(
-        "For dihedral corrections in this session, run: "
-        "lig-dihed-correct -d %s -r %s --label <input_stem>",
-        data_cwd,
-        resname,
-    )
     return binder_dir
 
 
@@ -160,8 +154,7 @@ def main():
     """Parse command line arguments and execute the ligand parameterization worker."""
     import argparse
 
-    from ffpopt.runtime.Console import print_startup_banner
-    from ligandparam.companions import print_status_line
+    from ligandparam.runtime.Console import print_startup_banner
 
     parser = argparse.ArgumentParser(description="Ligand parameterization CLI")
     parser.add_argument("-i", "--input", type=str, required=True, help="Input PDB file with ligand")
@@ -207,7 +200,6 @@ def main():
     args = parser.parse_args()
 
     print_startup_banner()
-    print_status_line()
 
     worker(
         recipe_name=args.recipe_name,

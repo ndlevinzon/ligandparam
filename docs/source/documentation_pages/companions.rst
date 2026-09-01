@@ -1,20 +1,22 @@
 Companion packages (ffpopt / scission)
 ======================================
 
-This page is the contract ligandparam uses to talk to ``ffpopt`` and
-``scission``. Send it to those teams when they implement an independent
-package that ligandparam can load **instead of** the in-tree copies under
+This page is the contract **ALPS** uses to talk to ``ffpopt`` and
+``scission``. ligandparam parameterization does not import those packages.
+Send this to the ffpopt / scission teams when they implement an independent
+package that ALPS can load **instead of** the in-tree copies under
 ``src/ffpopt`` and ``src/scission``.
 
-ligandparam keeps the bundled trees. Switching is a resolver setting, not a
-rewrite of stages or CLIs. Import names stay ``ffpopt`` and ``scission``.
+The bundled trees stay in this repo for comparison and for
+``LIGANDPARAM_FFPOPT=internal``. Switching is a resolver setting on ALPS.
+Import names stay ``ffpopt`` and ``scission``.
 
-How ligandparam chooses a tree
-------------------------------
+How ALPS chooses a tree
+----------------------
 
 Set these **before** starting the process (``export`` / Slurm ``--export``).
 They are read once, on the first ``import ffpopt`` or ``import scission``
-after ``import ligandparam``.
+after ``import alps``.
 
 =============================== ===========================================
 Variable                        Meaning
@@ -44,13 +46,14 @@ Example: independent checkouts, bundled ligandparam still installed::
     export LIGANDPARAM_SCISSION_PATH=/path/to/scission/src
     lig-dihed-correct -d CHA3 -r CHA --label chaps --model xtb -n 10 --fast
 
-The three ``lig-*`` CLIs print one ASCII confirmation line after the banner::
+The ``lig-dihed-correct`` / ``lig-scission`` CLIs print one ASCII confirmation
+line after the banner::
 
     companions: ffpopt=external (/path/to/ffpopt/src/ffpopt) scission=internal (...)
 
 Query the same map from Python::
 
-    from ligandparam.companions import companion_status, format_status_line
+    from alps.companions import companion_status, format_status_line
     print(format_status_line())
 
 Two pip distributions **cannot** both own the top-level name ``ffpopt``.
@@ -58,25 +61,23 @@ PATH is how an independent tree coexists with the bundle. Pointing
 ``LIGANDPARAM_FFPOPT=external`` at the bundled tree is an error (the bundle
 sets ``__ligandparam_bundle__ = True`` on ``ffpopt`` / ``scission``).
 
-The ``scission`` console script goes through
-``ligandparam.cli.LigScission.scission_console`` so it honors the same env.
-Direct ``import ffpopt`` **without** importing ``ligandparam`` first uses
-whatever is already on ``sys.path`` (no resolver).
+The ``lig-scission`` console script goes through
+``alps.cli.LigScission`` so it honors the same env. The independent
+``scission`` script is ``scission.Cli.main``. Direct ``import ffpopt``
+**without** importing ``alps`` first uses whatever is already on ``sys.path``
+(no resolver).
 
 Why there are two layers
 ------------------------
 
-Do not ship only the torsion workflows. ligandparam already imports ffpopt
-for parameterization, even when the user never runs ``lig-dihed-correct``.
-
 **Layer A (science).** Dihedral correction and fragmentation. Required for
-``lig-dihed-correct`` / recipe ``dihed_correct`` / ``lig-scission``.
+``lig-dihed-correct`` / ``lig-scission``. Owned by ALPS calling ffpopt and
+scission.
 
-**Layer B (runtime).** Logging, banners, Gaussian orientation boards,
-``CopyParm``. Required for ``lig-getparam``. If an external ffpopt omits
-these, either keep the names below stable or ligandparam will stop importing
-``ffpopt.runtime`` / ``ffpopt.AmberParm`` (that is a ligandparam change, not
-an ffpopt one).
+**Layer B (runtime).** Logging, banners, Gaussian orientation boards, and
+``CopyParm`` now live in ``ligandparam.runtime`` / ``ParmEdUtils``.
+``lig-getparam`` does not import ffpopt. External ffpopt does not need to
+ship those helpers for parameterization to work.
 
 scission must **not** import ffpopt or ligandparam. ffpopt workflows **do**
 import scission. Fragmented twist therefore needs both packages even when
@@ -279,11 +280,16 @@ Keep subcommands ``fragment``, ``merge``, ``pick-bond``. Extra flags already
 on the in-tree CLI (``--config``, ``--include-bond-smarts``, ``--nproc``,
 ...) should stay.
 
-Layer B: ffpopt runtime ligandparam already uses
-------------------------------------------------
+Layer B: runtime (now in ligandparam)
+-------------------------------------
 
-``lig-getparam`` imports these even when dihedral correction is off. Freeze
-the names or coordinate a ligandparam change to stop depending on them.
+``lig-getparam`` no longer imports ffpopt. ASCII console, orientation
+boards, Gaussian core/mem split, and ``CopyParm`` live under
+``ligandparam.runtime`` and ``ligandparam.multiresp.ParmEdUtils``. Twist
+jobs still use ``ffpopt.runtime.Console`` for ffpopt's own logs.
+
+The historical ffpopt names below remain useful if ALPS is talking to an
+external ffpopt that still logs through that API.
 
 ``ffpopt.runtime.Console``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -370,8 +376,9 @@ ffpopt
 1. Implement the two ``run_*_workflow`` functions with the keyword names
    and return keys above.
 2. Implement ``AffdoLog.describe_affdo_extras`` / ``log_affdo``.
-3. Keep Layer B helpers **or** tell ligandparam you are dropping them so
-   the runtime imports can move.
+3. Layer B helpers are optional for parameterization (ligandparam owns
+   its copies). Keep ``ffpopt.runtime.Console`` if you want ALPS twist
+   logs to match the in-tree formatter.
 4. Do **not** set ``__ligandparam_bundle__ = True``.
 5. Workflows that spawn ``ffpopt.bin`` scripts must honor ``sys.executable``
    and the caller's ``PYTHONPATH`` (ligandparam prepends your PATH).
@@ -394,7 +401,7 @@ Verify against this tree
 
     export LIGANDPARAM_FFPOPT=external
     export LIGANDPARAM_FFPOPT_PATH=/path/to/your/ffpopt/src
-    python -c "import ligandparam; import ffpopt; from ligandparam.companions import format_status_line; print(format_status_line()); print(ffpopt.__file__)"
+    python -c "import alps; import ffpopt; from alps.companions import format_status_line; print(format_status_line()); print(ffpopt.__file__)"
 
     python -m unittest tests.test_install_validation tests.test_developer_regression -v
 

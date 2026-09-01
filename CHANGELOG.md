@@ -10,7 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Internal vs external companions** - ligandparam can keep the bundled
+- **ALPS / independent ligandparam** - ``src/ligandparam`` no longer
+  imports ``ffpopt`` or ``scission``. Logging, Gaussian job boards, and
+  ``CopyParm`` live in ``ligandparam.runtime``. Twist / fragment CLIs
+  moved to ``src/alps``. Companion env resolution is ``alps.companions``.
+  ``lig-getparam`` writes ``{resname}.log`` in the job directory and
+  still mirrors INFO to stdout.
+
+- **Internal vs external companions** - ALPS can keep the bundled
   ``src/ffpopt`` / ``src/scission`` trees or load independent checkouts
   via ``LIGANDPARAM_FFPOPT`` / ``LIGANDPARAM_SCISSION``
   (``internal`` | ``external``) and ``LIGANDPARAM_*_PATH``. Import names

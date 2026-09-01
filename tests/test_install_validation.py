@@ -143,7 +143,7 @@ class TestPublicAPISurface(unittest.TestCase):
             self.assertIs(pdb_names.PDB_Name_Fixer, pdb_names.StagePdbNameFixer)
 
     def test_companion_default_is_bundled(self):
-        from ligandparam.companions import bundled_src_root, companion_status
+        from alps.companions import bundled_src_root, companion_status
 
         status = companion_status()
         root = bundled_src_root()
@@ -260,9 +260,8 @@ class TestCLIEntrypoints(unittest.TestCase):
     """Console scripts declared in pyproject must be importable callables."""
 
     EXPECTED = (
-        ("ligandparam.cli.LigDihedCorrect", "main"),
-        ("ligandparam.cli.LigScission", "main"),
-        ("ligandparam.cli.LigScission", "scission_console"),
+        ("alps.cli.LigDihedCorrect", "main"),
+        ("alps.cli.LigScission", "main"),
         ("scission.Cli", "main"),
     )
     # These pull RDKit at import time (core dep; skipped only if RDKit absent).

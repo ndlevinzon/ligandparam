@@ -36,7 +36,7 @@ class LazyLigand(Recipe):
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
     dihed_correct : bool, optional
-        If True, append an ffpopt fragmented dihed-twist stage after Leap.
+        Recorded for ALPS. ligandparam does not run ffpopt.
     dihed_model : str, optional
         High-level model for dihedral fitting. Default ``"qdpi2"``.
     dihed_delta : int, optional
