@@ -261,18 +261,10 @@ def package_version() -> str:
 
 
 def format_startup_banner(*, version: str | None = None) -> str:
-    """ASCII logo + version + authors (no timestamp prefix)."""
-    ver = version if version is not None else package_version()
-    authors = "\n".join(f"  {a}" for a in _AUTHORS)
-    return (
-        f"{_LOGO}\n"
-        f"\n"
-        f"  ligandparam  v{ver}\n"
-        f"  Amber ligand parameterization + ffpopt / scission\n"
-        f"\n"
-        f"  Authors:\n"
-        f"{authors}\n"
-    )
+    """ASCII logo + version + authors (delegates to :mod:`ligandparam.Log`)."""
+    from ligandparam.Log import format_startup_banner as _format
+
+    return _format(version=version)
 
 
 def format_run_banner(
@@ -429,11 +421,10 @@ def print_startup_banner(
             return False
     ensure_ascii_stdio()
     out = stream if stream is not None else sys.__stdout__
-    text = format_startup_banner()
-    try:
-        out.write(text if text.endswith("\n") else text + "\n")
-        out.flush()
-    except OSError:
+    from ligandparam.Log import print_startup_banner as _print
+
+    ok = bool(_print(stream=out, force=True))
+    if not ok:
         return False
     _BANNER_PRINTED = True
     os.environ["LIGANDPARAM_BANNER_PRINTED"] = "1"

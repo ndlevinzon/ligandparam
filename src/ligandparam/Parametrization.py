@@ -23,7 +23,7 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Union
 from typing_extensions import override
 
 from ligandparam.Driver import Driver
-from ligandparam.Log import get_logger, set_stream_logger, set_file_logger
+from ligandparam.Log import get_logger, log_success_quote, set_file_logger, set_stream_logger
 
 
 def fresh_recipe_defaults() -> dict[str, Any]:
@@ -216,3 +216,4 @@ class Recipe(Parametrization):
         self.logger.info(f"Starting the {name} recipe at {self.cwd}")
         super().execute(dry_run=dry_run, nproc=nproc, mem=mem)
         self.logger.info(f"Done with the {name} recipe")
+        log_success_quote(self.logger)

@@ -2,42 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
+from ligandparam.Log import set_file_logger
 from ligandparam.stages import StagePdbNameFixer
-
-
-def set_file_logger(
-    logfilename: Path, logname: str = None, filemode: str = "a"
-) -> logging.Logger:
-    """Set up a file logger for the ligand parameterization process.
-
-    Also mirrors INFO to stdout and WARNING+ to stderr with timestamps and a
-    ``[ligandparam]`` tag so Slurm ``.out`` / ``.err`` capture the same trail.
-
-    Parameters
-    ----------
-    logfilename : Path
-        The path to the log file where the logs will be written.
-    logname : str, optional
-        The name of the logger. If None, it will be derived from the log filename.
-    filemode : str, optional
-        The mode in which the log file will be opened. Default is 'a' (append
-        mode). Use 'w' for write mode to overwrite the log file.
-
-    Returns
-    -------
-    logger : logging.Logger
-        A configured logger instance that writes logs to the specified file.
-    """
-    from ligandparam.Log import set_file_logger as _set_file_logger
-
-    if logname is None:
-        logname = Path(logfilename).stem
-    return _set_file_logger(
-        logfilename, logname=logname, filemode=filemode, also_console=True
-    )
 
 
 def worker(
@@ -69,7 +37,12 @@ def worker(
     binder_dir = cwd / data_cwd / resname
     binder_dir.mkdir(parents=True, exist_ok=True)
     binder_pdb = cwd / mol
-    logger = set_file_logger(binder_dir / f"{resname}.log", filemode="w")
+    logger = set_file_logger(
+        binder_dir / f"{resname}.log",
+        logname=resname,
+        filemode="w",
+        include_version=True,
+    )
 
     logger.info("Working on ligand: %s", resname)
     if not binder_pdb.is_file():
@@ -154,8 +127,6 @@ def main():
     """Parse command line arguments and execute the ligand parameterization worker."""
     import argparse
 
-    from ligandparam.runtime.Console import print_startup_banner
-
     parser = argparse.ArgumentParser(description="Ligand parameterization CLI")
     parser.add_argument("-i", "--input", type=str, required=True, help="Input PDB file with ligand")
     parser.add_argument("-r", "--resname", type=str, required=True, help="Residue name for the ligand")
@@ -198,8 +169,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    print_startup_banner()
 
     worker(
         recipe_name=args.recipe_name,

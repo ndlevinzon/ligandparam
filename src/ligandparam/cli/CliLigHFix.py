@@ -48,5 +48,8 @@ def ligfix():
     s.execute()
 
 
+lighfix = ligfix
+
+
 if __name__ == "__main__":
     ligfix()
