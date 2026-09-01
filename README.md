@@ -8,10 +8,7 @@
 
 Code originally written by York Lab (Rutgers), then in collaboration with Cheatham Lab (Utah).
 
-`ligandparam` does two jobs that usually sit in separate scripts:
-
-1. **Parameterize** a nonstandard ligand or residue (Antechamber / Gaussian RESP / `parmchk2` / LEaP) into an Amber triplet: `mol2` + `lib` + `frcmod`.
-2. **Correct dihedrals** with integrated **ffpopt** (wavefront HL/LL scans + cosine fit) and **scission** (optional fragmentation). Two ffpopt modes: **fragment** (default) and **whole-ligand**.
+`ligandparam` parameterizes a nonstandard ligand or residue (Antechamber / Gaussian RESP / `parmchk2` / LEaP) into an Amber triplet: `mol2` + `lib` + `frcmod`. **ALPS** is the package you install: it ships ligandparam, ffpopt, and scission, then runs dihedral correction (`lig-dihed-correct`) and fragmentation (`lig-scission`). Two ffpopt modes: **fragment** (default) and **whole-ligand**.
 
 **Docs:** [ligandparam.readthedocs.io](https://ligandparam.readthedocs.io/en/latest/)
 **Repo:** [github.com/piskulichz/ligandparam](https://github.com/piskulichz/ligandparam)
@@ -137,10 +134,14 @@ git clone https://github.com/piskulichz/ligandparam.git
 cd ligandparam
 mamba env create -f env.yaml   # or: conda env create -f env.yaml
 conda activate ligandparam
+# If you previously installed this tree as ligandparam:
+#   pip uninstall ligandparam
 pip install -e ".[dihed,tblite]"
 ```
 
-`pip install 'ligandparam[jax]'` (no `-e`, no `.`) pulls **PyPI 1.0.0** and can uninstall a local 1.6.x tree. From the clone:
+That command installs the **alps** distribution, which includes import packages `alps`, `ligandparam`, `ffpopt`, and `scission` plus their core Python dependencies. CLI names (`lig-getparam`, `lig-dihed-correct`, ...) stay the same.
+
+`pip install 'ligandparam[jax]'` (no `-e`, no `.`) pulls **PyPI 1.0.0** and can uninstall a local tree. From the clone:
 
 ```bash
 pip install -e '.[jax]'          # or: conda install -c conda-forge jax jaxlib
@@ -238,15 +239,19 @@ Runnable trees under [`examples/`](examples/): `01_LazyLigand`, `02_FreeLigand`,
 
 ```text
 src/
-+-- ligandparam/         # recipes, stages, lig-getparam / lig-dihed-correct
++-- alps/                # orchestrator; pip distribution name
+|   +-- cli/             # lig-dihed-correct, lig-scission
+|   +-- workflows/       # fragmented / whole-ligand twist
+|   +-- stages/
++-- ligandparam/         # recipes, stages, lig-getparam
 |   +-- recipes/
-|   +-- stages/          # includes StageDihedTwistCorrection
+|   +-- stages/
 |   +-- cli/
 |   +-- io/
-+-- ffpopt/              # torsion optimization
++-- ffpopt/              # torsion optimization (single molecule)
 |   +-- runtime/         # console (ASCII), progress boards, CPU budget, --fast
 |   +-- scan/            # WaveFront, WaveFrontND, mixins
-|   +-- workflows/       # fragment twist, whole-ligand twist, bond batches
+|   +-- workflows/       # run_dihed_twist_workflow, bond batches
 |   +-- dihed/           # GenDihedFit
 |   +-- geom/            # GeomOpt, restraints, geomeTRIC
 |   +-- affdo/           # optional whole-ligand extras
@@ -266,7 +271,7 @@ tests/
 3. Keep stdout, comments, and docs ASCII (`+/-`, `deg`, `chi^2`, `->`)
 4. Open a PR that says why the change is needed
 
-Release: bump `version` in `pyproject.toml` and `__version__` in `src/ligandparam/__init__.py`, commit, `git tag 1.6.1 && git push origin --tags`.
+Release: bump `version` in `pyproject.toml` and `__version__` in `src/alps/__init__.py` and `src/ligandparam/__init__.py`, commit, `git tag 1.6.1 && git push origin --tags`.
 
 ---
 

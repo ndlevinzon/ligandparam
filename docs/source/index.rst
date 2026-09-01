@@ -1,17 +1,19 @@
 Welcome to ligandparam's documentation!
 ========================================
 
-``ligandparam`` **1.6** is a modular Python toolkit for Amber ligand
-parameterization. Workflows are expressed as **recipes** (ordered lists of
-**stages**) that wrap familiar tools such as Antechamber, Gaussian,
+Install **ALPS** from this repository (``pip install .`` / ``pip install -e .``).
+That distribution ships ``alps``, ``ligandparam``, ``ffpopt``, and
+``scission`` plus their core Python dependencies.
+
+``ligandparam`` **1.6** is the parameterization toolkit: workflows are
+**recipes** (ordered lists of **stages**) that wrap Antechamber, Gaussian,
 ``parmchk2``, and LEaP.
 
-The repository also ships two integrated companion packages under ``src/``
-(default). Independent ffpopt / scission checkouts can replace either tree;
+Independent ffpopt / scission checkouts can replace the bundled trees;
 see :doc:`documentation_pages/companions`.
 
-* ``ffpopt`` - post-hoc torsion fitting in **fragment** (default) or
-  **whole-ligand** (``--whole-ligand``) mode
+* ``ffpopt`` - post-hoc torsion fitting (single molecule; ALPS owns fragment /
+  whole-ligand orchestration)
 * ``scission`` - Amber-aware ligand fragmentation used by the fragment path
 
 Quick start

@@ -162,7 +162,7 @@ If opts are still unstable:
 Requirements
 ------------
 
-* Integrated ``ffpopt`` and ``scission`` (installed with ligandparam from ``src/``)
+* Integrated ``ffpopt`` and ``scission`` (installed with ALPS from ``src/``)
 * AmberTools ``tleap`` on ``PATH`` (scission writes fragment ``parm7`` / ``rst7``)
 * Calculator stack for the chosen ``--model``
 * For ``xtb``: ``pip install ".[tblite,dihed]"``

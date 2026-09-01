@@ -10,6 +10,7 @@ Clone the repository and install into a conda / mamba environment
     cd ligandparam
     mamba env create -f env.yaml
     conda activate ligandparam
+    # pip uninstall ligandparam   # only if this tree was installed under that name
     pip install .
 
 Editable install for development:
@@ -18,10 +19,20 @@ Editable install for development:
 
     pip install -e .
 
-This installs three packages from ``src/``: ``ligandparam``, ``ffpopt``, and
-``scission``, plus the CLI entry points listed in :doc:`cli`. Those in-tree
-copies are the **internal** companions. To point ligandparam at independent
-ffpopt / scission checkouts instead, see :doc:`companions`.
+This installs the **ALPS** distribution from ``src/``. ALPS is the package
+you install; it ships four import packages and their core Python
+dependencies:
+
+* ``alps`` - orchestrator (``lig-dihed-correct``, ``lig-scission``)
+* ``ligandparam`` - parameterization (``lig-getparam``)
+* ``ffpopt`` - torsion fitting
+* ``scission`` - fragmentation and frcmod merge
+
+Those in-tree ffpopt / scission copies are the **internal** companions.
+To point ALPS at independent checkouts instead, see :doc:`companions`.
+If you previously installed this repo as ``ligandparam``, uninstall that
+distribution first (``pip uninstall ligandparam``) so the ``alps``
+metadata is the one pip sees.
 
 Validate your install
 ---------------------

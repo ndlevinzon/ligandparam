@@ -10,11 +10,13 @@ a concrete step (Gaussian ESP, RESP fitting, Leap, ...).
 Repository layout
 -----------------
 
-As of version **1.6**, the installable tree under ``src/`` is:
+As of version **1.6**, the installable distribution is **ALPS**. One
+``pip install`` from this tree puts these packages on ``sys.path``:
 
 .. code-block:: text
 
    src/
+   +-- alps/                 # orchestrator (lig-dihed-correct, lig-scission)
    +-- ligandparam/          # parameterization only (lig-getparam)
    |   +-- recipes/
    |   +-- stages/
@@ -22,11 +24,10 @@ As of version **1.6**, the installable tree under ``src/`` is:
    |   +-- cli/
    |   +-- io/
    |   +-- ...
-   +-- alps/                 # orchestrator (lig-dihed-correct, lig-scission)
    +-- ffpopt/               # torsion / dihedral fitting (independent)
    |   +-- runtime/          # console, progress boards, CPU budget, --fast
    |   +-- scan/             # WavefrontEngine + WaveFront / WaveFrontND facades
-   |   +-- workflows/        # twist, fragmented, whole-ligand
+   |   +-- workflows/        # single-molecule twist, bond batches
    |   +-- dihed/            # thin Dihedrals facade; FitTypes / Fourier / ParmEd / solvers
    |   +-- geom/             # GeomOpt, constraints, geomeTRIC
    |   +-- affdo/            # optional AFFDO extras
@@ -35,8 +36,9 @@ As of version **1.6**, the installable tree under ``src/`` is:
 
 ``ligandparam`` owns parameterization (charges, typing, baseline
 ``frcmod`` / ``lib``). ``ffpopt`` + ``scission`` own optional **post-hoc**
-torsion correction on that Amber triplet. After ``pip install``, the
-packages under ``src/`` are the default (internal) companions. Set
+torsion correction on that Amber triplet. After ``pip install`` (the
+``alps`` distribution), the packages under ``src/`` are the default
+(internal) companions. Set
 ``LIGANDPARAM_FFPOPT=external`` / ``LIGANDPARAM_SCISSION=external`` plus
 ``*_PATH`` to load independent trees; see :doc:`companions`. Optional
 ``ffpopt-main/`` / ``scission-main/`` checkouts (often gitignored) are

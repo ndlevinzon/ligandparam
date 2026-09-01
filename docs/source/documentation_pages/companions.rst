@@ -7,7 +7,9 @@ Send this to the ffpopt / scission teams when they implement an independent
 package that ALPS can load **instead of** the in-tree copies under
 ``src/ffpopt`` and ``src/scission``.
 
-The bundled trees stay in this repo for comparison and for
+The pip distribution is **ALPS** (``pip install -e .`` from this tree).
+That install includes ``ligandparam``, ``ffpopt``, and ``scission``. The
+bundled trees stay in this repo for comparison and for
 ``LIGANDPARAM_FFPOPT=internal``. Switching is a resolver setting on ALPS.
 Import names stay ``ffpopt`` and ``scission``.
 

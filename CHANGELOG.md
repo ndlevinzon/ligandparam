@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **ALPS is the installable distribution** - ``pip install -e .`` installs
+  the ``alps`` package, which ships ``alps``, ``ligandparam``, ``ffpopt``,
+  and ``scission`` plus their core Python dependencies. CLI names are
+  unchanged. Uninstall a previous editable ``ligandparam`` install from
+  this tree first so pip metadata matches. Optional HL stacks stay extras
+  (``.[dihed]``, ``.[tblite]``, ``.[jax]``, ...).
+
 - **ALPS / independent ligandparam** - ``src/ligandparam`` no longer
   imports ``ffpopt`` or ``scission``. Logging, Gaussian job boards, and
   ``CopyParm`` live in ``ligandparam.runtime``. Twist / fragment CLIs

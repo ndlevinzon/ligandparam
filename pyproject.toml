@@ -3,9 +3,9 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ligandparam"
+name = "alps"
 version = "1.6.1"
-description = "A ligand parameterization package for Amber"
+description = "ALPS: Amber ligand parameterization, fragmentation, and torsion correction"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -20,6 +20,8 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent"
 ]
+# Core Python deps for the three modules ALPS ships (ligandparam, ffpopt,
+# scission). Optional HL / ML stacks stay extras. AmberTools is not on PyPI.
 dependencies = [
   "numpy<2",
   "pandas",
@@ -61,13 +63,13 @@ ml-potentials = [
 # AIMNet2 neural potential (--model aimnet2). Needs Python 3.11-3.13 and
 # PyTorch 2.8+. On CPU HPC: pip install torch --index-url
 # https://download.pytorch.org/whl/cpu  then pip install -e ".[aimnet]".
-# ASE is already a ligandparam core dep; extra "ase" pulls aimnet's ASE extra.
+# ASE is already an ALPS core dep; extra "ase" pulls aimnet's ASE extra.
 aimnet = [
   "aimnet[ase]",
 ]
 
 dihed = [
-  # Fragmented twist uses integrated src/ffpopt + src/scission.
+  # Fragmented twist uses the bundled src/ffpopt + src/scission trees.
   # Still needs AmberTools on PATH and an HL model stack (e.g. xtb/tblite).
   "ndfes",
   "geometric",  # geomeTRIC optimizer used by ffpopt WaveFront scans
@@ -95,15 +97,15 @@ docs = [
 ]
 
 all = [
-  "ligandparam[tblite]",
-  "ligandparam[ml]",
-  "ligandparam[ml-potentials]",
-  "ligandparam[aimnet]",
-  "ligandparam[dihed]",
-  "ligandparam[jax]",
-  "ligandparam[misc]",
-  "ligandparam[sage]",
-  "ligandparam[docs]",
+  "alps[tblite]",
+  "alps[ml]",
+  "alps[ml-potentials]",
+  "alps[aimnet]",
+  "alps[dihed]",
+  "alps[jax]",
+  "alps[misc]",
+  "alps[sage]",
+  "alps[docs]",
 ]
 
 [project.scripts]

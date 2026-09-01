@@ -42,18 +42,41 @@ class TestCorePackageInstall(unittest.TestCase):
 
         self.assertTrue(ligandparam.__version__)
         self.assertRegex(ligandparam.__version__, r"^\d+\.\d+")
-        # Packaging metadata should match the in-tree version when installed.
-        try:
-            dist_ver = importlib.metadata.version("ligandparam")
-        except importlib.metadata.PackageNotFoundError:
-            self.skipTest("ligandparam not installed as a distribution")
-        self.assertEqual(dist_ver, ligandparam.__version__)
 
-    def test_import_integrated_packages(self):
+    def test_alps_distribution_ships_companions(self):
+        import alps
         import ffpopt
         import ligandparam
         import scission
 
+        self.assertTrue(alps.__version__)
+        self.assertRegex(alps.__version__, r"^\d+\.\d+")
+        self.assertTrue(hasattr(ligandparam, "__version__"))
+        self.assertTrue(
+            hasattr(ffpopt, "Workflows")
+            or callable(getattr(ffpopt, "__getattr__", None))
+        )
+        self.assertTrue(hasattr(scission, "fragment_ligand"))
+        try:
+            dist_ver = importlib.metadata.version("alps")
+        except importlib.metadata.PackageNotFoundError:
+            self.skipTest("alps not installed as a distribution")
+        self.assertEqual(dist_ver, alps.__version__)
+        mapping = importlib.metadata.packages_distributions()
+        for pkg in ("alps", "ligandparam", "ffpopt", "scission"):
+            self.assertIn(
+                "alps",
+                mapping.get(pkg, []),
+                f"{pkg} should be owned by the alps distribution",
+            )
+
+    def test_import_integrated_packages(self):
+        import alps
+        import ffpopt
+        import ligandparam
+        import scission
+
+        self.assertTrue(hasattr(alps, "__version__"))
         self.assertTrue(hasattr(ligandparam, "__version__"))
         self.assertTrue(hasattr(ffpopt, "Workflows") or callable(getattr(ffpopt, "__getattr__", None)))
         self.assertTrue(hasattr(scission, "fragment_ligand"))
@@ -78,7 +101,8 @@ class TestCorePackageInstall(unittest.TestCase):
             [],
             "Missing required dependencies: "
             f"{missing}. Install with: pip install -e . "
-            "(use the project conda/mamba env from env.yaml when possible).",
+            "(ALPS ships ligandparam, ffpopt, and scission; use the project "
+            "conda/mamba env from env.yaml when possible).",
         )
 
     def test_numpy_runtime_usable(self):
@@ -298,9 +322,9 @@ class TestCLIEntrypoints(unittest.TestCase):
 
     def test_installed_console_scripts_when_available(self):
         try:
-            dist = importlib.metadata.distribution("ligandparam")
+            dist = importlib.metadata.distribution("alps")
         except importlib.metadata.PackageNotFoundError:
-            self.skipTest("ligandparam distribution metadata unavailable")
+            self.skipTest("alps distribution metadata unavailable")
         ep_names = {ep.name for ep in dist.entry_points if ep.group == "console_scripts"}
         for required in (
             "lig-getparam",
