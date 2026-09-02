@@ -1,6 +1,8 @@
 # Set by the ligandparam-bundled copy so companion resolution can tell
 # in-tree scission from an independent checkout of the same import name.
+# Independent GitLab/PyPI installs should omit this flag.
 __ligandparam_bundle__ = True
+__version__ = "0.3.0"
 
 from .Models import (
     Atom,

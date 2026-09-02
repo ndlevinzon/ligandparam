@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ligandparam"
+version = "1.0.0"
+description = "A ligand parameterization package for Amber"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Zeke Piskulich", email = "piskulichz@gmail.com"}
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "numpy<2",
+  "pandas",
+  "requests",
+  "MDAnalysis>2.7.0",
+  "parmed",
+  "rdkit",
+  "ase"
+]
+
+urls = { "Homepage" = "https://github.com/piskulichz/ligandparam" }
+
+[project.optional-dependencies]
+
+ml = [
+  "deepmd-kit",
+  "tensorflow",
+  "tblite"
+]
+
+misc = [
+  "openbabel",
+]
+
+sage = [
+  "openff-toolkit",
+]
+
+docs = [
+  "sphinx",
+  "sphinx_rtd_theme",
+]
+
+all = [
+  "ligandparam[ml]",
+  "ligandparam[misc]",
+  "ligandparam[sage]",
+  "ligandparam[docs]",
+]
+
+[project.scripts]
+lighfix = "ligandparam.cli.cli_lighfix:lighfix"
+lig-getparam = "ligandparam.cli.ligandparam_getparam:main"
+smiles-to-pdb = "ligandparam.cli.smiles_to_pdb:main"
+lig-to-sage = "ligandparam.cli.mol2_to_sage:main"
+
+
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
