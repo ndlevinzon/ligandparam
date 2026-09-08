@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Mapping, Optional, TextIO
@@ -184,10 +185,23 @@ class JobProgressStore:
         )
 
 
+def job_id_sort_key(job_id: str) -> tuple:
+    """Natural sort so ``fragment_2`` precedes ``fragment_10``."""
+    parts: list[tuple[int, int | str]] = []
+    for chunk in re.split(r"(\d+)", str(job_id)):
+        if not chunk:
+            continue
+        if chunk.isdigit():
+            parts.append((1, int(chunk)))
+        else:
+            parts.append((0, chunk.casefold()))
+    return tuple(parts)
+
+
 def jobs_fingerprint(jobs: Mapping[str, Mapping[str, Any]]) -> str:
     """Stable status signature (ignores elapsed / refresh timestamps)."""
     parts: list[str] = []
-    for jid in sorted(jobs):
+    for jid in sorted(jobs, key=job_id_sort_key):
         entry = jobs[jid] or {}
         parts.append(
             f"{jid}\t{entry.get('status', '')}\t{entry.get('stage', '')}\t"
@@ -234,7 +248,7 @@ def format_job_board(
     log_root_hint: str | None = None,
 ) -> str:
     """Format ``{id: {status, stage, detail, ...}}`` as a fixed-width board."""
-    ids = sorted(jobs.keys())
+    ids = sorted(jobs.keys(), key=job_id_sort_key)
     col_id = max([len(id_header)] + [len(i) for i in ids] + [10])
     col_st = max(
         [len("Status")] + [len(str(jobs[i].get("status", ""))) for i in ids] + [8]

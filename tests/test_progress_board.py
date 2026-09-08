@@ -107,6 +107,27 @@ class TestBoardFormatting(unittest.TestCase):
         self.assertIn("elapsed", board)
         self.assertNotIn("4m", board)
 
+    def test_fragments_list_in_numeric_order(self):
+        from ligandparam.runtime.ProgressBoard import format_fragment_board
+
+        board = format_fragment_board(
+            {
+                "fragment_10": {"status": "running", "stage": "twist", "detail": "1 bond(s)"},
+                "fragment_2": {"status": "done", "stage": "finished", "detail": "1 bond(s)"},
+                "fragment_1": {"status": "done", "stage": "finished", "detail": "2 bond(s)"},
+                "fragment_11": {"status": "queued", "stage": "queued", "detail": "1 bond(s)"},
+            }
+        )
+        names = [
+            line.split()[0]
+            for line in board.splitlines()
+            if line.strip().startswith("fragment_")
+        ]
+        self.assertEqual(
+            names,
+            ["fragment_1", "fragment_2", "fragment_10", "fragment_11"],
+        )
+
 
 class TestJobBoardWatcher(unittest.TestCase):
     def test_stream_heartbeat_and_status_file(self):
