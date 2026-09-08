@@ -90,9 +90,17 @@ def pick_quote(quotes_path: Path | None = None) -> Optional[str]:
     return random.choice(quotes)
 
 
-def format_reminder_line(quote: str) -> str:
+def reminder_speaker() -> str:
+    """Who owns the success quote: ALPS when this process is an ALPS job."""
+    if os.environ.get("ALPS_BANNER_PRINTED"):
+        return "ALPS"
+    return "LIGANDPARAM"
+
+
+def format_reminder_line(quote: str, *, speaker: str | None = None) -> str:
     """Return the success reminder line for one quote."""
-    return f"LIGANDPARAM reminds you: {quote}"
+    name = speaker if speaker is not None else reminder_speaker()
+    return f"{name} reminds you: {quote}"
 
 
 def format_startup_banner(
@@ -158,17 +166,19 @@ def log_success_quote(
     logger: logging.Logger | None = None,
     *,
     quotes_path: Path | None = None,
+    speaker: str | None = None,
 ) -> Optional[str]:
     """Pick a random quote and emit it through ``logger`` (or stdout).
 
     Uses :meth:`logging.Logger.info` when ``logger`` is given so the line
     follows the same file/stream format as the rest of the run. No-op when
-    the quotes file is missing or empty.
+    the quotes file is missing or empty. Under an ALPS job the line is
+    ``ALPS reminds you: ...``; standalone ligandparam keeps ``LIGANDPARAM``.
     """
     quote = pick_quote(quotes_path)
     if not quote:
         return None
-    line = format_reminder_line(quote)
+    line = format_reminder_line(quote, speaker=speaker)
     if logger is not None:
         logger.info(line)
     else:

@@ -102,17 +102,34 @@ class TestLogging(unittest.TestCase):
             self.assertEqual(load_quotes(empty), [])
             self.assertIsNone(log_success_quote(quotes_path=empty))
 
+            with patch.dict("os.environ", {}, clear=False):
+                import os
+
+                os.environ.pop("ALPS_BANNER_PRINTED", None)
+                self.assertEqual(
+                    format_reminder_line("hello"),
+                    "LIGANDPARAM reminds you: hello",
+                )
+                self.assertEqual(
+                    format_reminder_line(
+                        '"It is nothing to die; it is dreadful not to live."'
+                        " - Victor Hugo, Les Miserables"
+                    ),
+                    'LIGANDPARAM reminds you: "It is nothing to die; '
+                    'it is dreadful not to live." - Victor Hugo, Les Miserables',
+                )
+                with patch.dict("os.environ", {"ALPS_BANNER_PRINTED": "1"}):
+                    self.assertEqual(
+                        format_reminder_line("hello"),
+                        "ALPS reminds you: hello",
+                    )
             self.assertEqual(
-                format_reminder_line("hello"),
-                "LIGANDPARAM reminds you: hello",
+                format_reminder_line("hello", speaker="ALPS"),
+                "ALPS reminds you: hello",
             )
             self.assertEqual(
-                format_reminder_line(
-                    '"It is nothing to die; it is dreadful not to live."'
-                    " - Victor Hugo, Les Miserables"
-                ),
-                'LIGANDPARAM reminds you: "It is nothing to die; '
-                'it is dreadful not to live." - Victor Hugo, Les Miserables',
+                format_reminder_line("hello", speaker="LIGANDPARAM"),
+                "LIGANDPARAM reminds you: hello",
             )
             self.assertFalse(dihed_correct_ok(None))
             self.assertFalse(dihed_correct_ok({"merged_frcmod": "/no/such.frcmod"}))
@@ -128,8 +145,12 @@ class TestLogging(unittest.TestCase):
                 )
             )
             self.assertFalse(dihed_correct_ok({"merged_frcmod": str(frc)}, dry_run=True))
-            with patch("sys.stdout", io.StringIO()) as buf:
-                picked = log_success_quote(quotes_path=path)
+            with patch.dict("os.environ", {}, clear=False):
+                import os
+
+                os.environ.pop("ALPS_BANNER_PRINTED", None)
+                with patch("sys.stdout", io.StringIO()) as buf:
+                    picked = log_success_quote(quotes_path=path)
             self.assertIn(picked, ("first quote", "wrapped"))
             out = buf.getvalue()
             self.assertIn("LIGANDPARAM reminds you:", out)
