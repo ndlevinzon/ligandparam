@@ -1,0 +1,5 @@
+[console_scripts]
+lig-getparam = ligandparam.cli.LigGetParam:main
+lig-to-sage = ligandparam.cli.Mol2ToSage:main
+lighfix = ligandparam.cli.CliLigHFix:lighfix
+smiles-to-pdb = ligandparam.cli.SmilesToPdb:main
