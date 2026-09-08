@@ -5,6 +5,7 @@ Recipes assemble a pipeline (Antechamber → Gaussian ESP / RESP → `parmchk2`
 → LEaP). Each stage is a single tool step you can add, remove, or replace.
 
 Documentation: https://ligandparam.readthedocs.io/en/latest/
+Repo: https://github.com/ndlevinzon/ligandparam
 
 ## Install
 
@@ -17,10 +18,10 @@ From this directory:
 python3 -m pip install -e .
 ```
 
-From the ALPS / RutgersLBSR monorepo root:
+From the ALPS workspace (sibling checkouts):
 
 ```bash
-python3 -m pip install -e src/ligandparam
+python3 -m pip install -e ligandparam
 ```
 
 Optional extras:
@@ -117,6 +118,12 @@ per process). Recipes log another quote after a successful run. ALPS can
 parse these files later.
 
 This package does **not** run torsion fitting or ligand fragmentation.
-Those stay in ffpopt / scission (wired by ALPS on a later push).
+Those stay in ffpopt / scission (wired by ALPS).
 Recipes still accept `dihed_correct=...` so old callers do not break;
 ligandparam only records the flags and warns.
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -v
+```

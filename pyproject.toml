@@ -29,7 +29,7 @@ dependencies = [
   "typing_extensions",
 ]
 
-urls = { "Homepage" = "https://gitlab.com/RutgersLBSR/ligandparam" }
+urls = { "Homepage" = "https://github.com/ndlevinzon/ligandparam" }
 
 [project.optional-dependencies]
 ml = [
@@ -59,8 +59,8 @@ smiles-to-pdb = "ligandparam.cli.SmilesToPdb:main"
 lig-to-sage = "ligandparam.cli.Mol2ToSage:main"
 
 # This directory is both the project root and the import package.
-# `pip install -e src/ligandparam` (from the ALPS monorepo) or
-# `pip install -e .` (from a standalone checkout of this folder).
+# `pip install -e .` from this checkout, or `pip install -e ligandparam`
+# from the ALPS workspace.
 [tool.setuptools]
 package-dir = { "ligandparam" = "." }
 packages = [
