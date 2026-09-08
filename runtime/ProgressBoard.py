@@ -11,7 +11,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, TextIO
 
 PathLike = str | Path
 
@@ -142,7 +142,10 @@ class JobProgressStore:
             entry["id"] = job_id
             entry["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
             if status is not None:
-                entry["status"] = str(status)
+                new_status = str(status)
+                entry["status"] = new_status
+                if new_status == "running" and not entry.get("started"):
+                    entry["started"] = entry["updated"]
             if stage is not None:
                 entry["stage"] = str(stage)
             if detail is not None:
@@ -159,14 +162,45 @@ class JobProgressStore:
 
     def render_board(self, *, log_root_hint: str | None = None) -> str:
         """Return an ASCII status table for the current snapshot."""
+        jobs = self.snapshot()
         return format_job_board(
-            self.snapshot(),
+            jobs,
             title=self.title,
             id_header=self.id_header,
             empty_hint=self.empty_hint,
             detail_hint_label=self.detail_hint_label,
             log_root_hint=log_root_hint,
         )
+
+
+def jobs_fingerprint(jobs: Mapping[str, Mapping[str, Any]]) -> str:
+    """Stable status signature (ignores elapsed / refresh timestamps)."""
+    parts: list[str] = []
+    for jid in sorted(jobs):
+        entry = jobs[jid] or {}
+        parts.append(
+            f"{jid}\t{entry.get('status', '')}\t{entry.get('stage', '')}\t"
+            f"{entry.get('error', '')}"
+        )
+    return "\n".join(parts)
+
+
+def elapsed_phrase(started: str | None) -> str:
+    """Human elapsed time from a ``YYYY-MM-DD HH:MM:SS`` start stamp."""
+    if not started:
+        return ""
+    try:
+        t0 = time.mktime(time.strptime(str(started), "%Y-%m-%d %H:%M:%S"))
+    except (ValueError, OverflowError, OSError):
+        return ""
+    secs = max(0, int(time.time() - t0))
+    if secs < 60:
+        return f"{secs}s"
+    mins, rem = divmod(secs, 60)
+    if mins < 60:
+        return f"{mins}m {rem}s"
+    hours, rem_m = divmod(mins, 60)
+    return f"{hours}h {rem_m}m"
 
 
 def format_job_board(
@@ -187,7 +221,7 @@ def format_job_board(
     col_sg = max(
         [len("Stage")] + [len(str(jobs[i].get("stage", ""))) for i in ids] + [8]
     )
-    col_dt = 44
+    col_dt = 52
 
     def row(jid: str, status: str, stage: str, detail: str) -> str:
         d = (detail or "")[: col_dt - 1]
@@ -198,9 +232,11 @@ def format_job_board(
     width = col_id + col_st + col_sg + col_dt + 8
     bar = "=" * width
     sep = "-" * width
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     lines = [
         bar,
         f" {title}",
+        f" refreshed {stamp}",
         bar,
         row(id_header, "Status", "Stage", "Detail"),
         sep,
@@ -219,6 +255,10 @@ def format_job_board(
         status = str(e.get("status") or "?")
         stage = str(e.get("stage") or "-")
         detail = str(e.get("detail") or "")
+        if status == "running":
+            elapsed = elapsed_phrase(e.get("started"))
+            if elapsed:
+                detail = (detail + " | " if detail else "") + f"elapsed {elapsed}"
         if e.get("error") and status == "failed":
             detail = (detail + " | " if detail else "") + str(e["error"])[:40]
         lines.append(row(jid, status, stage, detail))
@@ -244,7 +284,14 @@ def format_job_board(
 
 
 class JobBoardWatcher:
-    """Background thread that refreshes a status board file and logs on change."""
+    """Background thread that refreshes a status board file and stdout.
+
+    The JSON/board files update every ``interval_sec``. Stdout (or the logger
+    fallback) reprints when a job's status fingerprint changes, on a
+    heartbeat while something is still running, and on start/stop. That keeps
+    Slurm ``.out`` files alive during long silent ``antechamber`` / ``g16``
+    calls without dumping a table on every file refresh.
+    """
 
     def __init__(
         self,
@@ -255,6 +302,8 @@ class JobBoardWatcher:
         interval_sec: float = 5.0,
         log_root_hint: str | None = None,
         thread_name: str = "job-progress-board",
+        stream: TextIO | None = None,
+        heartbeat_sec: float | None = None,
     ) -> None:
         import threading
 
@@ -263,11 +312,18 @@ class JobBoardWatcher:
         self.logger = logger
         self.interval_sec = float(interval_sec)
         self.log_root_hint = log_root_hint
+        self.stream = stream
+        if heartbeat_sec is None:
+            self.heartbeat_sec = 20.0 if stream is not None else 0.0
+        else:
+            self.heartbeat_sec = float(heartbeat_sec)
         self._stop = threading.Event()
         self._thread = threading.Thread(
             target=self._loop, name=thread_name, daemon=True
         )
         self._last = ""
+        self._last_fp = None
+        self._last_stream_at = 0.0
 
     def start(self) -> None:
         self._emit(force_log=True)
@@ -275,19 +331,48 @@ class JobBoardWatcher:
 
     def stop(self, *, final: bool = True) -> None:
         self._stop.set()
-        self._thread.join(timeout=max(1.0, self.interval_sec))
+        self._thread.join(timeout=max(1.0, min(self.interval_sec, 2.0)))
         if final:
             self._emit(force_log=True)
 
+    def _write_stream(self, text: str) -> None:
+        out = self.stream
+        if out is None:
+            if self.logger is not None:
+                self.logger.info("\n%s", text.rstrip("\n"))
+            return
+        try:
+            payload = text if text.endswith("\n") else text + "\n"
+            out.write("\n" + payload if not payload.startswith("\n") else payload)
+            out.flush()
+        except OSError:
+            pass
+
     def _emit(self, *, force_log: bool = False) -> None:
-        text = self.store.render_board(log_root_hint=self.log_root_hint)
+        jobs = self.store.snapshot()
+        text = format_job_board(
+            jobs,
+            title=self.store.title,
+            id_header=self.store.id_header,
+            empty_hint=self.store.empty_hint,
+            detail_hint_label=self.store.detail_hint_label,
+            log_root_hint=self.log_root_hint,
+        )
         try:
             _atomic_write_text(self.board_path, text)
         except OSError:
             pass
-        if force_log or text != self._last:
-            self.logger.info("\n%s", text.rstrip("\n"))
+        fp = jobs_fingerprint(jobs)
+        now = time.monotonic()
+        changed = fp != self._last_fp
+        heartbeat_due = self.heartbeat_sec > 0 and (
+            now - self._last_stream_at
+        ) >= self.heartbeat_sec
+        if force_log or changed or heartbeat_due:
+            self._write_stream(text)
             self._last = text
+            self._last_fp = fp
+            self._last_stream_at = now
 
     def _loop(self) -> None:
         while not self._stop.wait(timeout=self.interval_sec):
@@ -372,6 +457,8 @@ def make_board_watcher(
     logger,
     interval_sec: float = 5.0,
     log_root_hint: str | None = None,
+    stream: TextIO | None = None,
+    heartbeat_sec: float | None = None,
 ) -> JobBoardWatcher:
     """Build a :class:`JobBoardWatcher` from a named fragment/whole profile."""
     cfg = _board_profile(kind)
@@ -382,6 +469,8 @@ def make_board_watcher(
         interval_sec=interval_sec,
         log_root_hint=log_root_hint,
         thread_name=cfg["watcher_thread"],
+        stream=stream,
+        heartbeat_sec=heartbeat_sec,
     )
 
 

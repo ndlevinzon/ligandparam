@@ -591,6 +591,7 @@ class StageGaussianRotation(AbstractStage):
     def _run(self, dry_run=False, nproc: Optional[int] = None, mem: Optional[int] = None) -> Any:
         """Pool orientation ESP jobs. ``nproc`` / ``mem`` are node budgets."""
         import multiprocessing as mp
+        import sys
 
         from ligandparam.runtime.ProgressBoard import JobBoardWatcher, JobProgressStore
 
@@ -687,6 +688,8 @@ class StageGaussianRotation(AbstractStage):
             board_path=board_path,
             logger=self.logger,
             interval_sec=5.0,
+            heartbeat_sec=30.0,
+            stream=sys.__stdout__,
             log_root_hint=str(self.gaussian_cwd / "*_rot_*.log"),
             thread_name="rot-progress-board",
         )
