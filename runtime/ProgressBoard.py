@@ -139,15 +139,26 @@ class JobProgressStore:
             data = self._read_unlocked()
             items = data.setdefault(self.collection_key, {})
             entry = dict(items.get(job_id) or {})
+            prev_status = str(entry.get("status") or "")
+            prev_stage = str(entry.get("stage") or "")
             entry["id"] = job_id
-            entry["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            now = time.time()
+            entry["updated"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
             if status is not None:
-                new_status = str(status)
-                entry["status"] = new_status
-                if new_status == "running" and not entry.get("started"):
-                    entry["started"] = entry["updated"]
+                entry["status"] = str(status)
             if stage is not None:
                 entry["stage"] = str(stage)
+            new_status = str(entry.get("status") or "")
+            new_stage = str(entry.get("stage") or "")
+            if new_status == "running":
+                status_changed = status is not None and prev_status != "running"
+                stage_changed = stage is not None and new_stage != prev_stage
+                if status_changed or stage_changed or not entry.get("started_epoch"):
+                    entry["started"] = entry["updated"]
+                    entry["started_epoch"] = now
+            elif new_status == "queued":
+                entry.pop("started", None)
+                entry.pop("started_epoch", None)
             if detail is not None:
                 entry["detail"] = str(detail)
             if error is not None:
@@ -185,15 +196,25 @@ def jobs_fingerprint(jobs: Mapping[str, Mapping[str, Any]]) -> str:
     return "\n".join(parts)
 
 
-def elapsed_phrase(started: str | None) -> str:
-    """Human elapsed time from a ``YYYY-MM-DD HH:MM:SS`` start stamp."""
-    if not started:
-        return ""
-    try:
-        t0 = time.mktime(time.strptime(str(started), "%Y-%m-%d %H:%M:%S"))
-    except (ValueError, OverflowError, OSError):
-        return ""
-    secs = max(0, int(time.time() - t0))
+def elapsed_phrase(
+    started: str | None,
+    started_epoch: float | None = None,
+) -> str:
+    """Human elapsed time from a start stamp (prefer Unix epoch seconds)."""
+    secs: int | None = None
+    if started_epoch is not None:
+        try:
+            secs = max(0, int(time.time() - float(started_epoch)))
+        except (TypeError, ValueError):
+            secs = None
+    if secs is None:
+        if not started:
+            return ""
+        try:
+            t0 = time.mktime(time.strptime(str(started), "%Y-%m-%d %H:%M:%S"))
+        except (ValueError, OverflowError, OSError):
+            return ""
+        secs = max(0, int(time.time() - t0))
     if secs < 60:
         return f"{secs}s"
     mins, rem = divmod(secs, 60)
@@ -256,7 +277,7 @@ def format_job_board(
         stage = str(e.get("stage") or "-")
         detail = str(e.get("detail") or "")
         if status == "running":
-            elapsed = elapsed_phrase(e.get("started"))
+            elapsed = elapsed_phrase(e.get("started"), e.get("started_epoch"))
             if elapsed:
                 detail = (detail + " | " if detail else "") + f"elapsed {elapsed}"
         if e.get("error") and status == "failed":

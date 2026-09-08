@@ -57,8 +57,55 @@ class TestBoardFormatting(unittest.TestCase):
             store.register("A", status="queued", stage="queued")
             store.update("A", status="running", stage="running")
             first = store.snapshot()["A"]["started"]
+            first_epoch = store.snapshot()["A"]["started_epoch"]
             store.update("A", status="running", stage="running")
-            self.assertEqual(store.snapshot()["A"]["started"], first)
+            snap = store.snapshot()["A"]
+            self.assertEqual(snap["started"], first)
+            self.assertEqual(snap["started_epoch"], first_epoch)
+
+    def test_new_stage_restarts_elapsed_clock(self):
+        from ligandparam.runtime.ProgressBoard import JobProgressStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = JobProgressStore(Path(td) / "p.json")
+            store.update("A", status="running", stage="prepare")
+            first = store.snapshot()["A"]["started_epoch"]
+            time.sleep(0.05)
+            store.update("A", status="running", stage="twist")
+            self.assertGreater(store.snapshot()["A"]["started_epoch"], first)
+
+    def test_reregister_queued_clears_stale_started(self):
+        from ligandparam.runtime.ProgressBoard import JobProgressStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = JobProgressStore(Path(td) / "p.json")
+            store.update("A", status="running", stage="twist")
+            self.assertIn("started_epoch", store.snapshot()["A"])
+            store.register("A", status="queued", stage="queued")
+            snap = store.snapshot()["A"]
+            self.assertNotIn("started", snap)
+            self.assertNotIn("started_epoch", snap)
+
+    def test_elapsed_prefers_epoch(self):
+        from ligandparam.runtime.ProgressBoard import elapsed_phrase, format_job_board
+
+        stale = time.strftime(
+            "%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 273)
+        )
+        self.assertRegex(elapsed_phrase(stale, time.time()), r"^\d+s$")
+        board = format_job_board(
+            {
+                "fragment_1": {
+                    "status": "running",
+                    "stage": "twist",
+                    "detail": "2 bond(s)",
+                    "started": stale,
+                    "started_epoch": time.time(),
+                }
+            }
+        )
+        self.assertIn("elapsed", board)
+        self.assertNotIn("4m", board)
 
 
 class TestJobBoardWatcher(unittest.TestCase):
