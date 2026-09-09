@@ -54,6 +54,9 @@ class FreeLigand(Recipe):
     dihed_fragment_config : FragmentConfig or dict, optional
         Scission fragmentation settings (``FragmentConfig`` or a dict for
         ``FragmentConfig.from_dict``). Default ``None``.
+    dihed_fragment_strategy : str, optional
+        Named scission scheme (``scission``, ``pfizer``, ``wbo``) merged into
+        ``dihed_fragment_config`` for ALPS ``lig-dihed-correct``.
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional

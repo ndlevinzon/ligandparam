@@ -30,6 +30,17 @@ def pop_dihed_options(kwargs: MutableMapping[str, Any]) -> dict[str, Any]:
     These flags are recorded on the recipe for ALPS. ligandparam does not
     run ffpopt when they are set.
     """
+    from dataclasses import replace as dc_replace
+
+    strategy = kwargs.pop("dihed_fragment_strategy", None)
+    fragment_config = coerce_fragment_config(kwargs.pop("dihed_fragment_config", None))
+    if strategy:
+        if fragment_config is None:
+            fragment_config = {"strategy": str(strategy)}
+        elif isinstance(fragment_config, dict):
+            fragment_config = {**fragment_config, "strategy": str(strategy)}
+        else:
+            fragment_config = dc_replace(fragment_config, strategy=str(strategy))
     return {
         "dihed_correct": bool(kwargs.pop("dihed_correct", False)),
         "dihed_model": kwargs.pop("dihed_model", "qdpi2"),
@@ -41,9 +52,8 @@ def pop_dihed_options(kwargs: MutableMapping[str, Any]) -> dict[str, Any]:
         "dihed_out_frcmod": kwargs.pop("dihed_out_frcmod", None),
         "dihed_out_dir": kwargs.pop("dihed_out_dir", None),
         "dihed_rotatable_bond_smarts": kwargs.pop("dihed_rotatable_bond_smarts", None),
-        "dihed_fragment_config": coerce_fragment_config(
-            kwargs.pop("dihed_fragment_config", None)
-        ),
+        "dihed_fragment_config": fragment_config,
+        "dihed_fragment_strategy": strategy,
     }
 
 

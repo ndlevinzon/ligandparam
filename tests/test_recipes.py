@@ -353,6 +353,21 @@ class TestDihedOptions(unittest.TestCase):
         self.assertEqual(cfg["angle_step"], 15)
         self.assertEqual(coerce_fragment_config("pass"), "pass")
 
+    def test_dihed_fragment_strategy_merges_into_config(self):
+        from ligandparam.recipes.DihedOptions import pop_dihed_options
+
+        opts = pop_dihed_options({"dihed_fragment_strategy": "pfizer"})
+        self.assertEqual(opts["dihed_fragment_strategy"], "pfizer")
+        self.assertEqual(opts["dihed_fragment_config"]["strategy"], "pfizer")
+        opts2 = pop_dihed_options(
+            {
+                "dihed_fragment_config": {"angle_step": 15},
+                "dihed_fragment_strategy": "wbo",
+            }
+        )
+        self.assertEqual(opts2["dihed_fragment_config"]["strategy"], "wbo")
+        self.assertEqual(opts2["dihed_fragment_config"]["angle_step"], 15)
+
 
 class TestRecipeDefaultsIsolation(unittest.TestCase):
     def test_fresh_defaults_not_shared(self):

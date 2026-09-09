@@ -34,20 +34,23 @@ __all__ = list(_EXPORTS)
 
 
 def __getattr__(name: str) -> Any:
+    import importlib
+
     if name == "StageSmilestoPDB":
         from .SmilesToPdb import StageSmilesToPDB as StageSmilestoPDB
 
         return StageSmilestoPDB
     mod = _EXPORTS.get(name)
-    if mod is None:
-        # Fall back to utilsstages for misc helpers historically star-imported.
-        from . import StageUtils as _utils
-        if hasattr(_utils, name):
-            return getattr(_utils, name)
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-    m = importlib.import_module(mod, __name__)
-    return getattr(m, name)
+    if mod is not None:
+        m = importlib.import_module(mod, __name__)
+        return getattr(m, name)
+    # ``from . import StageUtils`` would recurse through this __getattr__.
+    utils = importlib.import_module(".StageUtils", __name__)
+    if name == "StageUtils":
+        return utils
+    if hasattr(utils, name):
+        return getattr(utils, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:

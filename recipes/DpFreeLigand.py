@@ -45,6 +45,8 @@ class DPFreeLigand(Recipe):
         Wavefront dihedral step in degrees (CLI ``--delta``). Default ``10``.
     dihed_fragment_config : FragmentConfig or dict, optional
         Scission fragmentation settings. Default ``None``.
+    dihed_fragment_strategy : str, optional
+        Named scission scheme merged into ``dihed_fragment_config`` for ALPS.
     nproc, mem : int, optional
         Gaussian processor count and memory in GB.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional

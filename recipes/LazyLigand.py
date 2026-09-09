@@ -43,6 +43,8 @@ class LazyLigand(Recipe):
         Wavefront dihedral step in degrees (CLI ``--delta``). Default ``10``.
     dihed_fragment_config : FragmentConfig or dict, optional
         Scission fragmentation settings. Default ``None``.
+    dihed_fragment_strategy : str, optional
+        Named scission scheme merged into ``dihed_fragment_config`` for ALPS.
     gaussian_root, gauss_exedir, gaussian_binary, gaussian_scratch : optional
         Gaussian environment overrides; otherwise environment variables are used.
     **kwargs
