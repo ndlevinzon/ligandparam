@@ -84,6 +84,7 @@ def init_normalize_center_stages(
             cwd=recipe.cwd,
             out_mol2=initial_mol2,
             net_charge=recipe.net_charge,
+            assign_charges=False,
             logger=recipe.logger,
             **recipe.kwargs,
         ),

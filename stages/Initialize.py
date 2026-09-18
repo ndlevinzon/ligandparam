@@ -33,6 +33,10 @@ class StageInitialize(AbstractStage):
         Path to the output mol2 file.
     net_charge : float, optional
         Net charge for the molecule (default: 0.0).
+    assign_charges : bool, optional
+        If True (default), run AM1-BCC / ``-c bcc`` (SQM). Gaussian RESP
+        recipes set this False so Initialize only assigns GAFF types and
+        still writes ``-nc`` / ``-m`` onto the mol2.
     atom_type : str, optional
         Atom type (default: 'gaff2').
     charge_model : str, optional
@@ -83,11 +87,15 @@ class StageInitialize(AbstractStage):
         self.add_required(self.in_pdb)
         self.out_mol2 = Path(kwargs["out_mol2"])
 
-        self.net_charge = kwargs.get("net_charge", 0.0)
+        self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
         self.atom_type = kwargs.get("atom_type", "gaff2")
         self.charge_model = kwargs.get("charge_model", "bcc")
+        self.multiplicity = int(kwargs.get("multiplicity", 1))
+        # Gaussian RESP recipes only need GAFF types here. ``-c bcc`` launches
+        # SQM and is what dies when -nc is dropped for anions.
+        self.assign_charges = bool(kwargs.get("assign_charges", True))
         self.secondary = kwargs.get("sqm", False)
-        if self.charge_model not in ("bcc", "abcg2"):
+        if self.assign_charges and self.charge_model not in ("bcc", "abcg2"):
             raise ValueError(f"Unknown charge model '{self.charge_model}'. Must be 'bcc' or 'abcg2'")
         if "molname" in kwargs:
             self.additional_args = {"rn": kwargs["molname"]}
@@ -127,20 +135,31 @@ class StageInitialize(AbstractStage):
             ftype= "mol2"
         else:
             ftype = "pdb"
-        ante.call(
+        ante_kw = dict(
             i=self.in_pdb,
             fi=ftype,
             o=self.out_mol2,
             fo="mol2",
-            c=self.charge_model,
             nc=self.net_charge,
+            m=self.multiplicity,
             pf="y",
             at=self.atom_type,
             an="no",
             dry_run=dry_run,
             **self.additional_args,
         )
-        if self.secondary:
+        if self.assign_charges:
+            ante_kw["c"] = self.charge_model
+        else:
+            self.logger.info(
+                "Initialize: skipping antechamber -c %s (assign_charges=False); "
+                "passing -nc %s -m %s for the mol2 header only",
+                self.charge_model,
+                self.net_charge,
+                self.multiplicity,
+            )
+        ante.call(**ante_kw)
+        if self.secondary and self.assign_charges:
             second_ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
             second_ante.call(
                 i="sqm.pdb",
@@ -149,6 +168,7 @@ class StageInitialize(AbstractStage):
                 fo="mol2",
                 c=self.charge_model,
                 nc=self.net_charge,
+                m=self.multiplicity,
                 pf="y",
                 at=self.atom_type,
                 an="no",

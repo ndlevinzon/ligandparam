@@ -43,6 +43,22 @@ def _subprocess_failure_message(cwd, p, tool: str = "Command") -> str:
     return " ".join(parts)
 
 
+def _format_program_flag(key: str, value) -> list[str]:
+    """Turn ``call(nc=-1)`` into argv that Amber will not treat as a new flag.
+
+    Antechamber's option loop treats a token that starts with ``-`` as the
+    next switch. ``-nc -1`` (and ``-nc -1.0``) therefore drops the charge and
+    SQM runs as a neutral singlet — the odd-electron fatal error on anions.
+    """
+    if key == "nc":
+        n = int(round(float(value)))
+        token = str(n) if n >= 0 else f" {n}"
+        return [f"-{key}", token]
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and float(value) < 0:
+        return [f"-{key}", f" {value}"]
+    return [f"-{key}", str(value)]
+
+
 class SimpleInterface:
     """Base wrapper for calling an external program.
 
@@ -115,7 +131,7 @@ class SimpleInterface:
                 shell = True
             else:
                 if value is not None:
-                    command.extend([f"-{key}", str(value)])
+                    command.extend(_format_program_flag(key, value))
 
         if dry_run:
             self.logger.info(f"Command: {' '.join(command)}")

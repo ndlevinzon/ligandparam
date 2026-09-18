@@ -297,7 +297,7 @@ class GaussianMinimizeRESP(AbstractStage):
         self._validate_input_paths(**kwargs)
         self.opt_theory = kwargs.get("opt_theory", "PBE1PBE/6-31G*")
         self.resp_theory = kwargs.get("resp_theory", "HF/6-31G*")
-        self.net_charge = kwargs.get("net_charge", 0.0)
+        self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
         self.minimize = kwargs.get("minimize", True)
@@ -472,7 +472,7 @@ class StageGaussianRotation(AbstractStage):
         self._validate_input_paths(**kwargs)
         self.opt_theory = kwargs.get("opt_theory", "HF/6-31G*")
         self.resp_theory = kwargs.get("resp_theory", "HF/6-31G*")
-        self.net_charge = kwargs.get("net_charge", 0.0)
+        self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
 
@@ -781,11 +781,11 @@ class StageGaussianToMol2(AbstractStage):
         self.out_mol2 = Path(kwargs["out_mol2"])
         self.temp1_mol2 = Path(self.cwd, f"{self.out_mol2.stem}.tmp1.mol2")
         self.temp2_mol2 = Path(self.cwd, f"{self.out_mol2.stem}.tmp2.mol2")
-        self.net_charge = kwargs.get("net_charge", 0.0)
+        self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
         self.atom_type = kwargs.get("atom_type", "gaff2")
 
         self._validate_input_paths(**kwargs)
-        self.net_charge = kwargs.get("net_charge", 0.0)
+        self.multiplicity = int(kwargs.get("multiplicity", 1))
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
 
@@ -801,7 +801,7 @@ class StageGaussianToMol2(AbstractStage):
 
         # Convert from gaussian to mol2
         ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
-        ante.call(i=self.in_log, fi="gout", o=self.temp1_mol2, fo="mol2", pf="y", at=self.atom_type, an="no", nc=self.net_charge, dry_run=dry_run)
+        ante.call(i=self.in_log, fi="gout", o=self.temp1_mol2, fo="mol2", pf="y", at=self.atom_type, an="no", nc=self.net_charge, m=self.multiplicity, dry_run=dry_run)
 
         # Assign the charges
         if not dry_run:
@@ -814,7 +814,7 @@ class StageGaussianToMol2(AbstractStage):
 
         # Use antechamber to clean up the mol2 format
         ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
-        ante.call(i=self.temp2_mol2, fi="mol2", o=self.out_mol2, fo="mol2", pf="y", at=self.atom_type, an="no", nc=self.net_charge, dry_run=dry_run)
+        ante.call(i=self.temp2_mol2, fi="mol2", o=self.out_mol2, fo="mol2", pf="y", at=self.atom_type, an="no", nc=self.net_charge, m=self.multiplicity, dry_run=dry_run)
 
         return
 

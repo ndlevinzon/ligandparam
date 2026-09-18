@@ -89,7 +89,7 @@ def configure_gaussian_recipe(
     kwargs.pop("logger", None)
 
     try:
-        obj.net_charge = kwargs.pop("net_charge")
+        obj.net_charge = int(round(float(kwargs.pop("net_charge"))))
     except KeyError as exc:
         raise KeyError("Missing net_charge") from exc
 

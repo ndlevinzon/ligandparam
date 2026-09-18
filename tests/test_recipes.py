@@ -88,6 +88,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             types = [type(s) for s in recipe.stages]
             self.assertGreaterEqual(len(types), 5)
             self.assertEqual(types[0], StageInitialize)
+            self.assertFalse(recipe.stages[0].assign_charges)
             self.assertIn(StageNormalizeCharge, types)
             self.assertIn(StageMultiRespFit, types)
             self._assert_tail_parmchk_leap(recipe.stages)
@@ -133,6 +134,7 @@ class TestRecipeSetupGraphs(unittest.TestCase):
             recipe.setup()
             types = [type(s) for s in recipe.stages]
             self.assertEqual(types[0], StageInitialize)
+            self.assertTrue(recipe.stages[0].assign_charges)
             self.assertIn(StageNormalizeCharge, types)
             self.assertEqual(sum(1 for t in types if t.__name__ == "StageParmChk"), 1)
             self._assert_tail_parmchk_leap(recipe.stages)
@@ -318,6 +320,7 @@ class TestCommonRecipeTail(unittest.TestCase):
             [type(s) for s in stages],
             [StageInitialize, StageNormalizeCharge, StageDisplaceMol],
         )
+        self.assertFalse(stages[0].assign_charges)
         gkw = gaussian_runtime_kwargs(recipe)
         self.assertEqual(gkw["nproc"], 2)
         self.assertEqual(gkw["mem"], 4)

@@ -54,8 +54,9 @@ class StageLazyResp(AbstractStage):
         self.add_required(self.in_gaussian_log)
         self.out_mol2 = Path(kwargs["out_mol2"])
 
-        self.net_charge = kwargs.get("net_charge", 0.0)
+        self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
         self.atom_type = kwargs.get("atom_type", "gaff2")
+        self.multiplicity = int(kwargs.get("multiplicity", 1))
 
         if "molname" in kwargs:
             self.additional_args = {"rn": kwargs["molname"]}
@@ -89,6 +90,7 @@ class StageLazyResp(AbstractStage):
             gv=0,
             c="resp",
             nc=self.net_charge,
+            m=self.multiplicity,
             at=self.atom_type,
             an="no",
             dry_run=dry_run,

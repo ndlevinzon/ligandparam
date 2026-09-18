@@ -39,7 +39,7 @@ class LazierLigand(Recipe):
         kwargs.pop("logger", None)
 
         try:
-            self.net_charge = kwargs.pop("net_charge")
+            self.net_charge = int(round(float(kwargs.pop("net_charge"))))
         except KeyError as exc:
             raise KeyError("Missing net_charge") from exc
         self.nproc = kwargs.pop("nproc", 1)
