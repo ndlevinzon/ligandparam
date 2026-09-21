@@ -19,7 +19,22 @@ def _pipe_text(blob) -> str:
     return str(blob)
 
 
-def _subprocess_failure_message(cwd, p, tool: str = "Command") -> str:
+def _file_tail(path, nbytes: int = 4000) -> str:
+    """Return the last ``nbytes`` of a text file, or empty if unreadable."""
+    p = Path(path)
+    if not p.is_file():
+        return ""
+    try:
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - int(nbytes)))
+            return f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _subprocess_failure_message(cwd, p, tool: str = "Command", log_path=None) -> str:
     """Build a RuntimeError body from a failed ``subprocess.run`` result."""
     stdout = _pipe_text(p.stdout).strip()
     stderr = _pipe_text(p.stderr).strip()
@@ -40,6 +55,17 @@ def _subprocess_failure_message(cwd, p, tool: str = "Command") -> str:
         parts.append(f"stderr: {_tail(stderr)}")
     if stdout:
         parts.append(f"stdout: {_tail(stdout)}")
+    if log_path is not None:
+        log_file = Path(log_path)
+        if not log_file.is_absolute():
+            log_file = Path(cwd) / log_file
+        log_tail = _file_tail(log_file)
+        if log_tail.strip():
+            parts.append(f"log ({log_file}): {_tail(log_tail, 2500)}")
+        else:
+            parts.append(
+                f"No usable stderr; check the Gaussian log at {log_file}"
+            )
     return " ".join(parts)
 
 
@@ -310,7 +336,12 @@ class Gaussian(SimpleInterface):
                 env=env,
             )
             if p.returncode != 0:
-                msg = _subprocess_failure_message(self.cwd, p, tool="Gaussian")
+                msg = _subprocess_failure_message(
+                    self.cwd,
+                    p,
+                    tool="Gaussian",
+                    log_path=kwargs.get("out_pipe"),
+                )
                 self.logger.error(msg)
                 raise RuntimeError(msg)
 

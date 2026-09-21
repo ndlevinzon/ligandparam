@@ -65,6 +65,28 @@ def worker(
     logger.info(f"force_gaussian_rerun (-O): {force_gaussian_rerun}")
     if model is not None:
         logger.info(f"Using DeepMD model: {model}")
+    gaussian_recipes = {
+        "freeligand",
+        "lazyligand",
+        "sqmligand",
+        "dpfreeligand",
+        "dplazyligand",
+    }
+    recipe_key = str(recipe_name).strip().lower()
+    if recipe_key in gaussian_recipes and sqm:
+        logger.warning(
+            "--sqm does not skip Gaussian. Recipe '%s' still runs g16 "
+            "(MinimizeLowTheory / RESP). For Antechamber BCC/SQM only, use "
+            "-rn lazierligand (no Gaussian).",
+            recipe_name,
+        )
+    if recipe_key in gaussian_recipes:
+        logger.info(
+            "Recipe '%s' uses Gaussian RESP; --charge_model %s is ignored "
+            "for charges (Initialize only assigns GAFF types).",
+            recipe_name,
+            charge_model,
+        )
     if sqm:
         logger.info("Using SQM calculations for geometry optimization.")
     else:
@@ -143,7 +165,17 @@ def main():
     parser.add_argument("-c", "--net_charge", type=float, default=0.0, help="Net charge of the ligand")
     parser.add_argument("-m", "--model", type=str, default=None, help="DeepMD model file path (optional)")
     parser.add_argument("--sqm", action="store_true", help="Use SQM calculations")
-    parser.add_argument("-rn", "--recipe_name", type=str, required=True, help="Recipe name for the ligand processing")
+    parser.add_argument(
+        "-rn",
+        "--recipe_name",
+        "--recipe",
+        type=str,
+        required=True,
+        help=(
+            "Recipe name. Gaussian RESP: freeligand / lazyligand. "
+            "Antechamber BCC/SQM (no g16): lazierligand."
+        ),
+    )
     parser.add_argument("-n", "--nproc", type=int, default=1, help="Number of processes to use (default: 1)")
     parser.add_argument(
         "-mem",

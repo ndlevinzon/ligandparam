@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -42,3 +43,23 @@ class TestAntechamberNetChargeArgv(unittest.TestCase):
         self.assertIn("-nc", logged)
         self.assertNotIn("-nc -1", logged)
         self.assertIn("-1", logged)
+
+
+class TestGaussianFailureIncludesLog(unittest.TestCase):
+    def test_failure_message_appends_log_tail(self):
+        from types import SimpleNamespace
+
+        from ligandparam.Interfaces import _subprocess_failure_message
+
+        with tempfile.TemporaryDirectory() as td:
+            cwd = Path(td)
+            log = cwd / "job.log"
+            log.write_text(
+                "Entering Link 1\nError termination via Lnk1e\n"
+                "The combination of multiplicity 1 and 109 electrons is impossible.\n",
+                encoding="utf-8",
+            )
+            p = SimpleNamespace(returncode=1, stdout=b"", stderr=b"")
+            msg = _subprocess_failure_message(cwd, p, tool="Gaussian", log_path=log)
+            self.assertIn("returncode=1", msg)
+            self.assertIn("109 electrons is impossible", msg)
