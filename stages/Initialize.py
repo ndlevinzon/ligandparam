@@ -11,10 +11,8 @@ from pathlib import Path
 
 from ligandparam.stages.AbstractStage import AbstractStage
 from ligandparam.Interfaces import Antechamber
-from ligandparam.io.Coordinates import Remove_PDB_CONECT
-from ligandparam.Log import get_logger
-from rdkit import Chem
-from rdkit.Chem import AllChem
+from ligandparam.io.Coordinates import count_structure_atoms, sanitize_pdb_ligand
+import shutil
 
 
 class StageInitialize(AbstractStage):
@@ -126,17 +124,30 @@ class StageInitialize(AbstractStage):
         ValueError
             If the input file type is not supported.
         """
-        Remove_PDB_CONECT(self.in_pdb)
-        ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
         detect_type = self.in_pdb.suffix.lower()
         if detect_type not in [".pdb", ".mol2"]:
             raise ValueError(f"Unsupported input file type: {detect_type}. Expected .pdb or .mol2.")
+        n_in = count_structure_atoms(self.in_pdb)
         if detect_type == ".mol2":
-            ftype= "mol2"
+            ftype = "mol2"
+            ante_in = self.cwd / f"{self.in_pdb.stem}.antechamber_in.mol2"
+            if self.in_pdb.resolve() != ante_in.resolve():
+                shutil.copy2(self.in_pdb, ante_in)
+            else:
+                ante_in = self.in_pdb
         else:
             ftype = "pdb"
+            ante_in = self.cwd / f"{self.in_pdb.stem}.sanitized.pdb"
+            sanitize_pdb_ligand(self.in_pdb, ante_in)
+            self.logger.info(
+                "Initialize: wrote Amber-safe PDB %s (%s atoms); "
+                "kept CONECT and rewrote element/charge columns",
+                ante_in,
+                count_structure_atoms(ante_in),
+            )
+        ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
         ante_kw = dict(
-            i=self.in_pdb,
+            i=ante_in,
             fi=ftype,
             o=self.out_mol2,
             fo="mol2",
@@ -159,6 +170,16 @@ class StageInitialize(AbstractStage):
                 self.multiplicity,
             )
         ante.call(**ante_kw)
+        if not dry_run:
+            n_out = count_structure_atoms(self.out_mol2)
+            if n_out != n_in:
+                raise RuntimeError(
+                    f"Initialize changed the atom count ({n_in} -> {n_out}) for "
+                    f"{self.in_pdb}. Extra hydrogens usually mean the input PDB "
+                    "lost CONECT records or used Open Babel element 'O1-' on an "
+                    "anion. Use the sanitized PDB in the recipe directory and "
+                    "keep explicit hydrogens plus net_charge."
+                )
         if self.secondary and self.assign_charges:
             second_ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
             second_ante.call(
@@ -175,4 +196,11 @@ class StageInitialize(AbstractStage):
                 dry_run=dry_run,
                 **self.additional_args,
             )
+            if not dry_run:
+                n_out = count_structure_atoms(self.out_mol2)
+                if n_out != n_in:
+                    raise RuntimeError(
+                        f"SQM follow-up changed the atom count ({n_in} -> {n_out}) "
+                        f"for {self.in_pdb}."
+                    )
 

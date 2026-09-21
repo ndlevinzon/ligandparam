@@ -327,11 +327,12 @@ class GaussianMinimizeRESP(AbstractStage):
         self.out_log = self.gaussian_cwd / f"{name_template}.log"
         self._add_outputs(self.out_log)
 
-        # __init__ tries to set up the coordinates object, but it may not have been available at init time.
+        # Always reread the mol2/pdb that this stage was given. AbstractStage
+        # may have built coord_object from a PDB parse before Initialize
+        # finished writing the typed mol2.
         print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
         self.logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
-        if not getattr(self, "coord_object", None):
-            self.coord_object = Coordinates(self.in_mol2, filetype="pdb")
+        self.coord_object = Coordinates(self.in_mol2)
         self.gaussian_cwd.mkdir(exist_ok=True)
 
         stageheader = _gaussian_link0_header(

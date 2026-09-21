@@ -246,28 +246,165 @@ class Mol2Writer:
         return
 
 
-def Remove_PDB_CONECT(filename: Union[Path, str], backup: bool = False):
-    """Remove CONECT records from a PDB file in place.
-
-    Optionally copies the original to ``input_<filename>`` before editing.
+def _split_pdb_element_charge(token: str) -> tuple[str, str]:
+    """Split Open Babel-style ``O1-`` / ``N+1`` into PDB element + charge.
 
     Parameters
     ----------
-    filename : Union[Path, str]
-        PDB file to clean.
-    backup : bool, optional
-        If True, save a copy before removing CONECT lines.
+    token : str
+        Trailing PDB element/charge field (columns 77-80 or a overflow token).
+
+    Returns
+    -------
+    element : str
+        One- or two-letter element symbol (``O``, ``Cl``, …).
+    charge : str
+        PDB charge field (``1-``, ``2+``, …) or empty.
+    """
+    import re
+
+    t = (token or "").strip()
+    if not t:
+        return "", ""
+    m = re.fullmatch(
+        r"([A-Za-z]{1,2})(?:(\d+)([+-])|([+-])(\d+)|([+-]))?",
+        t,
+    )
+    if not m:
+        letters = "".join(c for c in t if c.isalpha())[:2]
+        if not letters:
+            return "", ""
+        elem = letters[0].upper() + letters[1:].lower()
+        return elem, ""
+    elem = m.group(1)
+    elem = elem[0].upper() + elem[1:].lower()
+    if m.group(2) and m.group(3):
+        charge = f"{m.group(2)}{m.group(3)}"
+    elif m.group(4) and m.group(5):
+        charge = f"{m.group(5)}{m.group(4)}"
+    elif m.group(6):
+        charge = f"1{m.group(6)}"
+    else:
+        charge = ""
+    return elem, charge
+
+
+def _rewrite_pdb_atom_line(line: str) -> str:
+    """Rewrite ATOM/HETATM so cols 77-78 are element and 79-80 are charge."""
+    nl = "\n" if line.endswith("\n") else ""
+    raw = line.rstrip("\n")
+    rec = raw[:6].strip()
+    if rec not in ("ATOM", "HETATM"):
+        return line
+    if len(raw) < 80:
+        raw = raw.ljust(80)
+    elem, charge = _split_pdb_element_charge(raw[76:80])
+    if not elem:
+        # Open Babel often parks ``O1-`` after the B-factor instead of cols 77-80.
+        elem, charge = _split_pdb_element_charge(raw[66:].strip())
+    if not elem:
+        atom_name = raw[12:16].strip()
+        letters = "".join(c for c in atom_name if c.isalpha())[:2].upper()
+        special = {"CL": "Cl", "BR": "Br", "NA": "Na", "MG": "Mg", "FE": "Fe", "ZN": "Zn"}
+        if letters in special:
+            elem = special[letters]
+        elif letters:
+            elem = letters[0]
+    if not elem:
+        elem = "C"
+    return raw[:76] + f"{elem:>2}{charge:<2}" + nl
+
+
+def _rewrite_pdb_conect_line(line: str) -> list[str]:
+    """Keep CONECT, but drop duplicate partners (Open Babel S=O as ``15 15``)."""
+    parts = line.split()
+    if len(parts) < 2:
+        return [line if line.endswith("\n") else line + "\n"]
+    serial = int(parts[1])
+    unique: list[int] = []
+    for p in parts[2:]:
+        try:
+            idx = int(p)
+        except ValueError:
+            continue
+        if idx not in unique:
+            unique.append(idx)
+    if not unique:
+        return [f"CONECT{serial:5d}\n"]
+    out = []
+    for i in range(0, len(unique), 4):
+        rec = f"CONECT{serial:5d}"
+        for idx in unique[i : i + 4]:
+            rec += f"{idx:5d}"
+        out.append(rec + "\n")
+    return out
+
+
+def count_structure_atoms(path: Union[Path, str]) -> int:
+    """Count atoms in a PDB (ATOM/HETATM) or mol2 (``@<TRIPOS>ATOM``) file."""
+    p = Path(path)
+    suffix = p.suffix.lower()
+    if suffix == ".pdb":
+        n = 0
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith(("ATOM", "HETATM")):
+                    n += 1
+        return n
+    if suffix == ".mol2":
+        n = 0
+        in_atom = False
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("@<TRIPOS>"):
+                    in_atom = line.startswith("@<TRIPOS>ATOM")
+                    continue
+                if in_atom and line.strip():
+                    n += 1
+        return n
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return int(len(mda.Universe(str(p)).atoms))
+
+
+def sanitize_pdb_ligand(src: Union[Path, str], dst: Union[Path, str]) -> Path:
+    """Write an Amber-safe PDB without adding or removing atoms.
+
+    Open Babel often writes the anionic sulfate oxygen as element ``O1-``
+    and lists S=O twice in CONECT. Antechamber then treats that oxygen as
+    an alcohol and appends a hydrogen (42-atom SDS -> 43-atom Gaussian).
+
+    This keeps every ATOM/HETATM, rewrites element/charge into columns
+    77-80, and uniquifies CONECT partners. The source file is not modified.
+    """
+    src_p = Path(src)
+    dst_p = Path(dst)
+    dst_p.parent.mkdir(parents=True, exist_ok=True)
+    out_lines: list[str] = []
+    with open(src_p, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            key = line[:6].strip()
+            if key in ("ATOM", "HETATM"):
+                out_lines.append(_rewrite_pdb_atom_line(line))
+            elif key == "CONECT":
+                out_lines.extend(_rewrite_pdb_conect_line(line))
+            else:
+                out_lines.append(line if line.endswith("\n") else line + "\n")
+    with open(dst_p, "w", encoding="utf-8") as fh:
+        fh.writelines(out_lines)
+    return dst_p
+
+
+def Remove_PDB_CONECT(filename: Union[Path, str], backup: bool = False):
+    """Deprecated: previously stripped CONECT, which protonated anions.
+
+    Now sanitizes in place (keeps unique CONECT, fixes ``O1-`` elements).
+    Prefer :func:`sanitize_pdb_ligand`, which does not modify the source.
     """
     fn = Path(filename)
     if backup:
         shutil.copyfile(fn, fn.parent / f"input_{fn.name}")
-    with open(filename, 'r') as file:
-        lines = file.readlines()
-        new_lines = []
-        for line in lines:
-            if line.strip().startswith("CONECT"):
-                continue
-            new_lines.append(line)
-    with open(filename, 'w') as file:
-        file.writelines(new_lines)
+    tmp = fn.with_name(fn.stem + ".sanitized_tmp.pdb")
+    sanitize_pdb_ligand(fn, tmp)
+    tmp.replace(fn)
     return
