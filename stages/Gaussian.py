@@ -299,6 +299,7 @@ class GaussianMinimizeRESP(AbstractStage):
         self.opt_theory = kwargs.get("opt_theory", "PBE1PBE/6-31G*")
         self.resp_theory = kwargs.get("resp_theory", "HF/6-31G*")
         self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
+        self.multiplicity = int(kwargs.get("multiplicity", 1))
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
         self.minimize = kwargs.get("minimize", True)
@@ -333,31 +334,14 @@ class GaussianMinimizeRESP(AbstractStage):
         # finished writing the typed mol2.
         print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
         self.logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
-        from ligandparam.io.Coordinates import (
-            match_current_to_reference,
-            parse_structure_atoms,
-        )
+        from ligandparam.io.Coordinates import atoms_for_gaussian
 
-        current_atoms = parse_structure_atoms(self.in_mol2)
-        label = self.in_mol2.name.split(".")[0]
-        ref_path = Path(self.cwd) / f"{label}.sanitized.pdb"
-        if not ref_path.is_file():
-            ref_path = Path(self.cwd) / f"{label}.initial.mol2"
-        elements = [e for e, _ in current_atoms]
-        coords = np.asarray([x for _, x in current_atoms], dtype=float)
-        if ref_path.is_file():
-            reference = parse_structure_atoms(ref_path)
-            if len(current_atoms) != len(reference):
-                self.logger.warning(
-                    "Gaussian geometry has %s atoms but %s has %s; "
-                    "dropping unmatched atoms (usually an extra sulfate H)",
-                    len(current_atoms),
-                    ref_path.name,
-                    len(reference),
-                )
-                elements, coords = match_current_to_reference(reference, current_atoms)
-        self.logger.info(
-            "Gaussian atom count for %s: %s", self.in_mol2.name, len(elements)
+        elements, coords = atoms_for_gaussian(
+            self.in_mol2,
+            cwd=self.cwd,
+            net_charge=self.net_charge,
+            multiplicity=self.multiplicity,
+            logger=self.logger,
         )
         self.gaussian_cwd.mkdir(exist_ok=True)
 
@@ -381,6 +365,7 @@ class GaussianMinimizeRESP(AbstractStage):
                     initial_coordinates=coords,
                     elements=elements,
                     charge=self.net_charge,
+                    multiplicity=self.multiplicity,
                     header=stageheader,
                 )
             )
@@ -388,6 +373,7 @@ class GaussianMinimizeRESP(AbstractStage):
                 GaussianInput(
                     command=f"#P {self.resp_theory} GEOM(AllCheck) Guess(Read) NoSymm Pop=mk IOp(6/33=2) GFInput GFPrint",
                     charge=self.net_charge,
+                    multiplicity=self.multiplicity,
                     header=stageheader,
                 )
             )
@@ -406,6 +392,7 @@ class GaussianMinimizeRESP(AbstractStage):
                     initial_coordinates=coords,
                     elements=elements,
                     charge=self.net_charge,
+                    multiplicity=self.multiplicity,
                     header=stageheader,
                 )
             )
@@ -500,6 +487,7 @@ class StageGaussianRotation(AbstractStage):
         self.opt_theory = kwargs.get("opt_theory", "HF/6-31G*")
         self.resp_theory = kwargs.get("resp_theory", "HF/6-31G*")
         self.net_charge = int(round(float(kwargs.get("net_charge", 0.0))))
+        self.multiplicity = int(kwargs.get("multiplicity", 1))
         self.force_gaussian_rerun = kwargs.get("force_gaussian_rerun", False)
         self.gaussian_cwd = Path(self.cwd, "gaussianCalcs")
 
@@ -572,10 +560,25 @@ class StageGaussianRotation(AbstractStage):
         job_mem = getattr(self, "_job_mem", None) or self.mem
         self.header = _gaussian_link0_header(job_nproc, job_mem)
 
-        # __init__ tries to set up the coordinates object, but it may not have been available at init time.
-        if not getattr(self, "coord_object", None):
-            self.coord_object = Coordinates(self.in_mol2, filetype="pdb")
+        from ligandparam.io.Coordinates import atoms_for_gaussian, write_simple_mol2
+
+        elements, coords = atoms_for_gaussian(
+            self.in_mol2,
+            cwd=self.cwd,
+            net_charge=self.net_charge,
+            multiplicity=self.multiplicity,
+            logger=self.logger,
+        )
         self.gaussian_cwd.mkdir(exist_ok=True)
+        tmp_mol2 = self.gaussian_cwd / f"{Path(self.in_mol2).stem}.gau_geom.mol2"
+        write_simple_mol2(
+            tmp_mol2,
+            elements,
+            coords,
+            resname=Path(self.in_mol2).name.split(".")[0][:3],
+        )
+        self.coord_object = Coordinates(tmp_mol2)
+        self.coord_object.update_coordinates(coords, original=True)
         logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
         print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
 
@@ -585,7 +588,6 @@ class StageGaussianRotation(AbstractStage):
         store_coords = []
         self.in_coms = []
         self.out_logs = []
-        elements = self.coord_object.get_elements()
         for orientation_suffix, test_rotation in self._orientation_coordinates():
             store_coords.append(test_rotation)
             # Keep "<rotation label>_*.log" stable: StageMultiRespFit discovers
@@ -600,6 +602,7 @@ class StageGaussianRotation(AbstractStage):
                     initial_coordinates=test_rotation,
                     elements=elements,
                     charge=self.net_charge,
+                    multiplicity=self.multiplicity,
                     header=self.header,
                 )
             )

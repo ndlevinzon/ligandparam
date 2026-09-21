@@ -1,5 +1,7 @@
 import warnings
-from typing import Optional,  Union
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Optional, Union
 import shutil
 from pathlib import Path
 
@@ -7,6 +9,32 @@ import numpy as np
 
 import MDAnalysis as mda
 from MDAnalysis.topology.guessers import guess_atom_element, guess_masses
+
+ATOMIC_NUMBERS = {
+    "H": 1,
+    "He": 2,
+    "Li": 3,
+    "Be": 4,
+    "B": 5,
+    "C": 6,
+    "N": 7,
+    "O": 8,
+    "F": 9,
+    "Ne": 10,
+    "Na": 11,
+    "Mg": 12,
+    "Al": 13,
+    "Si": 14,
+    "P": 15,
+    "S": 16,
+    "Cl": 17,
+    "K": 19,
+    "Ca": 20,
+    "Fe": 26,
+    "Zn": 30,
+    "Br": 35,
+    "I": 53,
+}
 
 
 class Coordinates:
@@ -360,6 +388,13 @@ def count_structure_atoms(path: Union[Path, str]) -> int:
                     in_atom = line.startswith("@<TRIPOS>ATOM")
                     continue
                 if in_atom and line.strip():
+                    parts = line.split()
+                    if not parts:
+                        continue
+                    try:
+                        int(parts[0])
+                    except ValueError:
+                        continue
                     n += 1
         return n
     with warnings.catch_warnings():
@@ -413,6 +448,10 @@ def parse_structure_atoms(path: Union[Path, str]) -> list[tuple[str, np.ndarray]
                     continue
                 parts = line.split()
                 if len(parts) < 6:
+                    continue
+                try:
+                    int(parts[0])
+                except ValueError:
                     continue
                 name, xs, ys, zs, atype = parts[1], parts[2], parts[3], parts[4], parts[5]
                 elem = _element_from_mol2_name_type(name, atype)
@@ -480,15 +519,472 @@ def match_current_to_reference(
     return elems, coords
 
 
-def sanitize_pdb_ligand(src: Union[Path, str], dst: Union[Path, str]) -> Path:
-    """Write an Amber-safe PDB without adding or removing atoms.
+def normalize_element(sym: str) -> str:
+    """Return a canonical element symbol (``H``, ``Cl``, …)."""
+    s = "".join(c for c in str(sym) if c.isalpha())
+    if not s:
+        return "C"
+    if len(s) == 1:
+        return s.upper()
+    two = s[0].upper() + s[1].lower()
+    if two in ATOMIC_NUMBERS:
+        return two
+    return s[0].upper()
+
+
+def electron_count(elements, charge: int = 0) -> int:
+    """Valence electron count: sum of atomic numbers minus ``charge``."""
+    total = 0
+    for el in elements:
+        key = normalize_element(el)
+        if key not in ATOMIC_NUMBERS:
+            raise ValueError(f"Unknown element symbol {el!r}")
+        total += ATOMIC_NUMBERS[key]
+    return int(total) - int(charge)
+
+
+def closed_shell_ok(elements, charge: int = 0, multiplicity: int = 1) -> bool:
+    """True if ``charge`` / ``multiplicity`` match the element list."""
+    n_e = electron_count(elements, charge)
+    unpaired = int(multiplicity) - 1
+    return unpaired >= 0 and n_e >= unpaired and (n_e - unpaired) % 2 == 0
+
+
+def anion_extra_hydrogen_indices(
+    atoms: list[tuple[str, np.ndarray]],
+    net_charge: int = 0,
+    multiplicity: int = 1,
+) -> list[int]:
+    """Indices of OH hydrogens on sulfate/carboxylate that make a closed-shell anion impossible.
+
+    Only drops hydrogens when the current electron count is already illegal
+    (e.g. SDS ``C12H25SO4-`` plus a sulfate proton → 147 electrons, singlet).
+    Neutral acids such as ``ROSO3H`` are left alone.
+    """
+    if not atoms:
+        return []
+    elems = [normalize_element(e) for e, _ in atoms]
+    if closed_shell_ok(elems, net_charge, multiplicity):
+        return []
+    xyz = np.asarray([x for _, x in atoms], dtype=float)
+    h_idx = [i for i, e in enumerate(elems) if e == "H"]
+    candidates: list[tuple[int, float, int]] = []
+    for i in h_idx:
+        d = np.linalg.norm(xyz - xyz[i], axis=1)
+        d[i] = np.inf
+        j = int(np.argmin(d))
+        if elems[j] != "O" or d[j] > 1.25:
+            continue
+        d_o = np.linalg.norm(xyz - xyz[j], axis=1)
+        d_o[j] = np.inf
+        d_o[i] = np.inf
+        k = int(np.argmin(d_o))
+        if elems[k] == "S" and d_o[k] < 1.90:
+            candidates.append((0, float(d[j]), i))
+            continue
+        if elems[k] == "C" and d_o[k] < 1.60:
+            n_o = sum(
+                1
+                for t, e in enumerate(elems)
+                if e == "O" and float(np.linalg.norm(xyz[t] - xyz[k])) < 1.55
+            )
+            if n_o >= 2:
+                candidates.append((1, float(d[j]), i))
+    candidates.sort()
+    dropped: list[int] = []
+    keep = set(range(len(atoms)))
+    for _, _, i in candidates:
+        trial = [idx for idx in sorted(keep) if idx != i]
+        trial_el = [elems[idx] for idx in trial]
+        if closed_shell_ok(trial_el, net_charge, multiplicity):
+            dropped.append(i)
+            keep.remove(i)
+            if closed_shell_ok([elems[idx] for idx in sorted(keep)], net_charge, multiplicity):
+                break
+    return dropped
+
+
+def drop_anion_extra_hydrogens(
+    atoms: list[tuple[str, np.ndarray]],
+    net_charge: int = 0,
+    multiplicity: int = 1,
+) -> list[tuple[str, np.ndarray]]:
+    """Return ``atoms`` without illegal anion extra hydrogens."""
+    drop = set(anion_extra_hydrogen_indices(atoms, net_charge, multiplicity))
+    if not drop:
+        return atoms
+    return [atom for i, atom in enumerate(atoms) if i not in drop]
+
+
+def _gaussian_reference_paths(cwd: Union[Path, str], label: str) -> list[Path]:
+    """Candidate original-geometry files, user input first."""
+    base = Path(cwd)
+    return [
+        base / f"{label}.user_input.mol2",
+        base / f"{label}.user_input.pdb",
+        base / f"{label}.sanitized.pdb",
+        base / f"{label}.antechamber_in.mol2",
+        base / f"{label}.antechamber_in.pdb",
+        base / f"{label}.initial.mol2",
+    ]
+
+
+def atoms_for_gaussian(
+    in_path: Union[Path, str],
+    cwd: Union[Path, str],
+    net_charge: int = 0,
+    multiplicity: int = 1,
+    logger=None,
+) -> tuple[list[str], np.ndarray]:
+    """Elements and coords for a Gaussian ``.com``, dropping extra anion H.
+
+    Matching ``initial.mol2`` is not enough when that file is already
+    protonated. This also compares to the original user mol2/PDB and, if
+    the electron count is still illegal, removes a sulfate/carboxylate OH
+    hydrogen.
+    """
+    in_p = Path(in_path)
+    current = parse_structure_atoms(in_p)
+    label = in_p.name.split(".")[0]
+    charge = int(round(float(net_charge)))
+    mult = int(multiplicity)
+    for ref_path in _gaussian_reference_paths(cwd, label):
+        if not ref_path.is_file():
+            continue
+        if ref_path.resolve() == in_p.resolve():
+            continue
+        reference = parse_structure_atoms(ref_path)
+        if 0 < len(reference) < len(current):
+            if logger is not None:
+                logger.warning(
+                    "Gaussian geometry has %s atoms but %s has %s; "
+                    "dropping unmatched atoms (usually an extra sulfate H)",
+                    len(current),
+                    ref_path.name,
+                    len(reference),
+                )
+            elements, coords = match_current_to_reference(reference, current)
+            current = list(zip(elements, coords))
+            break
+    dropped = anion_extra_hydrogen_indices(current, charge, mult)
+    if dropped:
+        if logger is not None:
+            logger.warning(
+                "Dropping %s extra anion hydrogen(s) so charge %s "
+                "multiplicity %s is a closed shell",
+                len(dropped),
+                charge,
+                mult,
+            )
+        current = drop_anion_extra_hydrogens(current, charge, mult)
+    elements = [normalize_element(e) for e, _ in current]
+    coords = np.asarray([x for _, x in current], dtype=float)
+    if not closed_shell_ok(elements, charge, mult):
+        n_e = electron_count(elements, charge)
+        raise RuntimeError(
+            f"Gaussian geometry has {len(elements)} atoms and {n_e} electrons "
+            f"with charge {charge} multiplicity {mult}, which is impossible. "
+            "For SDS-like anions this is usually an extra sulfate hydrogen "
+            "(SDS is 42 atoms, C12H25SO4-)."
+        )
+    if logger is not None:
+        logger.info("Gaussian atom count for %s: %s", in_p.name, len(elements))
+    return elements, coords
+
+
+def write_simple_mol2(
+    path: Union[Path, str],
+    elements,
+    coords,
+    resname: str = "LIG",
+) -> Path:
+    """Write a bond-free mol2 from element symbols and coordinates."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    coords = np.asarray(coords, dtype=float)
+    res = (resname or "LIG")[:3].upper()
+    lines = [
+        "@<TRIPOS>MOLECULE\n",
+        f"{res}\n",
+        f" {len(elements)} 0 1 0 0\n",
+        "SMALL\n",
+        "USER_CHARGES\n",
+        "\n",
+        "@<TRIPOS>ATOM\n",
+    ]
+    for i, (el, xyz) in enumerate(zip(elements, coords), start=1):
+        elem = normalize_element(el)
+        lines.append(
+            f"{i:7d} {elem:<8s} {xyz[0]:10.4f} {xyz[1]:10.4f} {xyz[2]:10.4f} "
+            f"{elem:<7s} 1 {res:<8s} {0.0:10.4f}\n"
+        )
+    p.write_text("".join(lines), encoding="utf-8")
+    return p
+
+
+@dataclass
+class _Mol2Atom:
+    atom_id: int
+    name: str
+    x: float
+    y: float
+    z: float
+    atype: str
+    subst_id: str = "1"
+    subst_name: str = "LIG"
+    charge: str = "0.0000"
+
+
+@dataclass
+class _Mol2Bond:
+    bond_id: int
+    a: int
+    b: int
+    order: str
+
+
+def _parse_mol2_records(path: Union[Path, str]) -> tuple[list[_Mol2Atom], list[_Mol2Bond], str]:
+    """Parse ATOM/BOND records and the molecule name."""
+    p = Path(path)
+    atoms: list[_Mol2Atom] = []
+    bonds: list[_Mol2Bond] = []
+    name = p.stem
+    section = ""
+    mol_lines: list[str] = []
+    with open(p, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith("@<TRIPOS>"):
+                section = line.strip()[9:]
+                continue
+            if section == "MOLECULE":
+                mol_lines.append(line.rstrip("\n"))
+                continue
+            if not line.strip():
+                continue
+            parts = line.split()
+            if section == "ATOM":
+                if len(parts) < 6:
+                    continue
+                try:
+                    atom_id = int(parts[0])
+                except ValueError:
+                    continue
+                atoms.append(
+                    _Mol2Atom(
+                        atom_id=atom_id,
+                        name=parts[1],
+                        x=float(parts[2]),
+                        y=float(parts[3]),
+                        z=float(parts[4]),
+                        atype=parts[5],
+                        subst_id=parts[6] if len(parts) > 6 else "1",
+                        subst_name=parts[7] if len(parts) > 7 else "LIG",
+                        charge=parts[8] if len(parts) > 8 else "0.0000",
+                    )
+                )
+            elif section == "BOND":
+                if len(parts) < 4:
+                    continue
+                try:
+                    bonds.append(
+                        _Mol2Bond(
+                            bond_id=int(parts[0]),
+                            a=int(parts[1]),
+                            b=int(parts[2]),
+                            order=parts[3],
+                        )
+                    )
+                except ValueError:
+                    continue
+    if mol_lines:
+        name = mol_lines[0].strip() or name
+    return atoms, bonds, name
+
+
+def _write_mol2_records(
+    path: Union[Path, str],
+    name: str,
+    atoms: list[_Mol2Atom],
+    bonds: list[_Mol2Bond],
+) -> Path:
+    """Write a Sybyl mol2 from parsed ATOM/BOND records."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "@<TRIPOS>MOLECULE\n",
+        f"{name}\n",
+        f" {len(atoms)} {len(bonds)} 1 0 0\n",
+        "SMALL\n",
+        "USER_CHARGES\n",
+        "\n",
+        "@<TRIPOS>ATOM\n",
+    ]
+    id_map = {}
+    for i, atom in enumerate(atoms, start=1):
+        id_map[atom.atom_id] = i
+        lines.append(
+            f"{i:7d} {atom.name:<8s} {atom.x:10.4f} {atom.y:10.4f} "
+            f"{atom.z:10.4f} {atom.atype:<7s} {str(atom.subst_id):>3s} "
+            f"{atom.subst_name:<8s} {atom.charge:>10s}\n"
+        )
+    lines.append("@<TRIPOS>BOND\n")
+    bi = 0
+    for bond in bonds:
+        a = id_map.get(bond.a)
+        b = id_map.get(bond.b)
+        if a is None or b is None:
+            continue
+        bi += 1
+        lines.append(f"{bi:6d} {a:4d} {b:4d} {bond.order}\n")
+    p.write_text("".join(lines), encoding="utf-8")
+    return p
+
+
+def mol2_bond_count(path: Union[Path, str]) -> int:
+    """Number of ``@<TRIPOS>BOND`` records in a mol2 file."""
+    _, bonds, _ = _parse_mol2_records(path)
+    return len(bonds)
+
+
+def _retype_terminal_sulfate_oxygens(atoms: list[_Mol2Atom], bonds: list[_Mol2Bond]) -> None:
+    """Set unprotonated terminal sulfate oxygens to ``O.co2`` (not alcohol)."""
+    by_id = {a.atom_id: a for a in atoms}
+    adj: dict[int, list[int]] = defaultdict(list)
+    for bond in bonds:
+        adj[bond.a].append(bond.b)
+        adj[bond.b].append(bond.a)
+    for sulfur in atoms:
+        if normalize_element(_element_from_mol2_name_type(sulfur.name, sulfur.atype)) != "S":
+            continue
+        oxygens = []
+        for nid in adj[sulfur.atom_id]:
+            neigh = by_id.get(nid)
+            if neigh is None:
+                continue
+            if normalize_element(_element_from_mol2_name_type(neigh.name, neigh.atype)) == "O":
+                oxygens.append(neigh)
+        if len(oxygens) != 4:
+            continue
+        for oxygen in oxygens:
+            partners = [by_id[n] for n in adj[oxygen.atom_id] if n in by_id]
+            heavies = [
+                p
+                for p in partners
+                if normalize_element(_element_from_mol2_name_type(p.name, p.atype)) != "H"
+            ]
+            hydrogens = [
+                p
+                for p in partners
+                if normalize_element(_element_from_mol2_name_type(p.name, p.atype)) == "H"
+            ]
+            if len(heavies) == 1 and not hydrogens:
+                oxygen.atype = "O.co2"
+
+
+def sanitize_mol2_ligand(
+    src: Union[Path, str],
+    dst: Union[Path, str],
+    net_charge: int = 0,
+    multiplicity: int = 1,
+) -> Path:
+    """Drop illegal anion extra H and retype terminal sulfate oxygens.
+
+    Open Babel mol2 files often leave the SDS sulfate oxygen as ``O.3``
+    (alcohol) or already include the extra proton. Antechamber then writes
+    a 43-atom mol2 and Gaussian dies with an odd electron count.
+    """
+    atoms, bonds, name = _parse_mol2_records(src)
+    xyz_atoms = [
+        (
+            normalize_element(_element_from_mol2_name_type(a.name, a.atype)),
+            np.array([a.x, a.y, a.z], dtype=float),
+        )
+        for a in atoms
+    ]
+    drop = set(anion_extra_hydrogen_indices(xyz_atoms, int(net_charge), int(multiplicity)))
+    if drop:
+        drop_ids = {atoms[i].atom_id for i in drop}
+        atoms = [a for i, a in enumerate(atoms) if i not in drop]
+        bonds = [b for b in bonds if b.a not in drop_ids and b.b not in drop_ids]
+    _retype_terminal_sulfate_oxygens(atoms, bonds)
+    return _write_mol2_records(dst, name, atoms, bonds)
+
+
+def _filter_pdb_lines(lines: list[str], keep_atom_indices: list[int]) -> list[str]:
+    """Keep selected ATOM/HETATM records and remap CONECT serials."""
+    atom_lines = [ln for ln in lines if ln[:6].strip() in ("ATOM", "HETATM")]
+    keep_set = set(keep_atom_indices)
+    old_serials = []
+    for ln in atom_lines:
+        try:
+            old_serials.append(int(ln[6:11]))
+        except ValueError:
+            old_serials.append(len(old_serials) + 1)
+    serial_map = {}
+    new_atom_lines = []
+    new_i = 0
+    for old_i, ln in enumerate(atom_lines):
+        if old_i not in keep_set:
+            continue
+        new_i += 1
+        serial_map[old_serials[old_i]] = new_i
+        raw = ln.rstrip("\n")
+        if len(raw) < 80:
+            raw = raw.ljust(80)
+        new_atom_lines.append(f"{raw[:6]}{new_i:5d}{raw[11:]}" + ("\n" if ln.endswith("\n") else ""))
+    out: list[str] = []
+    atom_i = -1
+    keep_set = set(keep_atom_indices)
+    atom_iter = iter(new_atom_lines)
+    for ln in lines:
+        key = ln[:6].strip()
+        if key in ("ATOM", "HETATM"):
+            atom_i += 1
+            if atom_i in keep_set:
+                out.append(next(atom_iter))
+            continue
+        elif key == "CONECT":
+            parts = ln.split()
+            if len(parts) < 2:
+                continue
+            try:
+                serial = int(parts[1])
+            except ValueError:
+                continue
+            if serial not in serial_map:
+                continue
+            rec = f"CONECT{serial_map[serial]:5d}"
+            n_partners = 0
+            for token in parts[2:]:
+                try:
+                    partner = int(token)
+                except ValueError:
+                    continue
+                if partner in serial_map:
+                    rec += f"{serial_map[partner]:5d}"
+                    n_partners += 1
+            if n_partners:
+                out.append(rec + "\n")
+        else:
+            out.append(ln if ln.endswith("\n") else ln + "\n")
+    return out
+
+
+def sanitize_pdb_ligand(
+    src: Union[Path, str],
+    dst: Union[Path, str],
+    net_charge: int = 0,
+    multiplicity: int = 1,
+) -> Path:
+    """Write an Amber-safe PDB, dropping illegal extra anion hydrogens.
 
     Open Babel often writes the anionic sulfate oxygen as element ``O1-``
     and lists S=O twice in CONECT. Antechamber then treats that oxygen as
     an alcohol and appends a hydrogen (42-atom SDS -> 43-atom Gaussian).
 
-    This keeps every ATOM/HETATM, rewrites element/charge into columns
-    77-80, and uniquifies CONECT partners. The source file is not modified.
+    This keeps remaining ATOM/HETATM records, rewrites element/charge into
+    columns 77-80, uniquifies CONECT partners, and removes a sulfate OH
+    hydrogen when ``net_charge`` makes the electron count illegal.
     """
     src_p = Path(src)
     dst_p = Path(dst)
@@ -503,6 +999,20 @@ def sanitize_pdb_ligand(src: Union[Path, str], dst: Union[Path, str]) -> Path:
                 out_lines.extend(_rewrite_pdb_conect_line(line))
             else:
                 out_lines.append(line if line.endswith("\n") else line + "\n")
+    parsed: list[tuple[str, np.ndarray]] = []
+    for line in out_lines:
+        if line[:6].strip() not in ("ATOM", "HETATM"):
+            continue
+        elem = line[76:78].strip() or "C"
+        xyz = np.array(
+            [float(line[30:38]), float(line[38:46]), float(line[46:54])],
+            dtype=float,
+        )
+        parsed.append((elem, xyz))
+    drop = anion_extra_hydrogen_indices(parsed, int(net_charge), int(multiplicity))
+    if drop:
+        keep = [i for i in range(len(parsed)) if i not in set(drop)]
+        out_lines = _filter_pdb_lines(out_lines, keep)
     with open(dst_p, "w", encoding="utf-8") as fh:
         fh.writelines(out_lines)
     return dst_p

@@ -11,7 +11,12 @@ from pathlib import Path
 
 from ligandparam.stages.AbstractStage import AbstractStage
 from ligandparam.Interfaces import Antechamber
-from ligandparam.io.Coordinates import count_structure_atoms, sanitize_pdb_ligand
+from ligandparam.io.Coordinates import (
+    count_structure_atoms,
+    mol2_bond_count,
+    sanitize_mol2_ligand,
+    sanitize_pdb_ligand,
+)
 import shutil
 
 
@@ -127,23 +132,45 @@ class StageInitialize(AbstractStage):
         detect_type = self.in_pdb.suffix.lower()
         if detect_type not in [".pdb", ".mol2"]:
             raise ValueError(f"Unsupported input file type: {detect_type}. Expected .pdb or .mol2.")
-        n_in = count_structure_atoms(self.in_pdb)
+        user_copy = self.cwd / f"{self.in_pdb.stem}.user_input{detect_type}"
+        if self.in_pdb.resolve() != user_copy.resolve():
+            shutil.copy2(self.in_pdb, user_copy)
+        n_user = count_structure_atoms(self.in_pdb)
         if detect_type == ".mol2":
             ftype = "mol2"
             ante_in = self.cwd / f"{self.in_pdb.stem}.antechamber_in.mol2"
-            if self.in_pdb.resolve() != ante_in.resolve():
-                shutil.copy2(self.in_pdb, ante_in)
-            else:
-                ante_in = self.in_pdb
+            sanitize_mol2_ligand(
+                self.in_pdb,
+                ante_in,
+                net_charge=self.net_charge,
+                multiplicity=self.multiplicity,
+            )
+            n_in = count_structure_atoms(ante_in)
+            if n_in != n_user:
+                self.logger.warning(
+                    "Initialize: dropped %s extra atom(s) from mol2 %s "
+                    "(%s -> %s) so charge %s is a closed shell",
+                    n_user - n_in,
+                    self.in_pdb.name,
+                    n_user,
+                    n_in,
+                    self.net_charge,
+                )
         else:
             ftype = "pdb"
             ante_in = self.cwd / f"{self.in_pdb.stem}.sanitized.pdb"
-            sanitize_pdb_ligand(self.in_pdb, ante_in)
+            sanitize_pdb_ligand(
+                self.in_pdb,
+                ante_in,
+                net_charge=self.net_charge,
+                multiplicity=self.multiplicity,
+            )
+            n_in = count_structure_atoms(ante_in)
             self.logger.info(
                 "Initialize: wrote Amber-safe PDB %s (%s atoms); "
                 "kept CONECT and rewrote element/charge columns",
                 ante_in,
-                count_structure_atoms(ante_in),
+                n_in,
             )
         ante = Antechamber(cwd=self.cwd, logger=self.logger, nproc=self.nproc)
         ante_kw = dict(
@@ -159,6 +186,10 @@ class StageInitialize(AbstractStage):
             dry_run=dry_run,
             **self.additional_args,
         )
+        if detect_type == ".mol2" and mol2_bond_count(ante_in) > 0:
+            # Keep existing mol2 bonds so antechamber does not rebuild
+            # valences and append a sulfate hydrogen.
+            ante_kw["j"] = 5
         if self.assign_charges:
             ante_kw["c"] = self.charge_model
         else:
@@ -173,11 +204,19 @@ class StageInitialize(AbstractStage):
         if not dry_run:
             n_out = count_structure_atoms(self.out_mol2)
             if n_out != n_in:
+                sanitize_mol2_ligand(
+                    self.out_mol2,
+                    self.out_mol2,
+                    net_charge=self.net_charge,
+                    multiplicity=self.multiplicity,
+                )
+                n_out = count_structure_atoms(self.out_mol2)
+            if n_out != n_in:
                 raise RuntimeError(
                     f"Initialize changed the atom count ({n_in} -> {n_out}) for "
-                    f"{self.in_pdb}. Extra hydrogens usually mean the input PDB "
-                    "lost CONECT records or used Open Babel element 'O1-' on an "
-                    "anion. Use the sanitized PDB in the recipe directory and "
+                    f"{self.in_pdb}. Extra hydrogens usually mean the input "
+                    "PDB/mol2 used an alcohol oxygen on a sulfate/carboxylate "
+                    "anion. Use the sanitized file in the recipe directory and "
                     "keep explicit hydrogens plus net_charge."
                 )
         if self.secondary and self.assign_charges:
