@@ -367,6 +367,119 @@ def count_structure_atoms(path: Union[Path, str]) -> int:
         return int(len(mda.Universe(str(p)).atoms))
 
 
+def _element_from_mol2_name_type(name: str, atype: str) -> str:
+    """Map mol2 atom name / GAFF type to a Gaussian element symbol."""
+    for token in (atype, name):
+        letters = "".join(c for c in (token or "") if c.isalpha())
+        if not letters:
+            continue
+        two = letters[:2].capitalize()
+        if two in {"Cl", "Br", "Na", "Mg", "Fe", "Zn", "Si"}:
+            return two
+        return letters[0].upper()
+    return "C"
+
+
+def parse_structure_atoms(path: Union[Path, str]) -> list[tuple[str, np.ndarray]]:
+    """Read element symbols and coordinates from PDB or mol2 (no MDA).
+
+    MDAnalysis element guessing can invent a hydrogen on anionic oxygen when
+    building the Gaussian ``.com``. This parser only uses file records.
+    """
+    p = Path(path)
+    suffix = p.suffix.lower()
+    atoms: list[tuple[str, np.ndarray]] = []
+    if suffix == ".pdb":
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.startswith(("ATOM", "HETATM")):
+                    continue
+                rewritten = _rewrite_pdb_atom_line(line)
+                elem = rewritten[76:78].strip() or "C"
+                xyz = np.array(
+                    [float(rewritten[30:38]), float(rewritten[38:46]), float(rewritten[46:54])],
+                    dtype=float,
+                )
+                atoms.append((elem, xyz))
+        return atoms
+    if suffix == ".mol2":
+        in_atom = False
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("@<TRIPOS>"):
+                    in_atom = line.startswith("@<TRIPOS>ATOM")
+                    continue
+                if not in_atom or not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) < 6:
+                    continue
+                name, xs, ys, zs, atype = parts[1], parts[2], parts[3], parts[4], parts[5]
+                elem = _element_from_mol2_name_type(name, atype)
+                atoms.append((elem, np.array([float(xs), float(ys), float(zs)], dtype=float)))
+        return atoms
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        u = mda.Universe(str(p))
+        elems = [str(a.element) for a in u.atoms]
+        return list(zip(elems, np.asarray(u.atoms.positions, dtype=float)))
+
+
+def match_current_to_reference(
+    reference: list[tuple[str, np.ndarray]],
+    current: list[tuple[str, np.ndarray]],
+    max_dist: float = 0.75,
+) -> tuple[list[str], np.ndarray]:
+    """Keep current atoms that match a reference, dropping extras (added H).
+
+    Aligns on the heavy-atom centroid so a spurious OH hydrogen does not
+    shift the frame. Returned coordinates are the current (e.g. centered)
+    positions in reference order.
+    """
+    if len(current) < len(reference):
+        raise RuntimeError(
+            f"Current structure has fewer atoms ({len(current)}) than the "
+            f"reference ({len(reference)})."
+        )
+    ref_e = [str(e) for e, _ in reference]
+    ref_x = np.asarray([x for _, x in reference], dtype=float)
+    cur_e = [str(e) for e, _ in current]
+    cur_x = np.asarray([x for _, x in current], dtype=float)
+
+    def _heavy_centroid(elems, xyz):
+        heavy = np.array(
+            [row for el, row in zip(elems, xyz) if str(el).upper() != "H"],
+            dtype=float,
+        )
+        if heavy.size == 0:
+            return xyz.mean(axis=0)
+        return heavy.mean(axis=0)
+
+    ref_a = ref_x - _heavy_centroid(ref_e, ref_x)
+    cur_a = cur_x - _heavy_centroid(cur_e, cur_x)
+    used: set[int] = set()
+    keep: list[int] = []
+    for e, x in zip(ref_e, ref_a):
+        best_j, best_d = None, 1e9
+        for j, (ej, y) in enumerate(zip(cur_e, cur_a)):
+            if j in used or str(ej).upper() != str(e).upper():
+                continue
+            d = float(np.linalg.norm(x - y))
+            if d < best_d:
+                best_d, best_j = d, j
+        if best_j is None or best_d > max_dist:
+            raise RuntimeError(
+                f"Could not match reference {e} atom onto the current "
+                f"structure (best distance {best_d:.3f} A). "
+                "The topology may have changed, not just an extra hydrogen."
+            )
+        used.add(best_j)
+        keep.append(best_j)
+    elems = [cur_e[j] for j in keep]
+    coords = cur_x[keep]
+    return elems, coords
+
+
 def sanitize_pdb_ligand(src: Union[Path, str], dst: Union[Path, str]) -> Path:
     """Write an Amber-safe PDB without adding or removing atoms.
 

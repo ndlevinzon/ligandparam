@@ -4,6 +4,7 @@ import logging
 import warnings
 from itertools import product
 
+import numpy as np
 import MDAnalysis as mda
 
 from pathlib import Path
@@ -332,7 +333,32 @@ class GaussianMinimizeRESP(AbstractStage):
         # finished writing the typed mol2.
         print(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
         self.logger.info(f"Setting up Gaussian calculations in {self.gaussian_cwd}")
-        self.coord_object = Coordinates(self.in_mol2)
+        from ligandparam.io.Coordinates import (
+            match_current_to_reference,
+            parse_structure_atoms,
+        )
+
+        current_atoms = parse_structure_atoms(self.in_mol2)
+        label = self.in_mol2.name.split(".")[0]
+        ref_path = Path(self.cwd) / f"{label}.sanitized.pdb"
+        if not ref_path.is_file():
+            ref_path = Path(self.cwd) / f"{label}.initial.mol2"
+        elements = [e for e, _ in current_atoms]
+        coords = np.asarray([x for _, x in current_atoms], dtype=float)
+        if ref_path.is_file():
+            reference = parse_structure_atoms(ref_path)
+            if len(current_atoms) != len(reference):
+                self.logger.warning(
+                    "Gaussian geometry has %s atoms but %s has %s; "
+                    "dropping unmatched atoms (usually an extra sulfate H)",
+                    len(current_atoms),
+                    ref_path.name,
+                    len(reference),
+                )
+                elements, coords = match_current_to_reference(reference, current_atoms)
+        self.logger.info(
+            "Gaussian atom count for %s: %s", self.in_mol2.name, len(elements)
+        )
         self.gaussian_cwd.mkdir(exist_ok=True)
 
         stageheader = _gaussian_link0_header(
@@ -343,7 +369,7 @@ class GaussianMinimizeRESP(AbstractStage):
         # so this part can be set up before the Gaussian calculations are run.
         gau = GaussianWriter(self.in_com)
         if self.minimize:
-            n_atoms = len(self.coord_object.get_elements())
+            n_atoms = len(elements)
             opt_keyword = _gaussian_opt_keyword(n_atoms)
             self.logger.info(
                 f"Gaussian optimization keyword: {opt_keyword} "
@@ -352,8 +378,8 @@ class GaussianMinimizeRESP(AbstractStage):
             gau.add_block(
                 GaussianInput(
                     command=f"#P {self.opt_theory} {opt_keyword}",
-                    initial_coordinates=self.coord_object.get_coordinates(),
-                    elements=self.coord_object.get_elements(),
+                    initial_coordinates=coords,
+                    elements=elements,
                     charge=self.net_charge,
                     header=stageheader,
                 )
@@ -377,8 +403,8 @@ class GaussianMinimizeRESP(AbstractStage):
                         f"#P {self.resp_theory} {extra}"
                         "NoSymm Pop=mk IOp(6/33=2) GFInput GFPrint"
                     ),
-                    initial_coordinates=self.coord_object.get_coordinates(),
-                    elements=self.coord_object.get_elements(),
+                    initial_coordinates=coords,
+                    elements=elements,
                     charge=self.net_charge,
                     header=stageheader,
                 )

@@ -71,3 +71,22 @@ class TestPdbSanitize(unittest.TestCase):
         self.assertEqual(_split_pdb_element_charge("N+"), ("N", "1+"))
         self.assertEqual(_split_pdb_element_charge("Cl"), ("Cl", ""))
         self.assertEqual(_split_pdb_element_charge("C"), ("C", ""))
+
+    def test_drop_extra_hydrogen_against_reference(self):
+        import numpy as np
+
+        from ligandparam.io.Coordinates import match_current_to_reference
+
+        ref = [
+            ("C", np.array([0.0, 0.0, 0.0])),
+            ("O", np.array([1.4, 0.0, 0.0])),
+            ("S", np.array([2.1, 0.0, 1.2])),
+            ("O", np.array([3.5, 0.0, 1.2])),
+            ("H", np.array([-0.9, 0.0, 0.0])),
+        ]
+        extra_h = ("H", np.array([4.1, 0.4, 0.8]))
+        current = list(ref) + [extra_h]
+        elems, coords = match_current_to_reference(ref, current)
+        self.assertEqual(len(elems), 5)
+        self.assertEqual(elems.count("H"), 1)
+        self.assertEqual(len(coords), 5)
