@@ -15,6 +15,11 @@ _ANCILLARY_MOL2_MARKERS = (
     ".initial.",
     ".centered.",
     ".resp.",
+    ".minimized.",
+    ".user_input.",
+    ".antechamber_in.",
+    ".sanitized.",
+    ".gau_geom.",
 )
 
 
@@ -26,6 +31,48 @@ def _is_recipe_output_mol2(path: Path) -> bool:
     if name.startswith("final_"):
         return False
     return True
+
+
+def _find_file_ci(directory: Path, filename: str) -> Path | None:
+    """Return ``directory/filename``, matching the name case-insensitively."""
+    wanted = filename.lower()
+    matches = [
+        p for p in directory.iterdir() if p.is_file() and p.name.lower() == wanted
+    ]
+    if not matches:
+        return None
+    exact = [p for p in matches if p.name == filename]
+    return (exact or matches)[0]
+
+
+def _triplet_for_stem(work_dir: Path, stem: str) -> tuple[Path, Path, Path] | None:
+    """Return mol2/lib/frcmod for ``stem`` if all three files exist."""
+    mol2 = _find_file_ci(work_dir, f"{stem}.mol2")
+    lib = _find_file_ci(work_dir, f"{stem}.lib")
+    frcmod = _find_file_ci(work_dir, f"{stem}.frcmod")
+    if mol2 is not None and lib is not None and frcmod is not None:
+        return mol2, lib, frcmod
+    return None
+
+
+def _complete_triplets(work_dir: Path) -> list[tuple[Path, Path, Path]]:
+    """Amber mol2/lib/frcmod triples in ``work_dir`` (final recipe mol2 only)."""
+    found: list[tuple[Path, Path, Path]] = []
+    seen: set[str] = set()
+    for path in work_dir.iterdir():
+        if not path.is_file() or path.suffix.lower() != ".mol2":
+            continue
+        if not _is_recipe_output_mol2(path):
+            continue
+        trio = _triplet_for_stem(work_dir, path.stem)
+        if trio is None:
+            continue
+        key = trio[0].name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(trio)
+    return sorted(found, key=lambda t: t[0].name.lower())
 
 
 @dataclass(frozen=True)
@@ -84,8 +131,8 @@ def resolve_getparam_bundle(
         Same ``-d`` / ``-r`` values used with ``lig-getparam``. Required unless
         all of ``mol2``, ``lib``, and ``frcmod`` are provided.
     label
-        Recipe file stem (e.g. ``chaps`` from ``chaps.mol2``). Defaults to
-        ``resname``, then to a unique non-ancillary ``*.mol2`` in ``work_dir``.
+        Recipe file stem (e.g. ``SDS`` from ``SDS.mol2``). Case-insensitive.
+        Defaults to ``resname``, then to a unique Amber triplet in ``work_dir``.
     mol2, lib, frcmod
         Explicit paths. If all three are set, ``work_dir`` is the mol2 parent
         and ``data_cwd`` / ``resname`` are ignored.
@@ -122,28 +169,38 @@ def resolve_getparam_bundle(
     if not work_dir.is_dir():
         raise FileNotFoundError(f"Working directory does not exist: {work_dir}")
 
-    stem = label or resname
-    cand_mol2 = work_dir / f"{stem}.mol2"
-    cand_lib = work_dir / f"{stem}.lib"
-    cand_frcmod = work_dir / f"{stem}.frcmod"
+    stems: list[str] = []
+    for stem in (label, resname):
+        if stem and stem not in stems:
+            stems.append(stem)
 
-    if not cand_mol2.is_file() and label is None:
-        mol2s = sorted(p for p in work_dir.glob("*.mol2") if _is_recipe_output_mol2(p))
-        if len(mol2s) == 1:
-            cand_mol2 = mol2s[0]
-            stem = cand_mol2.stem
-            cand_lib = work_dir / f"{stem}.lib"
-            cand_frcmod = work_dir / f"{stem}.frcmod"
+    trio = None
+    for stem in stems:
+        trio = _triplet_for_stem(work_dir, stem)
+        if trio is not None:
+            break
+    if trio is None:
+        available = _complete_triplets(work_dir)
+        if len(available) == 1:
+            trio = available[0]
 
-    missing = [p for p in (cand_mol2, cand_lib, cand_frcmod) if not p.is_file()]
-    if missing:
+    if trio is None:
+        available = _complete_triplets(work_dir)
+        found = (
+            ", ".join(f"{m.name} + {lb.name} + {fr.name}" for m, lb, fr in available)
+            if available
+            else "none"
+        )
+        looked = ", ".join(f"{s}.mol2/{s}.lib/{s}.frcmod" for s in stems) or "n/a"
         raise FileNotFoundError(
             "Could not find ligandparam outputs in "
-            f"{work_dir}. Missing: {', '.join(p.name for p in missing)}. "
-            "Pass --label (input stem used by the recipe) or explicit "
-            "mol2/lib/frcmod paths."
+            f"{work_dir}. Looked for {looked} (case-insensitive). "
+            f"Found Amber triplets: {found}. "
+            "Pass --label matching the recipe input stem "
+            "(SDS.mol2 -> SDS, not sds) or explicit mol2/lib/frcmod paths."
         )
 
+    cand_mol2, cand_lib, cand_frcmod = trio
     return AmberLigandBundle(
         mol2=cand_mol2.resolve(),
         lib=cand_lib.resolve(),

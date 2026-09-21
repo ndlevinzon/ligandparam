@@ -54,6 +54,35 @@ class TestAmberBundleIO(unittest.TestCase):
             self.assertEqual(bundle.stem, "chaps")
             self.assertEqual(bundle.work_dir, work.resolve())
 
+    def test_resolve_label_is_case_insensitive(self):
+        from ligandparam.io.AmberBundle import resolve_getparam_bundle
+
+        with tempfile.TemporaryDirectory() as td:
+            cwd = Path(td)
+            work = cwd / "SDS" / "SDS"
+            work.mkdir(parents=True)
+            self._touch_triplet(work, "SDS")
+            bundle = resolve_getparam_bundle(
+                cwd=cwd, data_cwd="SDS", resname="SDS", label="sds"
+            )
+            self.assertEqual(bundle.mol2.name, "SDS.mol2")
+            self.assertEqual(bundle.lib.name, "SDS.lib")
+            self.assertEqual(bundle.frcmod.name, "SDS.frcmod")
+
+    def test_resolve_unique_triplet_if_label_missing(self):
+        from ligandparam.io.AmberBundle import resolve_getparam_bundle
+
+        with tempfile.TemporaryDirectory() as td:
+            cwd = Path(td)
+            work = cwd / "CHA3" / "CHA"
+            work.mkdir(parents=True)
+            self._touch_triplet(work, "chaps")
+            (work / "chaps.initial.mol2").write_text("@<TRIPOS>MOLECULE\n", encoding="utf-8")
+            bundle = resolve_getparam_bundle(
+                cwd=cwd, data_cwd="CHA3", resname="CHA"
+            )
+            self.assertEqual(bundle.stem, "chaps")
+
     def test_missing_triplet_raises(self):
         from ligandparam.io.AmberBundle import resolve_getparam_bundle
 
